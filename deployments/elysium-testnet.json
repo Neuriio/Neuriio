@@ -1,0 +1,8 @@
+{
+  "chainId": 99801,
+  "oracle": "0x7cf7fe50defd5ef35ecba65e5dcb354a50844028",
+  "tHYPE": "0x365c3257dd6ac46371c4ea357445d57857941eb9",
+  "tUSDC": "0x200e9be287f89b6af24776223f009bf277329c38",
+  "propAMM": "0xcfda6518d10a686dc2d0c1d9934a4a43952a4f9b",
+  "fastBridge": "0x4f8730e682c2dd6ea524e4c81323b7a0d2cb7c41"
+}

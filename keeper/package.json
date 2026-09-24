@@ -1,0 +1,14 @@
+{
+  "name": "elysium-keeper",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "feed": "node feed-bbo.mjs",
+    "hedge": "node hedger.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@nktkas/hyperliquid": "^0.33.3",
+    "viem": "^2.37.0"
+  }
+}
