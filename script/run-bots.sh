@@ -12,6 +12,8 @@
 #                      so fills are simulated at the live mainnet price
 #   relayer live       bridge credit follows the account's HyperCore *testnet* USDC balance
 #                      (0 until funded, so deposits are safely rejected)
+#   sponsor optional   one-click gas sponsor on :8787, only if SPONSOR_ACCOUNT is set: a SEPARATE
+#                      keystore account holding a little HYPE (sharing the feeder's key clashes nonces)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ACCOUNT=${1:-burner}
@@ -44,5 +46,13 @@ TOPUP_FROM=${TOPUP_FROM:-} RPC_URL=$RPC BRIDGE=$(jq -r .fastBridge $D) RELAYER_K
 PIDS+=($!)
 unset KEY
 
-echo "bots running: feeder, hedger (simulated), relayer  |  logs in ./logs  |  Ctrl-C to stop"
-tail -n +1 -f logs/feeder.log logs/hedger.log logs/relayer.log
+if [ -n "${SPONSOR_ACCOUNT:-}" ]; then
+  echo "Unlocking sponsor keystore '$SPONSOR_ACCOUNT'"
+  SKEY=$(cast wallet decrypt-keystore "$SPONSOR_ACCOUNT" | awk '{print $NF}')
+  RPC_URL=$RPC DELEGATE=$(jq -r .neuriioAccount $D) SPONSOR_KEY=$SKEY node keeper/sponsor.mjs >logs/sponsor.log 2>&1 &
+  PIDS+=($!)
+  unset SKEY
+fi
+
+echo "bots running: feeder, hedger (simulated), relayer${SPONSOR_ACCOUNT:+, sponsor}  |  logs in ./logs  |  Ctrl-C to stop"
+tail -n +1 -f logs/feeder.log logs/hedger.log logs/relayer.log ${SPONSOR_ACCOUNT:+logs/sponsor.log}

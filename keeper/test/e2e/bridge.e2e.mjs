@@ -61,7 +61,7 @@ console.log(`   HYPE deposit converted via PropAMM -> ${usd(d2[4])} USDC for Bob
 
 console.log("3) relayer credits both on HyperCore and marks them fulfilled");
 await relayer.tick();
-assert.equal(sim.balanceOf(ALICE), strToUsdc("999.5"));
+assert.equal(sim.balanceOf(ALICE), strToUsdc("1000")); // bridge fee is 0 (subscription model)
 assert.equal(sim.balanceOf(BOB), d2[4]);
 assert.equal((await read(BRIDGE, bridgeAbi, "deposits", [1n]))[2], 2);
 assert.equal((await read(BRIDGE, bridgeAbi, "deposits", [2n]))[2], 2);
@@ -73,9 +73,9 @@ const { hash } = sim.transfer(ALICE, HL_US, "300");
 await relayer.tick();
 await relayer.tick(); // second tick must not pay again
 const after = await read(USDC, erc20, "balanceOf", [ALICE]);
-assert.equal(after - before, strToUsdc("299.5"));
+assert.equal(after - before, strToUsdc("300"));
 assert.equal(await read(BRIDGE, bridgeAbi, "paidOut", [hash]), true);
-console.log(`   Alice received ${usd(after - before)} USDC on Elysium (fee 0.5)`);
+console.log(`   Alice received ${usd(after - before)} USDC on Elysium (no bridge fee)`);
 
 const credit = await read(BRIDGE, bridgeAbi, "credit");
 console.log(`5) final credit ${usd(credit)} = HyperCore inventory ${usd(sim.balanceOf(HL_US))} - 100 buffer`);

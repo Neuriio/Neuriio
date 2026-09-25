@@ -152,3 +152,34 @@ export function buildOrderPlan(market, intent, { builder } = {}) {
 }
 
 const round2 = (x) => Math.round(x * 100) / 100;
+
+/**
+ * Which USDC balance an order spends from, and the transfer (if any) to top it up from the other.
+ * HyperCore keeps two USDC balances: perps ("" dex) back perps; spot ("spot") backs spot AND HIP-4
+ * outcomes. The bridge credits perps, so a spot/outcome buy usually needs a perps -> spot move first.
+ * The app's agent can do that move itself (agentSendAsset, own account only), so no wallet prompt.
+ *
+ * @param {object} summary        buildOrderPlan(...).summary
+ * @param {object} bal            { perp: withdrawable USDC, spot: free spot USDC } (numbers)
+ * @returns {null | { sourceDex, destinationDex, amount: string }}  null = nothing to move
+ */
+export function planCollateralMove(summary, bal, { reduceOnly = false } = {}) {
+  const { kind, side } = summary;
+  if (reduceOnly || (kind !== "perp" && side === "sell")) return null; // sells don't spend USDC
+  const toPerp = kind === "perp";
+  const px = Number(summary.price);
+  const size = Number(summary.size);
+  const feeBps = HL_FEES_BPS[kind].taker; // worst case
+  // what the order can lock at its limit price (market orders are IOC limits above mid)
+  const need = toPerp
+    ? (size * px) / summary.leverage + (size * px * feeBps) / 10_000
+    : size * px * (1 + feeBps / 10_000);
+  const have = toPerp ? bal.perp : bal.spot;
+  if (have >= need) return null;
+  const other = toPerp ? bal.spot : bal.perp;
+  const shortfall = Math.ceil((need - have) * 100 - 1e-9) / 100; // whole cents, rounded up
+  if (shortfall > other + 1e-9) {
+    throw new Error(`not enough USDC: order needs $${need.toFixed(2)}, you have $${(have + other).toFixed(2)}`);
+  }
+  return { sourceDex: toPerp ? "spot" : "", destinationDex: toPerp ? "" : "spot", amount: shortfall.toFixed(2) };
+}

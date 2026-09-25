@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Deploys Steps 1, 2 and 4 to Elysium testnet from a Foundry keystore account.
+# Deploys Steps 1, 2, 4 and the one-click NeuriioAccount to Elysium testnet from a Foundry keystore account.
 #   ./script/deploy-testnet.sh [account]    (default account: burner)
-# Foundry asks for the keystore password once per forge script (twice total).
+# Foundry asks for the keystore password once per forge script (three times total).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ACCOUNT=${1:-burner}
@@ -11,7 +11,7 @@ MID=$(curl -s -X POST https://api.hyperliquid.xyz/info -H 'content-type: applica
   | python3 -c "import json,sys;print(int(float(json.load(sys.stdin)['HYPE'])))")
 echo "Seeding pool at live HYPE price ~\$$MID"
 
-echo "== 1/2 Oracle + test tokens + PropAMM (enter keystore password)"
+echo "== 1/3 Oracle + test tokens + PropAMM (enter keystore password)"
 SEED_PRICE=$MID forge script script/DeployPropAMM.s.sol --rpc-url $RPC --account "$ACCOUNT" --broadcast --slow
 RUN=broadcast/DeployPropAMM.s.sol/99801/run-latest.json
 addr() { jq -r --arg c "$1" --argjson n "${2:-0}" '[.transactions[] | select(.contractName==$c and .transactionType=="CREATE")][$n].contractAddress' $RUN; }
@@ -20,10 +20,15 @@ HYPE=$(addr MockERC20 0)
 USDC=$(addr MockERC20 1)
 POOL=$(addr PropAMM)
 
-echo "== 2/2 FastBridge (enter keystore password again)"
+echo "== 2/3 FastBridge (enter keystore password again)"
 POOL=$POOL forge script script/DeployFastBridge.s.sol --rpc-url $RPC --account "$ACCOUNT" --broadcast --slow
 BRIDGE=$(jq -r '[.transactions[] | select(.contractName=="FastBridge" and .transactionType=="CREATE")][0].contractAddress' \
   broadcast/DeployFastBridge.s.sol/99801/run-latest.json)
+
+echo "== 3/3 NeuriioAccount, the EIP-7702 one-click delegate (enter keystore password again)"
+BRIDGE=$BRIDGE forge script script/DeployNeuriioAccount.s.sol --rpc-url $RPC --account "$ACCOUNT" --broadcast --slow
+DELEGATE=$(jq -r '[.transactions[] | select(.contractName=="NeuriioAccount" and .transactionType=="CREATE")][0].contractAddress' \
+  broadcast/DeployNeuriioAccount.s.sol/99801/run-latest.json)
 
 mkdir -p deployments
 cat > deployments/elysium-testnet.json <<EOF
@@ -33,7 +38,8 @@ cat > deployments/elysium-testnet.json <<EOF
   "tHYPE": "$HYPE",
   "tUSDC": "$USDC",
   "propAMM": "$POOL",
-  "fastBridge": "$BRIDGE"
+  "fastBridge": "$BRIDGE",
+  "neuriioAccount": "$DELEGATE"
 }
 EOF
 echo "== Deployed (saved to deployments/elysium-testnet.json)"

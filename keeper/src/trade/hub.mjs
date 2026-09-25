@@ -9,9 +9,11 @@
 //
 // `wallet` arguments accept anything the Hyperliquid SDK accepts (viem account, browser wallet).
 import { ExchangeClient, HttpTransport, InfoClient } from "@nktkas/hyperliquid";
+import { ApproveAgentTypes } from "@nktkas/hyperliquid/api/exchange";
+import { getWalletChainId, signUserSignedAction } from "@nktkas/hyperliquid/signing";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { MarketCatalog, normalizeMarkets } from "./markets.mjs";
-import { buildOrderPlan, MAX_BUILDER_FEE } from "./orders.mjs";
+import { buildOrderPlan, MAX_BUILDER_FEE, planCollateralMove } from "./orders.mjs";
 import { summarizePortfolio } from "./portfolio.mjs";
 
 export class TradeHub {
@@ -36,6 +38,8 @@ export class TradeHub {
       this.info.allMids(),
     ]);
     this.catalog = new MarketCatalog(normalizeMarkets({ meta, spotMeta, outcomeMeta, mids }));
+    const usdc = spotMeta.tokens.find((t) => t.name === "USDC");
+    this.usdcToken = usdc ? `${usdc.name}:${usdc.tokenId}` : null; // sendAsset token id
     return this;
   }
 
@@ -92,6 +96,36 @@ export class TradeHub {
     return { key, address: agent.address };
   }
 
+  /**
+   * Like createAgent, but only SIGNS now. HyperCore refuses actions from an account that has never
+   * received a deposit, so a brand-new user signs this during setup and the app submits it right
+   * after their first bridge-in lands (submitAgentApproval). HyperCore accepts a signed action for
+   * about 2 days after its nonce; past that, sign again.
+   */
+  async signAgentApproval(mainWallet, name = "neuriio") {
+    const key = generatePrivateKey();
+    const agent = privateKeyToAccount(key);
+    const action = {
+      type: "approveAgent",
+      signatureChainId: await getWalletChainId(mainWallet),
+      hyperliquidChain: this.transport.isTestnet ? "Testnet" : "Mainnet",
+      agentAddress: agent.address.toLowerCase(),
+      agentName: name,
+      nonce: Date.now(),
+    };
+    const signature = await signUserSignedAction({ wallet: mainWallet, action, types: ApproveAgentTypes });
+    return { key, address: agent.address, approval: { action, signature, nonce: action.nonce } };
+  }
+
+  /** Submits a pre-signed agent approval. Safe to call again: an already-approved agent is a no-op. */
+  async submitAgentApproval(user, { action, signature, nonce }) {
+    const agents = await this.info.extraAgents({ user }).catch(() => []);
+    if (agents.some((a) => a.address.toLowerCase() === action.agentAddress)) return { alreadyApproved: true };
+    const res = await this.transport.request("exchange", { action, signature, nonce });
+    if (res?.status !== "ok") throw new Error(`agent approval failed: ${JSON.stringify(res?.response ?? res)}`);
+    return { approved: true };
+  }
+
   // ---------------------------------------------------------------- trading
 
   /** Everything the confirm screen shows, without signing anything. */
@@ -99,9 +133,15 @@ export class TradeHub {
     return buildOrderPlan(this.market(marketKey), intent, { builder: this.builder }).summary;
   }
 
-  async placeOrder(agentWallet, marketKey, intent) {
+  /**
+   * @param {object} [opts]
+   * @param {string} [opts.fundFrom]  the user's address: first move USDC between their perps and spot
+   *        balances if this order needs it (agent-signed, no wallet prompt). One-click buys pass it.
+   */
+  async placeOrder(agentWallet, marketKey, intent, { fundFrom } = {}) {
     const { actions, summary } = buildOrderPlan(this.market(marketKey), intent, { builder: this.builder });
     const ex = this._exchange(agentWallet);
+    const funded = fundFrom ? await this._fund(ex, fundFrom, summary, intent) : null;
     let result;
     for (const a of actions) {
       if (a.type === "updateLeverage") await ex.updateLeverage(a.params);
@@ -116,7 +156,25 @@ export class TradeHub {
         }
       }
     }
-    return { summary, statuses: result.response.data.statuses.map(parseStatus) };
+    return { summary, funded, statuses: result.response.data.statuses.map(parseStatus) };
+  }
+
+  /** Free USDC in each of the user's HyperCore balances. */
+  async usdcBalances(user) {
+    const [perp, spot] = await Promise.all([
+      this.info.clearinghouseState({ user }),
+      this.info.spotClearinghouseState({ user }),
+    ]);
+    const s = spot.balances.find((b) => b.coin === "USDC");
+    return { perp: Number(perp.withdrawable), spot: s ? Number(s.total) - Number(s.hold) : 0 };
+  }
+
+  async _fund(ex, user, summary, intent) {
+    const move = planCollateralMove(summary, await this.usdcBalances(user), intent);
+    if (!move) return null;
+    if (!this.usdcToken) throw new Error("USDC token id unknown (call init first)");
+    await ex.agentSendAsset({ destination: user, token: this.usdcToken, ...move });
+    return move;
   }
 
   /** Market-close an entire perp position. */
