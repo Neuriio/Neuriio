@@ -5,6 +5,7 @@
 // SPONSOR_KEY only pays gas: keep a small HYPE balance on it (a buy costs ~250k gas).
 // Use its own key, not the feeder's: they would fight over nonces.
 // Env: PORT=8787  CORS_ORIGIN=*  BUYS_PER_MIN=6  SETUPS_PER_HOUR=3  TX_PER_DAY=5000
+//      RELAYER_KICK_URL=http://127.0.0.1:8790/kick  tell our relayer a deposit just landed (faster buys)
 import { createServer } from "node:http";
 import { createPublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -25,7 +26,16 @@ const sponsor = await new Sponsor({
   limits: { buysPerMinute: num("BUYS_PER_MIN", 6), setupsPerHour: num("SETUPS_PER_HOUR", 3), txPerDay: num("TX_PER_DAY", 5000) },
 }).init();
 
-const routes = { "/setup": (p) => sponsor.setup(p), "/buy": (p) => sponsor.buy(p) };
+// fire-and-forget: the relayer would find the deposit on its next tick anyway
+const kickRelayer = () => env.RELAYER_KICK_URL && fetch(env.RELAYER_KICK_URL, { method: "POST" }).catch(() => {});
+const routes = {
+  "/setup": (p) => sponsor.setup(p),
+  "/buy": async (p) => {
+    const r = await sponsor.buy(p);
+    kickRelayer();
+    return r;
+  },
+};
 const cors = { "access-control-allow-origin": env.CORS_ORIGIN ?? "*", "access-control-allow-headers": "content-type" };
 const reply = (res, code, body) => {
   res.writeHead(code, { "content-type": "application/json", ...cors });

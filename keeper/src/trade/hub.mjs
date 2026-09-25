@@ -137,15 +137,17 @@ export class TradeHub {
    * @param {object} [opts]
    * @param {string} [opts.fundFrom]  the user's address: first move USDC between their perps and spot
    *        balances if this order needs it (agent-signed, no wallet prompt). One-click buys pass it.
+   * @param {boolean} [opts.leverageSet]  leverage already set via setLeverage (skip that step)
    */
-  async placeOrder(agentWallet, marketKey, intent, { fundFrom } = {}) {
+  async placeOrder(agentWallet, marketKey, intent, { fundFrom, leverageSet = false } = {}) {
     const { actions, summary } = buildOrderPlan(this.market(marketKey), intent, { builder: this.builder });
     const ex = this._exchange(agentWallet);
     const funded = fundFrom ? await this._fund(ex, fundFrom, summary, intent) : null;
     let result;
     for (const a of actions) {
-      if (a.type === "updateLeverage") await ex.updateLeverage(a.params);
-      else {
+      if (a.type === "updateLeverage") {
+        if (!leverageSet) await ex.updateLeverage(a.params);
+      } else {
         try {
           result = await ex.order(a.params);
         } catch (e) {
@@ -157,6 +159,16 @@ export class TradeHub {
       }
     }
     return { summary, funded, statuses: result.response.data.statuses.map(parseStatus) };
+  }
+
+  /**
+   * Just the leverage step of an order, so it can run ahead of time (e.g. while a one-click
+   * deposit is bridging). Returns false when the order needs none (spot/outcome).
+   */
+  async setLeverage(agentWallet, marketKey, intent) {
+    const lev = buildOrderPlan(this.market(marketKey), intent, { builder: this.builder }).actions.filter((a) => a.type === "updateLeverage");
+    for (const a of lev) await this._exchange(agentWallet).updateLeverage(a.params);
+    return lev.length > 0;
   }
 
   /** Free USDC in each of the user's HyperCore balances. */

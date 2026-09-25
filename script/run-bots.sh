@@ -11,7 +11,8 @@
 #   hedger  simulated  the pool prices off mainnet HYPE; testnet HYPE is a different market,
 #                      so fills are simulated at the live mainnet price
 #   relayer live       bridge credit follows the account's HyperCore *testnet* USDC balance
-#                      (0 until funded, so deposits are safely rejected)
+#                      (0 until funded, so deposits are safely rejected); the sponsor kicks it
+#                      on 127.0.0.1:8790 right after a one-click deposit
 #   sponsor optional   one-click gas sponsor on :8787, only if SPONSOR_ACCOUNT is set: a SEPARATE
 #                      keystore account holding a little HYPE (sharing the feeder's key clashes nonces)
 set -euo pipefail
@@ -42,14 +43,14 @@ SIM=1 SIM_MID=$MID RPC_URL=$RPC POOL=$(jq -r .propAMM $D) QUOTER_KEY=$KEY \
 PIDS+=($!)
 
 TOPUP_FROM=${TOPUP_FROM:-} RPC_URL=$RPC BRIDGE=$(jq -r .fastBridge $D) RELAYER_KEY=$KEY HL_MAIN_KEY=$KEY HL_TESTNET=1 \
-  STATE_FILE=logs/relayer-state.json TICK_MS=2000 node keeper/relayer.mjs >logs/relayer.log 2>&1 &
+  STATE_FILE=logs/relayer-state.json TICK_MS=2000 KICK_PORT=8790 node keeper/relayer.mjs >logs/relayer.log 2>&1 &
 PIDS+=($!)
 unset KEY
 
 if [ -n "${SPONSOR_ACCOUNT:-}" ]; then
   echo "Unlocking sponsor keystore '$SPONSOR_ACCOUNT'"
   SKEY=$(cast wallet decrypt-keystore "$SPONSOR_ACCOUNT" | awk '{print $NF}')
-  RPC_URL=$RPC DELEGATE=$(jq -r .neuriioAccount $D) SPONSOR_KEY=$SKEY node keeper/sponsor.mjs >logs/sponsor.log 2>&1 &
+  RPC_URL=$RPC DELEGATE=$(jq -r .neuriioAccount $D) SPONSOR_KEY=$SKEY RELAYER_KICK_URL=http://127.0.0.1:8790/kick node keeper/sponsor.mjs >logs/sponsor.log 2>&1 &
   PIDS+=($!)
   unset SKEY
 fi

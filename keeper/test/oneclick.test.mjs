@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { planCollateralMove } from "../src/trade/orders.mjs";
-import { orderUsdFor } from "../src/oneclick/oneclick.mjs";
+import { OneClick, orderUsdFor } from "../src/oneclick/oneclick.mjs";
 import { Sponsor, UserError } from "../src/oneclick/sponsor.mjs";
 import { fromWire, toWire } from "../src/oneclick/wire.mjs";
 
@@ -158,4 +158,39 @@ test("sponsor: dust buys are refused (they can't trade and would only burn our g
   const order = { token: USDC, amountIn: 9_999_999n, minUsdcOut: 0n, deadline: 1n, nonce: 1n };
   await assert.rejects(sponsor.buy({ wallet: user, order, signature: "0x" }), /below the \$10 minimum/);
   assert.equal(calls.length, 0);
+});
+
+const ZERO = "0x0000000000000000000000000000000000000000";
+
+test("buy: a failed status read while bridging is retried, not reported as a failed buy", async () => {
+  // what broke on testnet 2026-09-25: one rate-limited read aborted a buy whose deposit had landed
+  const answers = [new Error("RPC Request failed."), [ZERO, 0n, 1, ZERO, 0n, 0n], new Error("HTTP 429"), [ZERO, 0n, 2, ZERO, 0n, 0n]];
+  const pub = { readContract: async () => { const a = answers.shift(); if (a instanceof Error) throw a; return a; } };
+  const oc = new OneClick({ pub, pollMs: 1, bridgeTimeoutMs: 5_000 });
+  await oc._awaitCredit(6n);
+  assert.equal(answers.length, 0);
+});
+
+test("buy: a bridge that never answers still times out with the refund hint", async () => {
+  const pub = { readContract: async () => { throw new Error("RPC Request failed."); } };
+  const oc = new OneClick({ pub, pollMs: 1, bridgeTimeoutMs: 20 });
+  await assert.rejects(oc._awaitCredit(7n), /taking longer than usual; a refund unlocks/);
+});
+
+test("buy: credit is spotted on HyperCore before the relayer marks it on Elysium", async () => {
+  const balances = [{ perp: 5, spot: 0 }, { perp: 5, spot: 0 }, { perp: 102.9, spot: 0 }];
+  let elysiumReads = 0;
+  const hub = { usdcBalances: async () => balances.shift() };
+  const pub = { readContract: async () => (elysiumReads++, [ZERO, 0n, 1, ZERO, 0n, 0n]) }; // still Pending on Elysium
+  const oc = new OneClick({ pub, hub, pollMs: 1, bridgeTimeoutMs: 5_000 });
+  await oc._awaitCredit(8n, { user: ZERO, before: { perp: 5, spot: 0 }, minCreditUsd: 97.02 });
+  assert.equal(balances.length, 0);
+  assert.equal(elysiumReads, 1, "Elysium is only read every few polls while HyperCore is watched");
+});
+
+test("buy: a HyperCore outage falls back to the Elysium status", async () => {
+  const hub = { usdcBalances: async () => { throw new Error("429"); } };
+  const pub = { readContract: async () => [ZERO, 0n, 2, ZERO, 0n, 0n] };
+  const oc = new OneClick({ pub, hub, pollMs: 1, bridgeTimeoutMs: 5_000 });
+  await oc._awaitCredit(9n, { user: ZERO, before: { perp: 0, spot: 0 }, minCreditUsd: 50 });
 });

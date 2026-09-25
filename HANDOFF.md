@@ -55,6 +55,7 @@ each side ("a cash drawer in both countries") and we rebalance slowly.
 | 4 | FastBridge + relayer | ✅ live on testnet, real HL testnet USDC, round trips verified |
 | 5 | Trade hub backend (`keeper/src/trade/`) | ✅ real fills verified on HL testnet |
 | 5b | **One-click backend** (EIP-7702 `NeuriioAccount` + session keys, gas sponsor, `OneClick` client, auto perps↔spot USDC) | ✅ **live on testnet 2026-09-25**: zero-gas wallet → 3x BTC filled in 13 s, PURR spot filled in 10.4 s, all withdrawn |
+| 5c | **Wallet: Privy "Neuriio wallet"** (sign up with X or any wallet → Privy embedded wallet → 7702 to `NeuriioAccount`) | ✅ **verified on testnet 2026-09-25** via `app/` check page: X login → wallet auto-created → setup with **zero pop-ups** (4.7 s) → 3x BTC filled in 13.3 s → withdrawn, 0 gas ever held. Speed fixes landed after (not yet re-timed) |
 | 6 | **UI** | **next** — user brings branding/logo/design; only feature for now = one-button buy (§8) |
 | 7 | **Security audit (AI, highest model) → public `docs/ARCHITECTURE.md` + `docs/SECURITY_AUDIT.md`** for the pro audit team | planned (see TODO 6) |
 | later | Subscription gating contract; ERC-4626 vault for outside capital | not started |
@@ -90,11 +91,12 @@ TOPUP_FROM=0xe973105a27e17350500926ae664dfcfe6006d924 ./script/run-bots.sh burne
 ./script/apply-settings.sh burner   # owner settings (oracle slack, pool pricing)
 ./script/bridge-fee-off.sh burner   # bridge fee = 0
 ./script/oneclick-test.sh burner    # zero-gas wallet: 7702 setup -> one-click 3x BTC + PURR spot on HL testnet -> withdraw everything
+./script/privy-check.sh burner      # sponsor :8787 + test faucet :8788 for the Privy check page (app/, npm --prefix app run dev -> :5173)
 ./script/deploy-oneclick.sh burner  # (re)deploy NeuriioAccount only (run with bots STOPPED: same key as the feeder)
 ./script/deploy-testnet.sh burner   # fresh deploy of oracle + tokens + pool + bridge + NeuriioAccount
 SPONSOR_ACCOUNT=<keystore> TOPUP_FROM=... ./script/run-bots.sh burner   # also runs the gas sponsor on :8787 (SEPARATE keystore w/ a little HYPE)
 forge test                          # 84 passing (+ fork suite: forge test --match-path 'test/fork/*' --fork-url elysium_testnet, 3)
-cd keeper && npm test               # 52 passing
+cd keeper && npm test               # 56 passing
 ./script/e2e-bridge.sh              # full local bridge e2e on anvil (no keys needed)
 ./script/e2e-oneclick.sh            # full local one-click e2e on anvil (7702 setup + sponsored buy + guards)
 ```
@@ -121,7 +123,9 @@ keeper/src/bridge/                    relayer logic, chain adapter, HL transfers
 keeper/src/trade/                     TRADE HUB — what the UI calls (see §8)
 keeper/src/oneclick/                  ONE-CLICK: account.mjs (setup/sign), oneclick.mjs (quote + buy w/ stages),
                                       sponsor.mjs (gas sponsor logic), wire.mjs (HTTP format + SponsorClient)
-keeper/sponsor.mjs                    gas sponsor HTTP service (POST /setup, POST /buy, GET /health)
+keeper/sponsor.mjs                    gas sponsor HTTP service (POST /setup, POST /buy, GET /health); kicks the relayer after a buy
+app/                                  Vite + React + Privy. Today: the testnet check page (src/PrivyCheck.jsx). Privy App ID in
+                                      app/.env.local (VITE_PRIVY_APP_ID, gitignored; public client id). Imports keeper/src directly.
 keeper/test/live/                     live scripts used by script/*-test.sh
 ```
 
@@ -166,7 +170,18 @@ Off-chain money-path code (relayer + sponsor + one-click, JS) ~910 lines. Still 
 - Spot buy fees are taken in the bought token (19 PURR bought → 18.9867 held); selling "everything" leaves sub-lot dust (szDecimals).
 - Most browser wallets (MetaMask etc.) currently only allow 7702 delegation to their OWN delegator contract. Our setup works with
   embedded wallets / wallets that allow custom delegation; for MetaMask the route is ERC-7715 permissions via its delegation
-  toolkit. **Decide the wallet strategy with the UI.**
+  toolkit. **Checked 2026-09-25:** Rabby, Coinbase Wallet, Phantom, MetaMask all refuse custom 7702 delegates; MetaMask ERC-7715
+  isn't enabled on Elysium (not in its supported networks; its DelegationManager isn't deployed here); **Phantom can't add
+  custom networks at all** (can't transact on Elysium). → **DECIDED: Privy embedded "Neuriio wallet"** (next bullet).
+- **Wallet strategy (decided + verified 2026-09-25):** sign up with **X (Twitter) or any external wallet** via Privy; Privy
+  creates an embedded wallet for every user (`createOnLogin: "all-users"`), which delegates to `NeuriioAccount` with
+  `useSign7702Authorization` and signs silently (`showWalletUIs: false`). First-time user signs **1 thing: the deposit** from
+  their own wallet (X users deposit from an exchange/anywhere). No new contract (a `NeuriioRouter` allowance design was
+  considered and dropped). Keys like Hyperliquid's own app: random device + agent keys in browser storage (HL's app:
+  `crypto.getRandomValues`, `sessionStorage` unless "persist" → `localStorage`, key `hyperliquid_agent_<addr>`).
+  X login uses **Privy's shared X app for now** (consent screen says "Privy"); later: create an X app under the Neuriio X
+  account (OAuth 2.0 Client ID/secret, callback `https://auth.privy.io/api/v1/oauth/callback`, Web App, Read) — dashboard-only
+  change. Tradeoffs: Privy dependency/pricing; HL positions live under the Neuriio wallet's address.
 
 ## 8. For the UI
 
@@ -193,7 +208,9 @@ const q = await oc.quote({ user, payToken, amountIn, market: "BTC", leverage: 3 
 await oc.buy({ user, device, agent, agentApproval: agentInfo.approval, payToken, amountIn, market, leverage,
                onStage: (s, info) => ... })   // stages: quoting -> sending -> bridging -> ordering -> done  (drive the loading animation)
 ```
-Live timings: click → filled **~10–13 s** (most of it is the bridge credit). Quote fields: `usdc`, `fees.bridgeUsd`,
+Live timings: click → filled **~10–13 s** before the 2026-09-25 speed fixes (quote reuse via `buy({ quote })`, credit spotted on
+HyperCore instead of waiting for Elysium `markFulfilled`, agent approval + leverage done while bridging for existing accounts,
+sponsor kicks the relayer on 127.0.0.1:8790); target ~5–7 s, **re-time it**. Paying from an HL balance (no bridge) would be ~1–2 s. Quote fields: `usdc`, `fees.bridgeUsd`,
 `fees.hyperliquidActivationUsd` (exact, via HL `preTransferCheck`), `fees.tradeUsd`, `orderUsd`. Errors to surface:
 "market paused" (stale oracle after one retry), cap errors (`OverPerBuyCap`/`OverDailyCap`), deposit timeout → refund after 1 h.
 
@@ -247,8 +264,8 @@ Live timings: click → filled **~10–13 s** (most of it is the bridge credit).
 ## 9. TODO (prioritized)
 
 1. **UI** (next; user brings branding/logo/design). Only feature for now: the **one-button buy** (see §8 "UI direction"),
-   no plain swap modal. Backend for it is DONE (`keeper/src/oneclick/`). Open: wallet strategy (embedded wallet vs. ERC-7715
-   for MetaMask-style wallets), a sponsor keystore + hosting, where device/agent keys live on the device.
+   no plain swap modal. Backend for it is DONE (`keeper/src/oneclick/`). Wallet DECIDED + verified (Privy, §7). Open: a sponsor
+   keystore + hosting; real deposit flow (external wallet → Neuriio wallet); "pay from HL balance" fast path.
 2. **Subscription gating + DEX aggregator partnerships:** subscription contract (flat monthly rate, later tiered from a month of data) + pool/bridge check that only subscribers can trade. Also stops abusive bots, which matters more at a 5 bps spread (price lag ~2 s).
    **Goal: partner with DEX aggregators on Elysium** (being first with a HyperCore-priced PropAMM = best prices ready to route).
    Our own users don't need an aggregator (pool already quotes HyperCore ± 5 bps); aggregators bring other apps' flow.
@@ -284,9 +301,9 @@ Live timings: click → filled **~10–13 s** (most of it is the bridge credit).
 ## 10. Next session: UI
 
 Start here. User brings **branding, logo and design**. Build ONLY the one-button buy (§8 "UI direction") on top of
-`keeper/src/oneclick/` + `TradeHub`. Decide first: wallet strategy (embedded wallet vs. ERC-7715 for MetaMask-style wallets),
-where the device session key + HL agent key are stored on the device, and hosting for the sponsor service (needs its own
-keystore with a little HYPE; `SPONSOR_ACCOUNT=... ./script/run-bots.sh burner`). The backend is ready: quote → live "est.",
+`keeper/src/oneclick/` + `TradeHub`, in `app/` (Privy is set up; `src/PrivyCheck.jsx` shows the working wiring:
+`usePrivyMain` adapter, setup, buy, withdraw). Still to decide: hosting for the sponsor service (needs its own keystore with a
+little HYPE; `SPONSOR_ACCOUNT=... ./script/run-bots.sh burner`). The backend is ready: quote → live "est.",
 `onStage` → loading animation, result → "boom". Bots must be running for anything to work (§5).
 
 ## 11. Repository

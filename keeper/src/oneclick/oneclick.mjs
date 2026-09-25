@@ -24,6 +24,12 @@ const bridgeAbi = parseAbi([
 const poolAbi = parseAbi(["function previewSellBase(uint256 baseIn) view returns (uint256 quoteOut, uint256 priceWad)"]);
 const FULFILLED = 2;
 const REFUNDED = 3;
+const ELYSIUM_EVERY = 5; // while watching HyperCore, also read the deposit on Elysium every Nth poll
+const CREDIT_SEEN = 0.98; // pool conversion can land a hair under the preview (minUsdcOut bounds it)
+
+/** Identifies what a quote was for, so buy() only reuses a quote for the exact same inputs. */
+const quoteKey = ({ payToken, amountIn, market, leverage = 1, slippageBps = 50 }) =>
+  [payToken.toLowerCase(), String(amountIn), market, leverage, slippageBps].join("|");
 
 /** Stages reported to onStage, in order: drive the loading animation from these. */
 export const STAGES = ["quoting", "sending", "bridging", "ordering", "done"];
@@ -48,8 +54,8 @@ export class OneClick {
    * @param {string} o.bridge     FastBridge address
    * @param {string} o.inventory  relayer's HyperCore account (source of the credit; for the activation-fee check)
    */
-  constructor({ pub, hub, sponsor, bridge, inventory, pollMs = 1000, bridgeTimeoutMs = 90_000 }) {
-    Object.assign(this, { pub, hub, sponsor, bridge, inventory, pollMs, bridgeTimeoutMs });
+  constructor({ pub, hub, sponsor, bridge, inventory, pollMs = 400, bridgeTimeoutMs = 90_000, quoteMaxAgeMs = 10_000 }) {
+    Object.assign(this, { pub, hub, sponsor, bridge, inventory, pollMs, bridgeTimeoutMs, quoteMaxAgeMs });
     this.tokens = new Map();
   }
 
@@ -96,6 +102,8 @@ export class OneClick {
     const spendable = Number(arrives) / 1e6 - activation;
     const orderUsd = orderUsdFor(spendable, m.kind, leverage, slippageBps);
     const base = {
+      at: Date.now(),
+      key: quoteKey({ payToken, amountIn, market, leverage, slippageBps }),
       pay: { symbol: t.symbol, amount: amountIn, decimals: t.decimals },
       usdc: Number(gross) / 1e6,
       fees: { bridgeUsd: Number(bridgeFee) / 1e6, hyperliquidActivationUsd: activation },
@@ -116,10 +124,16 @@ export class OneClick {
    * @param {object} o.agent   HyperCore trade agent account
    * @param {object} [o.agentApproval]  pre-signed approval (hub.signAgentApproval) for a brand-new
    *        HyperCore account: submitted once the first deposit lands, before the order
+   * @param {object} [o.quote]  the quote the button is showing: reused if it is for these exact
+   *        inputs and under `quoteMaxAgeMs` old (saves a round of reads on click)
    */
-  async buy({ user, device, agent, agentApproval, payToken, amountIn, market, leverage = 1, slippageBps = 50, onStage = () => {} }) {
+  async buy({ user, device, agent, agentApproval, payToken, amountIn, market, leverage = 1, slippageBps = 50, quote, onStage = () => {} }) {
     onStage("quoting");
-    const q = await this.quote({ user, payToken, amountIn, market, leverage, slippageBps });
+    const fresh = quote?.ok && quote.key === quoteKey({ payToken, amountIn, market, leverage, slippageBps }) && Date.now() - quote.at < this.quoteMaxAgeMs;
+    const [q, before] = await Promise.all([
+      fresh ? quote : this.quote({ user, payToken, amountIn, market, leverage, slippageBps }),
+      this.hub.usdcBalances(user).catch(() => null), // baseline, to spot the credit on HyperCore
+    ]);
     if (!q.ok) throw new Error(q.error);
 
     onStage("sending", { quote: q });
@@ -138,18 +152,32 @@ export class OneClick {
     }
 
     onStage("bridging", { depositId: sent.depositId, hash: sent.hash });
-    await this._awaitCredit(sent.depositId);
+    const intent = { side: "buy", usd: q.orderUsd, leverage, slippageBps };
+    // An existing HyperCore account can take the agent approval + leverage now, while the deposit
+    // bridges. A brand-new one refuses every action until its first deposit lands, so it waits.
+    const exists = q.fees.hyperliquidActivationUsd === 0;
+    const done = { approved: !agentApproval, leverageSet: false };
+    const prep = exists
+      ? (async () => {
+          if (agentApproval) await this.hub.submitAgentApproval(user, agentApproval);
+          done.approved = true;
+          done.leverageSet = await this.hub.setLeverage(agent, market, intent);
+        })().catch(() => {}) // not fatal: the order path below redoes whatever didn't happen
+      : Promise.resolve();
+    const minCreditUsd = Math.max(0, q.usdc - q.fees.bridgeUsd - q.fees.hyperliquidActivationUsd) * CREDIT_SEEN;
+    await Promise.all([this._awaitCredit(sent.depositId, { user, before, minCreditUsd }), this.hub.refreshPrices().catch(() => {})]);
 
     onStage("ordering");
-    if (agentApproval) await this.hub.submitAgentApproval(user, agentApproval);
+    await prep;
+    if (!done.approved) await this.hub.submitAgentApproval(user, agentApproval);
     let res;
     for (let attempt = 1; ; attempt++) {
       try {
-        res = await this.hub.placeOrder(agent, market, { side: "buy", usd: q.orderUsd, leverage, slippageBps }, { fundFrom: user });
+        res = await this.hub.placeOrder(agent, market, intent, { fundFrom: user, leverageSet: done.leverageSet });
         break;
       } catch (e) {
         // HyperCore balance can trail the relayer's credit by a moment
-        if (attempt < 4 && /not enough USDC/.test(e.message)) {
+        if (attempt < 8 && /not enough USDC/.test(e.message)) {
           await sleep(this.pollMs);
           continue;
         }
@@ -162,16 +190,31 @@ export class OneClick {
     return out;
   }
 
-  async _awaitCredit(id) {
+  /**
+   * Resolves once the deposit's USDC is usable on HyperCore. The relayer credits HyperCore first
+   * and marks the deposit on Elysium a tx later, so watching the user's HyperCore balance (free
+   * API, no Elysium RPC) saves that extra block. Elysium is still checked every few polls for a
+   * refund, and as a fallback when no baseline balance is known.
+   */
+  async _awaitCredit(id, { user, before, minCreditUsd = 0 } = {}) {
     const t0 = Date.now();
-    for (;;) {
-      const d = await this._read(this.bridge, bridgeAbi, "deposits", [id]);
-      if (d[2] === FULFILLED) return;
-      if (d[2] === REFUNDED) throw new Error(`deposit ${id} was refunded`);
+    for (let i = 0; ; i++) {
+      // the deposit is already on-chain: a failed read (public RPC rate limit) is not a failed
+      // buy, so keep polling until the timeout
+      if (user && before) {
+        const now = await this.hub.usdcBalances(user).catch(() => null);
+        if (now && now.perp + now.spot - (before.perp + before.spot) >= minCreditUsd) return;
+      }
+      if (!before || i % ELYSIUM_EVERY === 0) {
+        const d = await this._read(this.bridge, bridgeAbi, "deposits", [id]).catch(() => null);
+        if (d?.[2] === FULFILLED) return;
+        if (d?.[2] === REFUNDED) throw new Error(`deposit ${id} was refunded`);
+      }
       if (Date.now() - t0 > this.bridgeTimeoutMs) {
         throw Object.assign(new Error(`deposit ${id} is taking longer than usual; a refund unlocks after the bridge's refund delay`), { depositId: id });
       }
-      await sleep(this.pollMs);
+      // Elysium-only polling (no baseline) stays at <= 1 read/s: the public RPC rate-limits
+      await sleep(before ? this.pollMs : Math.max(this.pollMs, 1000));
     }
   }
 

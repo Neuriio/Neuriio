@@ -7,6 +7,8 @@
 // Env: HL_TESTNET=1  STATE_FILE=./relayer-state.json  TICK_MS=1000
 //      CREDIT_BUFFER=100 (USDC kept back from credit)  CREDIT_STEP=50  REFUND_MARGIN_S=600  RESEND_AFTER_S=30
 //      TOPUP_FROM=0xabc,0xdef  treasury wallets: their transfers to the inventory account are top-ups, not withdrawals
+//      KICK_PORT=8790  localhost endpoint the sponsor pings after a one-click deposit (tick now)
+import { createServer } from "node:http";
 import { createPublicClient, createWalletClient } from "viem";
 import { makeTransport, primaryUrl } from "./src/rpc.mjs";
 import { privateKeyToAccount } from "viem/accounts";
@@ -44,6 +46,36 @@ const relayer = new Relayer({
 });
 
 console.log(JSON.stringify({ ev: "start", bridge: env.BRIDGE, hlAccount: hl.account, testnet: env.HL_TESTNET === "1" }));
-const tick = () => relayer.tick().catch((e) => console.error(JSON.stringify({ ev: "tick_failed", error: e.shortMessage ?? e.message })));
+// A tick requested while one runs is queued (once), so a kick right after a deposit is never lost.
+let running = false;
+let again = false;
+const tick = async () => {
+  if (running) return void (again = true);
+  running = true;
+  try {
+    do {
+      again = false;
+      await relayer.tick().catch((e) => console.error(JSON.stringify({ ev: "tick_failed", error: e.shortMessage ?? e.message })));
+    } while (again);
+  } finally {
+    running = false;
+  }
+};
 await tick();
 setInterval(tick, num("TICK_MS", 1000));
+
+// KICK_PORT: our sponsor POSTs /kick right after a one-click deposit lands, so the relayer ticks
+// now instead of at its next interval (saves up to TICK_MS per buy, costs no extra RPC polling).
+// A kick only triggers a tick; the tick reads everything from chain, so a kick can't move money.
+// Localhost only.
+if (env.KICK_PORT) {
+  let lastKick = 0;
+  createServer((req, res) => {
+    const ok = req.method === "POST" && req.url === "/kick";
+    if (ok && Date.now() - lastKick >= 250) {
+      lastKick = Date.now();
+      tick();
+    }
+    res.writeHead(ok ? 202 : 404).end();
+  }).listen(num("KICK_PORT", 0), "127.0.0.1");
+}
