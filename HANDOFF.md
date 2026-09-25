@@ -2,6 +2,9 @@
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
+**Project name: Neuriio.** Local folder `/Users/von/Neuriio` (renamed from `elysium`); code lives in the
+**private** GitHub repo **https://github.com/finding-agi/Neuriio** (renamed from `finding-agi/elysium`; old URL redirects).
+
 ## 1. What this is
 
 A trading app on **Elysium** (Kinetiq's Arbitrum Orbit L2, settles to HyperEVM, testnet chain `99801`)
@@ -154,4 +157,13 @@ await hub.portfolio(user)   // perps (entry, mark, uPnL, ROE%, liq, funding), sp
    The AI audit is a layer, not a replacement: follow it with a professional audit + bug bounty, and launch with low caps.
 7. **Before mainnet:** professional audit, legal/jurisdiction review (leveraged perps + prediction markets), confirm HL fees at scale, contract minEdge granularity (whole bps; 4.5 needs a contract change).
 
-Nothing has been committed to git yet.
+## 10. Repository
+
+- **GitHub:** https://github.com/finding-agi/Neuriio. **PRIVATE.** Branch `main`, tracking `origin/main`.
+- **First commit:** `7210a75` "Initial commit: Elysium trade hub (Steps 1-5, testnet-verified)", 64 files, pushed 2026-09-24.
+- **GitHub CLI:** active account `finding-agi` (`holdfebu` also logged in; switch with `gh auth switch`).
+  Commits are authored as `von <von@hlos.org>`.
+- **Before making it public** (planned alongside the open-source architecture/audit docs): re-scan history for
+  secrets. At the first commit the only key-like strings were the two public anvil test keys in `script/e2e-bridge.sh`.
+  The burner key lives in `~/.foundry/keystores`, never in the repo. `logs/`, `cache/`, `.env` and `node_modules/` are gitignored;
+  `docs/` is intentionally **not** ignored (the audit docs go there).
