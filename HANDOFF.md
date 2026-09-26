@@ -210,7 +210,10 @@ await oc.buy({ user, device, agent, agentApproval: agentInfo.approval, payToken,
 ```
 Live timings: click → filled **~10–13 s** before the 2026-09-25 speed fixes (quote reuse via `buy({ quote })`, credit spotted on
 HyperCore instead of waiting for Elysium `markFulfilled`, agent approval + leverage done while bridging for existing accounts,
-sponsor kicks the relayer on 127.0.0.1:8790); target ~5–7 s, **re-time it**. Paying from an HL balance (no bridge) would be ~1–2 s. Quote fields: `usdc`, `fees.bridgeUsd`,
+sponsor kicks the relayer on 127.0.0.1:8790): **re-timed 9.3–9.4 s** (sending ~3–4 s, bridging ~3–4 s, ordering ~2 s).
+**Fast path built + verified 2026-09-25:** `oc.quoteFromHl` / `oc.buyFromHl` pay from USDC already on HyperCore: 3x BTC
+filled in **2.9 s** (no bridge, sponsor, Elysium tx or gas). Session caps do NOT apply there (enforced on Elysium only);
+same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields: `usdc`, `fees.bridgeUsd`,
 `fees.hyperliquidActivationUsd` (exact, via HL `preTransferCheck`), `fees.tradeUsd`, `orderUsd`. Errors to surface:
 "market paused" (stale oracle after one retry), cap errors (`OverPerBuyCap`/`OverDailyCap`), deposit timeout → refund after 1 h.
 

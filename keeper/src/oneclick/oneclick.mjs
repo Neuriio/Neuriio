@@ -10,6 +10,10 @@
 //      -> NeuriioAccount -> FastBridge (PropAMM converts the token to USDC)
 //   2. relayer credits USDC to the user's own HyperCore account (~3-6 s)
 //   3. trade agent moves USDC perps -> spot if the market needs it, then places the order
+//
+// Fast path when the user already has USDC on HyperCore (~1-2 s, only step 3):
+//   const q = await oc.quoteFromHl({ user, usd: 50, market: "BTC", leverage: 3 });
+//   const r = await oc.buyFromHl({ user, agent, usd: 50, market: "BTC", leverage: 3, quote: q, onStage });
 import { parseAbi } from "viem";
 import { signBuy } from "./account.mjs";
 import { HL_FEES_BPS } from "../trade/orders.mjs";
@@ -30,6 +34,7 @@ const CREDIT_SEEN = 0.98; // pool conversion can land a hair under the preview (
 /** Identifies what a quote was for, so buy() only reuses a quote for the exact same inputs. */
 const quoteKey = ({ payToken, amountIn, market, leverage = 1, slippageBps = 50 }) =>
   [payToken.toLowerCase(), String(amountIn), market, leverage, slippageBps].join("|");
+const hlQuoteKey = ({ usd, market, leverage = 1, slippageBps = 50 }) => ["hl", usd, market, leverage, slippageBps].join("|");
 
 /** Stages reported to onStage, in order: drive the loading animation from these. */
 export const STAGES = ["quoting", "sending", "bridging", "ordering", "done"];
@@ -186,6 +191,57 @@ export class OneClick {
     }
     const fill = res.statuses[0];
     const out = { depositId: sent.depositId, hash: sent.hash, quote: q, order: res.summary, funded: res.funded, fill };
+    onStage("done", out);
+    return out;
+  }
+
+  // ---------------------------------------------------------------- fast path: pay from HyperCore
+
+  /**
+   * The button when paying with USDC already on the user's HyperCore account (profits, closed
+   * positions). `usd` is margin for perps, spend for spot/outcomes, like `orderUsd` above.
+   */
+  async quoteFromHl({ user, usd, market, leverage = 1, slippageBps = 50, refreshPrices = true }) {
+    const m = this.hub.market(market);
+    const [bal] = await Promise.all([this.hub.usdcBalances(user), refreshPrices ? this.hub.refreshPrices() : null]);
+    const availableUsd = bal.perp + bal.spot;
+    const maxUsd = orderUsdFor(availableUsd, m.kind, leverage, slippageBps);
+    const base = {
+      at: Date.now(),
+      key: hlQuoteKey({ usd, market, leverage, slippageBps }),
+      payFrom: "hyperliquid",
+      availableUsd,
+      maxUsd,
+      orderUsd: usd,
+      fees: { bridgeUsd: 0, hyperliquidActivationUsd: 0 },
+    };
+    if (usd > maxUsd) return { ...base, ok: false, error: `only $${maxUsd.toFixed(2)} available on Hyperliquid` };
+    try {
+      const p = this.hub.preview(market, { side: "buy", usd, leverage });
+      return { ...base, ok: true, est: { amount: Number(p.size), symbol: m.symbol, kind: m.kind, price: Number(p.price), leverage, notionalUsd: p.notionalUsd }, fees: { ...base.fees, tradeUsd: p.fees.hyperliquidUsd } };
+    } catch (e) {
+      return { ...base, ok: false, error: e.message };
+    }
+  }
+
+  /**
+   * Buy with USDC already on HyperCore: no bridge, no sponsor, no Elysium tx, no gas. Just the
+   * order, signed by the trade agent (~1-2 s). Stages: quoting -> ordering -> done.
+   *
+   * The device session caps do NOT apply here: they are enforced by NeuriioAccount on Elysium,
+   * and this path never touches Elysium. Same model as Hyperliquid's own app: the agent key can
+   * trade the HyperCore balance but can never withdraw it.
+   */
+  async buyFromHl({ user, agent, agentApproval, usd, market, leverage = 1, slippageBps = 50, quote, onStage = () => {} }) {
+    onStage("quoting");
+    const fresh = quote?.ok && quote.key === hlQuoteKey({ usd, market, leverage, slippageBps }) && Date.now() - quote.at < this.quoteMaxAgeMs;
+    const q = fresh ? quote : await this.quoteFromHl({ user, usd, market, leverage, slippageBps });
+    if (!q.ok) throw new Error(q.error);
+
+    onStage("ordering", { quote: q });
+    if (agentApproval) await this.hub.submitAgentApproval(user, agentApproval); // no-op once approved
+    const res = await this.hub.placeOrder(agent, market, { side: "buy", usd, leverage, slippageBps }, { fundFrom: user });
+    const out = { quote: q, order: res.summary, funded: res.funded, fill: res.statuses[0] };
     onStage("done", out);
     return out;
   }

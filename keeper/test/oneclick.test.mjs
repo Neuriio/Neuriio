@@ -194,3 +194,41 @@ test("buy: a HyperCore outage falls back to the Elysium status", async () => {
   const oc = new OneClick({ pub, hub, pollMs: 1, bridgeTimeoutMs: 5_000 });
   await oc._awaitCredit(9n, { user: ZERO, before: { perp: 0, spot: 0 }, minCreditUsd: 50 });
 });
+
+const hlHub = (bal, calls = []) => ({
+  market: () => ({ kind: "perp", symbol: "BTC" }),
+  usdcBalances: async () => bal,
+  refreshPrices: async () => {},
+  preview: (m, i) => ({ size: "0.001", price: "80000", notionalUsd: i.usd * i.leverage, fees: { hyperliquidUsd: 0.05 } }),
+  submitAgentApproval: async () => calls.push("approve"),
+  placeOrder: async (agent, market, intent, opts) => (calls.push(["order", intent, opts]), { summary: {}, funded: null, statuses: [{ status: "filled" }] }),
+});
+
+test("fast path: pays from the HyperCore balance with one order, no Elysium or sponsor", async () => {
+  const calls = [];
+  const stages = [];
+  const oc = new OneClick({ pub: null, sponsor: null, hub: hlHub({ perp: 30, spot: 25 }, calls) }); // $55 across both balances
+  const r = await oc.buyFromHl({ user: ZERO, agent: {}, usd: 50, market: "BTC", leverage: 3, onStage: (s) => stages.push(s) });
+  assert.deepEqual(stages, ["quoting", "ordering", "done"]);
+  assert.equal(r.fill.status, "filled");
+  assert.deepEqual(calls, [["order", { side: "buy", usd: 50, leverage: 3, slippageBps: 50 }, { fundFrom: ZERO }]]);
+});
+
+test("fast path: refuses more than the HyperCore balance can fund (fees + slippage room)", async () => {
+  const oc = new OneClick({ hub: hlHub({ perp: 50, spot: 0 }) });
+  const q = await oc.quoteFromHl({ user: ZERO, usd: 50, market: "BTC", leverage: 3 });
+  assert.equal(q.ok, false);
+  assert.match(q.error, /only \$49\.\d\d available on Hyperliquid/);
+  await assert.rejects(oc.buyFromHl({ user: ZERO, agent: {}, usd: 50, market: "BTC", leverage: 3 }), /available on Hyperliquid/);
+});
+
+test("fast path: a fresh quote from the button is reused, a stale one is not", async () => {
+  let reads = 0;
+  const hub = { ...hlHub({ perp: 100, spot: 0 }), usdcBalances: async () => (reads++, { perp: 100, spot: 0 }) };
+  const oc = new OneClick({ hub });
+  const q = await oc.quoteFromHl({ user: ZERO, usd: 20, market: "BTC", leverage: 2 });
+  await oc.buyFromHl({ user: ZERO, agent: {}, usd: 20, market: "BTC", leverage: 2, quote: q });
+  assert.equal(reads, 1);
+  await oc.buyFromHl({ user: ZERO, agent: {}, usd: 20, market: "BTC", leverage: 2, quote: { ...q, at: 0 } });
+  assert.equal(reads, 2);
+});

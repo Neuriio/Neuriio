@@ -135,6 +135,26 @@ export function PrivyCheck() {
     say(`✔ filled ${JSON.stringify(r.fill)} in ${((Date.now() - t0) / 1000).toFixed(1)}s`, true);
   });
 
+  const closeOnly = step(`Close ${MARKET}, keep the USDC on Hyperliquid`, async (c) => {
+    const k = keys();
+    await c.hub.closePosition(privateKeyToAccount(k.agentKey), main.address, MARKET);
+    await sleep(1000);
+    const b = await c.hub.usdcBalances(main.address);
+    say(`✔ closed; on Hyperliquid: $${(b.perp + b.spot).toFixed(2)} USDC`, true);
+  });
+
+  const buyFromHl = step(`Fast path: 3x ${MARKET} with $50 from the Hyperliquid balance`, async (c) => {
+    const k = keys();
+    if (!k) throw new Error("run setup first");
+    const args = { user: main.address, usd: 50, market: MARKET, leverage: 3, slippageBps: 100 };
+    const q = await c.oc.quoteFromHl(args);
+    if (!q.ok) throw new Error(q.error);
+    say(`  button: "${MARKET} · est. ${q.est.amount}" | $${q.availableUsd.toFixed(2)} on Hyperliquid (max $${q.maxUsd.toFixed(2)})`);
+    const t0 = Date.now();
+    const r = await c.oc.buyFromHl({ ...args, quote: q, agent: privateKeyToAccount(k.agentKey), onStage: (s) => say(`  … ${s}`) });
+    say(`✔ filled ${JSON.stringify(r.fill)} in ${((Date.now() - t0) / 1000).toFixed(1)}s`, true);
+  });
+
   const cleanup = step("Cleanup: close + withdraw everything to Elysium", async (c) => {
     const k = keys();
     const agent = privateKeyToAccount(k.agentKey);
@@ -184,7 +204,9 @@ export function PrivyCheck() {
               <button style={s.btn} disabled={busy} onClick={deposit}>1 · Deposit</button>
               <button style={s.btn} disabled={busy} onClick={setup}>2 · Setup</button>
               <button style={s.btn} disabled={busy} onClick={buy}>3 · Buy {MARKET}</button>
-              <button style={s.btn} disabled={busy} onClick={cleanup}>4 · Cleanup</button>
+              <button style={s.btn} disabled={busy} onClick={closeOnly}>4 · Close (keep on HL)</button>
+              <button style={s.btn} disabled={busy} onClick={buyFromHl}>5 · Buy {MARKET} from HL</button>
+              <button style={s.btn} disabled={busy} onClick={cleanup}>6 · Cleanup</button>
             </div>
           )}
         </>
