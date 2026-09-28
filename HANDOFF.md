@@ -561,6 +561,26 @@ Data to build for it (Supabase, public-read):
 - Open questions for the user: chart style (line vs candles, time ranges), which stats, ranking tabs (volume / newest /
   near graduation / top gainers), whether Explore also lists tokens without a search, and buy/sell from Explore.
 
+### Elysium mainnet timing + HyperCore graduation (checked docs 2026-09-28, pages "last updated" Sep 21–22)
+- **No mainnet date or target anywhere in the docs.** Elysium is "pre-launch"; mainnet chain ID / RPC / explorer are "Coming
+  soon" (published at launch). Only relative timing: launch (stock ArbOS, HYPE gas, AnyTrust DA, HyperEVM settlement, all
+  token bridges) → **~4 weeks after mainnet** an ArbOS upgrade adds the HyperCore read precompile + keeper fast-write lane →
+  hardening (MEV/Timeboost, ~100 ms blocks, BoLD, audits). For a date: contact the Kinetiq team (docs invite integration /
+  early-access questions) — worth doing, since we launch alongside them.
+- **Docs describe our exact lifecycle:** "launch on an Elysium AMM → deepen on prop-AMM markets → graduate to a HyperCore spot
+  orderbook → perp listing via HIP-3". Path: Elysium token → **mirror bridge** (lock on Elysium, 1:1 mirror on HyperEVM;
+  permissionless, one-time 2-tx setup; needs immutable name/symbol/decimals, no fee-on-transfer — our LaunchToken fits)
+  → HyperCore via a **deposit wallet** after the issuer's **spot deployment ceremony**: win the ticker in HL's Dutch auction
+  (~31 h cycles; price read live, can be expensive), deposit wallet, one-shot genesis (full supply at the system address),
+  link (permanent), list (registerSpot; bridged tokens have Hyperliquidity disabled → empty book unless someone makes markets).
+  Takes days. **HyperCore tickers are max 6 characters** (most @handles won't fit).
+- **User asked: drop our own pool and route to "their" pool, still getting fees?** Answer given: Kinetiq has no pool of its own
+  (bridges only). Trading fees on HyperCore spot go to Hyperliquid; we'd earn only our builder fee (spot up to 1%) on orders
+  placed through our app, not other front ends, so creator 80% couldn't be guaranteed on all volume. **Recommendation: keep
+  our pool** as the graduation target for every token (fees enforced on-chain); add an optional later "graduate to HyperCore"
+  tier for big tokens (costly per-token ceremony; fees there only via builder code). To verify before designing it: whether
+  HL lets a spot deployer take a share of trading fees, current ticker-auction prices, and who pays/owns the deployer key.
+
 ### Also open (not tomorrow unless asked)
 - User to send **community + buyback wallet addresses** → `FeeVault.setWallets` (owner = burner).
 - Creator **claim** button in the UI (FeeVault `claim`), `register` call after login (points for non-launchers),
