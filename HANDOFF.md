@@ -581,6 +581,29 @@ Data to build for it (Supabase, public-read):
   tier for big tokens (costly per-token ceremony; fees there only via builder code). To verify before designing it: whether
   HL lets a spot deployer take a share of trading fees, current ticker-auction prices, and who pays/owns the deployer key.
 
+### "Their pool": Elysium AMMs + fees (researched 2026-09-28)
+- **Docs:** Kinetiq runs NO pool/DEX; AMMs are left to builders ("launch on an Elysium AMM", "prop-AMM markets", market-making
+  AMMs as flagship tenants). Fee facts only: gas in HYPE, low by design (quote refresh 5–10×/s cheap), neutral priority-fee
+  ordering (no privileged lanes). **"A builders allocation of sequencer revenue is reserved for ecosystem incentive programs
+  for applications building on the chain"** → apply (grant / revenue share for us).
+- **On-chain scan, Elysium testnet blocks 0–558,353** (PairCreated / PoolCreated / V4 Initialize topics), third-party only:
+  - UniV2 fork `0xb2f8ad730e9d05d333c7861184aad0bff1785dd0` (21 pairs, feeToSetter `0xf889…3e36`, feeTo OFF → all 0.30% to LPs)
+  - UniV2 fork `0x16e2a1b953b2e1fc2a82f8e2d68a13884e18a2b9` (15 pairs, feeToSetter `0xe2d0…3D79`, feeTo OFF)
+  - UniV3 forks: factory `0x77573e627213afcfb5c2165940ce696fef2b4794` (owner `0xf023…69f3`, 1% tier) + 4 lone pools (1% / 0.05%)
+  - **UniV4 PoolManager `0x889a96eedb1df35a012d7e48baf7f9c780f1243b` (owner `0xf889…3e36`) + launchpad hook
+    `0xda605da70bff4b32a9b379c614a6d9e4a09baaec`** (17 KB, deployed block 97,383 by `0xf88929028c0D0932C6C6faFe77267f94C97d3e36`
+    via the CREATE2 factory): 3 tokens (V4CANARY, KOALA, SENDIT) vs WHYPE (`0xcd57…f234`), pool LP fee 0, fees charged by
+    the hook (terms show 3000 = 0.30%), held in the hook, `distribute()` → `protocolRecipient` `0x1110…1bdf` (+ likely
+    creator); anti-manipulation: EMA_WINDOW 600 s, FLOOR_WIDTH 2000, MAX_DEV 1000. **Direct competitor; identity unknown**
+    (Kinetiq test DEX or an early ecosystem team).
+  - Our factories: `0x37fb…418f`, `0x1e9b…e45a`, `0x9ea7…a056`, current `0xa6ec…b08a`; `0xfa45…b3f9` (1 pair, fee setter 0) unknown.
+- **Answer to the user:** routing our tokens to their pools earns us/creators nothing from the pool (their hook pays its own
+  recipients); only a router-level fee on trades placed from our app or an integrator share if one exists. **Keep our pool.**
+- **Ask Kinetiq (one message):** mainnet date; who runs the V4 launchpad (`0xf889…`); builder incentive program terms + how to
+  apply; whether any Elysium AMM offers an integrator/referral fee share.
+- Idea (user): fund each token's later HyperCore spot deployment from its pool fees (per-token "HyperCore fund" in FeeVault,
+  released at a milestone). Open: which share funds it (creator 80 / protocol 20 / new split) and who holds the ticker key.
+
 ### Also open (not tomorrow unless asked)
 - User to send **community + buyback wallet addresses** → `FeeVault.setWallets` (owner = burner).
 - Creator **claim** button in the UI (FeeVault `claim`), `register` call after login (points for non-launchers),
