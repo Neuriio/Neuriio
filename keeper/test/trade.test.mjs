@@ -207,3 +207,36 @@ test("portfolio: perps, spot and outcome positions with PnL", () => {
   assert.equal(yes.payoutIfWins, 37);
   assert.ok(Math.abs(p.totals.netValue - (1100 + 50 + 330.2 + 19.98)) < 1e-9);
 });
+
+test("builder approval: signed silently at setup, recovers to the main wallet, skipped once approved", async () => {
+  const { TradeHub } = await import("../src/trade/hub.mjs");
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const { recoverTypedDataAddress } = await import("viem");
+  const { ApproveBuilderFeeTypes } = await import("@nktkas/hyperliquid/api/exchange");
+  const main = privateKeyToAccount("0x" + "11".repeat(32));
+  const sent = [];
+  const transport = { isTestnet: true, request: async (_ep, body) => (sent.push(body), { status: "ok" }) };
+  const builder = { address: "0x" + "ab".repeat(20), fees: { perp: 1, spot: 1, outcome: 1 } };
+  const hub = new TradeHub({ testnet: true, builder, transport });
+
+  const a = await hub.signBuilderApproval(main);
+  assert.equal(a.action.maxFeeRate, "0.001%"); // 0.1 bp
+  assert.equal(a.action.hyperliquidChain, "Testnet");
+  const signer = await recoverTypedDataAddress({
+    domain: { name: "HyperliquidSignTransaction", version: "1", chainId: Number(a.action.signatureChainId), verifyingContract: "0x0000000000000000000000000000000000000000" },
+    types: ApproveBuilderFeeTypes,
+    primaryType: "HyperliquidTransaction:ApproveBuilderFee",
+    message: a.action,
+    signature: a.signature,
+  });
+  assert.equal(signer, main.address);
+
+  hub.info = { maxBuilderFee: async () => 0 };
+  assert.deepEqual(await hub.submitBuilderApproval(main.address, a), { approved: true });
+  assert.equal(sent.length, 1);
+  hub.info = { maxBuilderFee: async () => 1 };
+  assert.deepEqual(await hub.submitBuilderApproval(main.address, a), { alreadyApproved: true });
+  assert.equal(sent.length, 1);
+
+  assert.equal(await new TradeHub({ testnet: true, transport }).signBuilderApproval(main), null); // no builder configured
+});

@@ -13,3 +13,7 @@ node_modules/
 logs/
 .env.local
 app/dist/
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/

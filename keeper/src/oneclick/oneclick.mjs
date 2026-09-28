@@ -129,10 +129,11 @@ export class OneClick {
    * @param {object} o.agent   HyperCore trade agent account
    * @param {object} [o.agentApproval]  pre-signed approval (hub.signAgentApproval) for a brand-new
    *        HyperCore account: submitted once the first deposit lands, before the order
+   * @param {object} [o.builderApproval]  pre-signed builder-fee approval (hub.signBuilderApproval), same timing
    * @param {object} [o.quote]  the quote the button is showing: reused if it is for these exact
    *        inputs and under `quoteMaxAgeMs` old (saves a round of reads on click)
    */
-  async buy({ user, device, agent, agentApproval, payToken, amountIn, market, leverage = 1, slippageBps = 50, quote, onStage = () => {} }) {
+  async buy({ user, device, agent, agentApproval, builderApproval, payToken, amountIn, market, leverage = 1, slippageBps = 50, quote, onStage = () => {} }) {
     onStage("quoting");
     const fresh = quote?.ok && quote.key === quoteKey({ payToken, amountIn, market, leverage, slippageBps }) && Date.now() - quote.at < this.quoteMaxAgeMs;
     const [q, before] = await Promise.all([
@@ -161,10 +162,10 @@ export class OneClick {
     // An existing HyperCore account can take the agent approval + leverage now, while the deposit
     // bridges. A brand-new one refuses every action until its first deposit lands, so it waits.
     const exists = q.fees.hyperliquidActivationUsd === 0;
-    const done = { approved: !agentApproval, leverageSet: false };
+    const done = { approved: !agentApproval && !builderApproval, leverageSet: false };
     const prep = exists
       ? (async () => {
-          if (agentApproval) await this.hub.submitAgentApproval(user, agentApproval);
+          await this._submitApprovals(user, { agentApproval, builderApproval });
           done.approved = true;
           done.leverageSet = await this.hub.setLeverage(agent, market, intent);
         })().catch(() => {}) // not fatal: the order path below redoes whatever didn't happen
@@ -174,7 +175,7 @@ export class OneClick {
 
     onStage("ordering");
     await prep;
-    if (!done.approved) await this.hub.submitAgentApproval(user, agentApproval);
+    if (!done.approved) await this._submitApprovals(user, { agentApproval, builderApproval });
     let res;
     for (let attempt = 1; ; attempt++) {
       try {
@@ -232,18 +233,24 @@ export class OneClick {
    * and this path never touches Elysium. Same model as Hyperliquid's own app: the agent key can
    * trade the HyperCore balance but can never withdraw it.
    */
-  async buyFromHl({ user, agent, agentApproval, usd, market, leverage = 1, slippageBps = 50, quote, onStage = () => {} }) {
+  async buyFromHl({ user, agent, agentApproval, builderApproval, usd, market, leverage = 1, slippageBps = 50, quote, onStage = () => {} }) {
     onStage("quoting");
     const fresh = quote?.ok && quote.key === hlQuoteKey({ usd, market, leverage, slippageBps }) && Date.now() - quote.at < this.quoteMaxAgeMs;
     const q = fresh ? quote : await this.quoteFromHl({ user, usd, market, leverage, slippageBps });
     if (!q.ok) throw new Error(q.error);
 
     onStage("ordering", { quote: q });
-    if (agentApproval) await this.hub.submitAgentApproval(user, agentApproval); // no-op once approved
+    await this._submitApprovals(user, { agentApproval, builderApproval }); // no-op once approved
     const res = await this.hub.placeOrder(agent, market, { side: "buy", usd, leverage, slippageBps }, { fundFrom: user });
     const out = { quote: q, order: res.summary, funded: res.funded, fill: res.statuses[0] };
     onStage("done", out);
     return out;
+  }
+
+  /** Agent + builder-fee approvals signed at setup; each is a no-op once HyperCore has it. */
+  async _submitApprovals(user, { agentApproval, builderApproval }) {
+    if (agentApproval) await this.hub.submitAgentApproval(user, agentApproval);
+    if (builderApproval) await this.hub.submitBuilderApproval(user, builderApproval);
   }
 
   /**

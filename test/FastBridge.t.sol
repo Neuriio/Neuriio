@@ -5,9 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import {KeeperHyperCoreOracle} from "../src/oracle/KeeperHyperCoreOracle.sol";
-import {PropAMM} from "../src/amm/PropAMM.sol";
+import {MockUsdcPool} from "./mocks/MockUsdcPool.sol";
 import {FastBridge} from "../src/bridge/FastBridge.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 
@@ -17,7 +15,7 @@ contract FastBridgeTest is Test {
     MockERC20 usdc;
     MockERC20 hype;
     MockERC20 kntq;
-    PropAMM pool;
+    MockUsdcPool pool;
     FastBridge bridge;
 
     address owner = makeAddr("owner");
@@ -41,27 +39,8 @@ contract FastBridgeTest is Test {
         usdc = new MockERC20("USD Coin", "USDC", 6);
         hype = new MockERC20("Hype", "HYPE", 18);
         kntq = new MockERC20("Kinetiq", "KNTQ", 18);
-
-        KeeperHyperCoreOracle oracle = new KeeperHyperCoreOracle(address(this), 500);
-        oracle.setUpdater(address(this), true);
-        KeeperHyperCoreOracle.Update[] memory u = new KeeperHyperCoreOracle.Update[](1);
-        u[0] = KeeperHyperCoreOracle.Update(107, 93.6e18, 93.61e18, 1_000e18, 1_000e18, 0, T0 * 1000);
-        oracle.push(u);
-
-        pool = new PropAMM(
-            address(this),
-            IERC20Metadata(address(hype)),
-            IERC20Metadata(address(usdc)),
-            oracle,
-            107,
-            PropAMM.RiskParams(6, 1_000, 20_000, 5_000, 50, 50),
-            PropAMM.QuoteParams(10, 5_000, 100, 50, 20)
-        );
-        hype.mint(address(this), 1_000e18);
-        usdc.mint(address(this), 93_605e6);
-        hype.approve(address(pool), type(uint256).max);
-        usdc.approve(address(pool), type(uint256).max);
-        pool.deposit(1_000e18, 93_605e6);
+        pool = new MockUsdcPool(IERC20(address(hype)), IERC20(address(usdc)), 93.6e6);
+        usdc.mint(address(pool), 93_605e6);
 
         bridge = new FastBridge(owner, IERC20(address(usdc)), _config());
         vm.startPrank(owner);
@@ -121,12 +100,12 @@ contract FastBridgeTest is Test {
         assertEq(uint256(d.amount) + d.fee, expectedUsdc);
         assertEq(d.hlRecipient, bob);
         assertEq(usdc.balanceOf(address(bridge)), expectedUsdc);
-        assertEq(pool.baseReserve(), 1_010e18);
+        assertEq(pool.baseReserve(), 10e18);
     }
 
     function test_revert_conversionSlippage() public {
         (uint256 expectedUsdc,) = pool.previewSellBase(10e18);
-        vm.expectRevert(abi.encodeWithSelector(PropAMM.Slippage.selector, expectedUsdc, expectedUsdc + 1));
+        vm.expectRevert(abi.encodeWithSelector(MockUsdcPool.Slippage.selector, expectedUsdc, expectedUsdc + 1));
         vm.prank(alice);
         bridge.deposit(address(hype), 10e18, expectedUsdc + 1, address(0), block.timestamp);
     }

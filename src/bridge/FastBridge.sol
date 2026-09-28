@@ -7,11 +7,11 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {PropAMM} from "../amm/PropAMM.sol";
+import {IUsdcPool} from "../interfaces/IUsdcPool.sol";
 
 /// @notice Instant Elysium <-> HyperCore USDC bridge backed by our own inventory on both sides.
 ///
-/// In:  user deposits USDC (or any token with a PropAMM pool, converted to USDC here). A relayer
+/// In:  user deposits USDC (or any token with a registered USDC pool, converted to USDC here). A relayer
 ///      credits the same USDC, minus fee, to the user's own HyperCore account from our HyperCore
 ///      inventory, then marks the deposit fulfilled. If that doesn't happen within `refundDelay`,
 ///      the user reclaims the full deposit — funds are never stuck on the relayer.
@@ -56,7 +56,7 @@ contract FastBridge is Ownable2Step, Pausable, ReentrancyGuard {
     Config public config;
 
     mapping(address => bool) public isRelayer;
-    mapping(address token => PropAMM) public poolFor;
+    mapping(address token => IUsdcPool) public poolFor;
 
     uint256 public credit;
     uint256 public reserved; // USDC held for pending deposits (refundable)
@@ -112,7 +112,7 @@ contract FastBridge is Ownable2Step, Pausable, ReentrancyGuard {
 
     // ------------------------------------------------------------------ Elysium -> HyperCore
 
-    /// @param token      USDC, or a token with a registered PropAMM pool (converted to USDC)
+    /// @param token      USDC, or a token with a registered USDC pool (converted to USDC)
     /// @param minUsdcOut slippage bound on the conversion (ignored for USDC)
     /// @param hlRecipient HyperCore account to credit; zero = msg.sender
     function deposit(address token, uint256 amountIn, uint256 minUsdcOut, address hlRecipient, uint256 deadline)
@@ -240,7 +240,7 @@ contract FastBridge is Ownable2Step, Pausable, ReentrancyGuard {
         emit RelayerSet(relayer, allowed);
     }
 
-    function setPool(address token, PropAMM pool) external onlyOwner {
+    function setPool(address token, IUsdcPool pool) external onlyOwner {
         if (address(pool) != address(0) && (address(pool.base()) != token || pool.quote() != usdc)) {
             revert UnsupportedToken(token);
         }
@@ -279,7 +279,7 @@ contract FastBridge is Ownable2Step, Pausable, ReentrancyGuard {
             _pullExact(usdc, amountIn);
             return amountIn;
         }
-        PropAMM pool = poolFor[token];
+        IUsdcPool pool = poolFor[token];
         if (address(pool) == address(0)) revert UnsupportedToken(token);
         _pullExact(IERC20(token), amountIn);
         IERC20(token).forceApprove(address(pool), amountIn);

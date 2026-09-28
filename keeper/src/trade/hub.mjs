@@ -1,7 +1,7 @@
 // Trade hub client: what the app calls to onboard a user and trade on their OWN HyperCore account
 // (perps, spot, HIP-4 outcomes). We never hold user funds or take the other side of their trades.
-// Revenue model is a subscription, so by default there is no builder fee: users pay only
-// HyperCore's own trading fees. (A builder can still be configured if that ever changes.)
+// By default there is no builder fee. The app configures a tiny one (0.1 bp) only to attribute orders to Neuriio
+// (points: the indexer counts fills that carry a builder fee), not as revenue.
 //
 // Signing model (standard for HyperCore front ends):
 //   - once, with the user's MAIN wallet: approve an app agent key (plus a builder fee, only if configured)
@@ -9,7 +9,7 @@
 //
 // `wallet` arguments accept anything the Hyperliquid SDK accepts (viem account, browser wallet).
 import { ExchangeClient, HttpTransport, InfoClient } from "@nktkas/hyperliquid";
-import { ApproveAgentTypes } from "@nktkas/hyperliquid/api/exchange";
+import { ApproveAgentTypes, ApproveBuilderFeeTypes } from "@nktkas/hyperliquid/api/exchange";
 import { getWalletChainId, signUserSignedAction } from "@nktkas/hyperliquid/signing";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { MarketCatalog, normalizeMarkets } from "./markets.mjs";
@@ -115,6 +115,37 @@ export class TradeHub {
     };
     const signature = await signUserSignedAction({ wallet: mainWallet, action, types: ApproveAgentTypes });
     return { key, address: agent.address, approval: { action, signature, nonce: action.nonce } };
+  }
+
+  /**
+   * Like approveBuilder, but only SIGNS now (same reason as signAgentApproval: a brand-new HyperCore account
+   * refuses actions until its first deposit). Returns null when no builder fee is configured.
+   */
+  async signBuilderApproval(mainWallet) {
+    const rate = this.requiredBuilderRate();
+    if (!rate) return null;
+    const action = {
+      type: "approveBuilderFee",
+      signatureChainId: await getWalletChainId(mainWallet),
+      hyperliquidChain: this.transport.isTestnet ? "Testnet" : "Mainnet",
+      maxFeeRate: rate,
+      builder: this.builder.address.toLowerCase(),
+      nonce: Date.now(),
+    };
+    const signature = await signUserSignedAction({ wallet: mainWallet, action, types: ApproveBuilderFeeTypes });
+    return { action, signature, nonce: action.nonce };
+  }
+
+  /** Submits a pre-signed builder approval. No-op if none is configured or the user already approved enough. */
+  async submitBuilderApproval(user, approval) {
+    const needed = this._maxBuilderFee();
+    if (!approval || !needed) return { skipped: true };
+    const approved = await this.info.maxBuilderFee({ user, builder: this.builder.address }).catch(() => 0);
+    if (approved >= needed) return { alreadyApproved: true };
+    const { action, signature, nonce } = approval;
+    const res = await this.transport.request("exchange", { action, signature, nonce });
+    if (res?.status !== "ok") throw new Error(`builder approval failed: ${JSON.stringify(res?.response ?? res)}`);
+    return { approved: true };
   }
 
   /** Submits a pre-signed agent approval. Safe to call again: an already-approved agent is a no-op. */

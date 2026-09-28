@@ -2,15 +2,15 @@
 pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
-import {PropAMM} from "../src/amm/PropAMM.sol";
+import {IUsdcPool} from "../src/interfaces/IUsdcPool.sol";
 import {FastBridge} from "../src/bridge/FastBridge.sol";
 
 /// forge script script/DeployFastBridge.s.sol --rpc-url elysium_testnet --broadcast --account <keystore>
-/// env: POOL (PropAMM whose quote token is USDC; its base becomes a supported deposit token)
+/// env: POOL (a USDC pool, e.g. the archived PropAMM, whose quote token is USDC; its base becomes a supported deposit token)
 ///      RELAYER (defaults to deployer)
 contract DeployFastBridge is Script {
     function run() external returns (FastBridge bridge) {
-        PropAMM pool = PropAMM(vm.envAddress("POOL"));
+        IUsdcPool pool = IUsdcPool(vm.envAddress("POOL"));
         vm.startBroadcast();
         (, address deployer,) = vm.readCallers();
         bridge = new FastBridge(

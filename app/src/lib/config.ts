@@ -7,6 +7,20 @@ export const ELYSIUM_RPCS = [
 
 export const HL_TESTNET = true;
 
+/** Supabase project (launch passes, registration, points). The anon key isn't needed: functions use the Privy token. */
+export const SUPABASE_URL = "https://yviymgfgaepmtijgyyyo.supabase.co";
+
+/**
+ * Builder code on every Hyperliquid order placed through Neuriio, at the minimum fee (1 = 0.1 bp = 0.001%). It isn't
+ * revenue: the indexer counts only fills carrying a builder fee, so it's how trades earn points. Pass to
+ * `new TradeHub({ builder: HL_BUILDER })`; users approve it silently at setup (hub.signBuilderApproval).
+ * The builder account needs >= 100 USDC perps account value (testnet: the burner/inventory account).
+ */
+export const HL_BUILDER = {
+  address: deployment.hlBuilder as `0x${string}`,
+  fees: { perp: 1, spot: 1, outcome: 1 },
+};
+
 /** Always listed in the account panel, in this order, for both Elysium and HyperCore. */
 export const SHOWN_TOKENS = ["HYPE", "KNTQ", "USDC"];
 

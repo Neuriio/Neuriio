@@ -201,6 +201,7 @@ const hlHub = (bal, calls = []) => ({
   refreshPrices: async () => {},
   preview: (m, i) => ({ size: "0.001", price: "80000", notionalUsd: i.usd * i.leverage, fees: { hyperliquidUsd: 0.05 } }),
   submitAgentApproval: async () => calls.push("approve"),
+  submitBuilderApproval: async () => calls.push("builder"),
   placeOrder: async (agent, market, intent, opts) => (calls.push(["order", intent, opts]), { summary: {}, funded: null, statuses: [{ status: "filled" }] }),
 });
 
@@ -231,4 +232,12 @@ test("fast path: a fresh quote from the button is reused, a stale one is not", a
   assert.equal(reads, 1);
   await oc.buyFromHl({ user: ZERO, agent: {}, usd: 20, market: "BTC", leverage: 2, quote: { ...q, at: 0 } });
   assert.equal(reads, 2);
+});
+
+test("fast path: agent + builder approvals are submitted before the order", async () => {
+  const calls = [];
+  const oc = new OneClick({ hub: hlHub({ perp: 100, spot: 0 }, calls) });
+  await oc.buyFromHl({ user: ZERO, agent: {}, agentApproval: {}, builderApproval: {}, usd: 20, market: "BTC", leverage: 1 });
+  assert.deepEqual(calls.slice(0, 2), ["approve", "builder"]);
+  assert.equal(calls[2][0], "order");
 });

@@ -11,5 +11,6 @@ export default defineConfig({
   optimizeDeps: {
     include: ["react", "react-dom", "react-dom/client", "motion/react", "react-use-measure", "lucide-react", "@privy-io/react-auth"],
   },
-  server: { port: 5173, strictPort: true, fs: { allow: [".."] } },
+  // 127.0.0.1 explicitly: plain "localhost" bound only IPv6 (::1) on this Mac, so browsers trying IPv4 got nothing
+  server: { host: "127.0.0.1", port: 5173, strictPort: true, fs: { allow: [".."] } },
 });

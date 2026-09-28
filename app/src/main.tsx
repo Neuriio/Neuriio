@@ -12,16 +12,16 @@ createRoot(document.getElementById("root")!).render(
     <PrivyProvider
       appId={appId}
       config={{
-        // social login only: no wallet needed to sign in, we create the Neuriio wallet for everyone
-        // (Telegram needs a bot + a real domain in the Privy dashboard; it won't work on localhost)
-        loginMethods: ["twitter", "google", "telegram"],
+        // X only ("Tokenize Yourself": your X account is your identity + your one token); we create the
+        // Neuriio wallet for everyone, no wallet needed to sign in
+        loginMethods: ["twitter"],
         // Privy's login / export pop-ups in our colors (lavender accent keeps white button text readable)
         appearance: {
           theme: "#120c1d",
           accentColor: "#7f72a0",
           logo: `${location.origin}/brand/logo.png`,
           landingHeader: "Log in to Neuriio",
-          loginMessage: "We create your Neuriio wallet for you. No wallet needed.",
+          loginMessage: "Log in with X. We create your Neuriio wallet for you.",
         },
         embeddedWallets: { ethereum: { createOnLogin: "all-users" }, showWalletUIs: false },
         defaultChain: elysiumTestnet,

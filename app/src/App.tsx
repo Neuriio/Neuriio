@@ -7,6 +7,10 @@ import { MenuBox } from "./components/MenuBox";
 import { SocialLinks } from "./components/SocialLinks";
 import { LogoMarquee } from "./components/LogoMarquee";
 import { useTickerLogos } from "./lib/tickers";
+import { LaunchCard } from "./components/LaunchCard";
+
+// One layout for every page; the center card changes by path (app.neuriio.xyz/launch, ...).
+const PAGE = location.pathname.replace(/\/+$/, "") || "/";
 
 export function App() {
   const tickers = useTickerLogos();
@@ -26,10 +30,17 @@ export function App() {
         </CardStack>
       </header>
 
-      <main className="stage">
-        <div className="panel tabs-slot" />
-        <div className="panel card-slot" />
-      </main>
+      {PAGE === "/launch" ? (
+        // launch: one bigger card, no tabs bar
+        <main className="stage stage-launch">
+          <LaunchCard />
+        </main>
+      ) : (
+        <main className="stage">
+          <div className="panel tabs-slot" />
+          <div className="panel card-slot" />
+        </main>
+      )}
 
       <SocialLinks />
     </div>

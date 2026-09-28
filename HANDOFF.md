@@ -1,9 +1,134 @@
-# Handoff — Elysium trade hub (state as of 2026-09-27)
+# Handoff — Neuriio (state as of 2026-09-28: launchpad + launch UI done; next: Explore page)
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
 **Project name: Neuriio.** Local folder `/Users/von/Neuriio` (renamed from `elysium`); code lives in the
 **private** GitHub repo **https://github.com/finding-agi/Neuriio** (renamed from `finding-agi/elysium`; old URL redirects).
+
+## 0. PIVOT 2026-09-27: token launchpad (pump.fun model); PropAMM PAUSED
+
+**PropAMM is paused until we have capital** for its reserves + hedge margin. Code moved to `archive/propamm/` as `.txt`
+(see its README; deployed testnet pools are untouched and idle). **In its place:** a pump.fun-style **launchpad** on Elysium
+with **our own swap** (like pump.fun's PumpSwap). Decided by the user:
+- Launched tokens pair with **HYPE** (native; the pool uses **WHYPE**). **Launching is free** (gas only).
+- **0.75% fee** on bonding-curve trades (was 1%; changed 2026-09-27; accrues in `Launchpad.feesAccrued`, owner withdraws). This product takes a per-trade fee,
+  unlike the subscription model below. Graduated pools charge **0.25%** per swap (0.20% stays in the pool, 0.05% to the factory `feeTo`).
+- **pump.fun graduation numbers:** 1B supply; 793.1M sold on a constant-product curve over virtual reserves
+  (`virtualHype` : 1.073B tokens); when the last curve token sells, the same tx moves all raised HYPE + the remaining 206.9M
+  tokens into our `SwapPair` and sends **all LP tokens to 0x…dEaD (burned)**. Pool opening price = curve closing price.
+  **Mainnet default `virtualHype` = 60 HYPE** (double pump.fun's shape, user 2026-09-27): graduates at ~170 HYPE raised and
+  ~822 HYPE fully diluted market cap (~$74k at HYPE $90). Both scale linearly with `virtualHype` (owner-settable, new launches only).
+- Safety built in: only the launchpad can create pairs (nobody can open the pool first at a bad price); tokens/WHYPE pre-sent to
+  the predictable pair address are skimmed to 0x…dEaD before the LP mint; slippage + deadline on every trade; owner pause.
+- Code: `src/launch/{Launchpad,LaunchToken}.sol`, `src/swap/{SwapPair,SwapFactory,SwapRouter,WHYPE,interfaces}.sol`
+  (SwapPair = Uniswap V2 ported to 0.8, V2-compatible interface so aggregator V2 adapters work; flash-swap callback `swapCall`).
+  Tests: `test/Launchpad.t.sol` (17 incl. a solvency fuzz).
+- **DEPLOYED on Elysium testnet 2026-09-27** (`VIRTUAL_HYPE` 0.1 HYPE → graduates at ~0.29 HYPE, kept small for the burner's budget; fee set to 0.75%; owner + swap `feeTo` = burner):
+  Launchpad `0x3a4b7a2604918ce8a4a055d353056f988355b98a`, SwapRouter `0x834ef7af43877a2338ccad5557656cb22d2508dd`,
+  SwapFactory `0x37fb29baae25a559653b212dbf3f513c04ec418f`, WHYPE (ours) `0x517f12d5d17c4755fbdf988fe9cc24334c3314c7`.
+  **Live test passed** (`./script/launchpad-test.sh burner`: deploys if missing, then launch → curve buy → sell → graduate →
+  LP 100% at 0x…dEaD → router buy/sell): token TDOG `0xf016…1C14`, graduated pool `0xD9F0…28Ab`. A plain HYPE transfer on
+  Elysium costs ~21.9k gas (not 21k): the first run's refund failed, stranding **~0.34 testnet HYPE** in throwaway trader
+  `0xBe2D…F7F0` (key gone); script fixed (40k gas limit; prints the key if the refund ever fails).
+- FastBridge / NeuriioAccount now use `src/interfaces/IUsdcPool.sol` (same ABI as PropAMM; bridge tests use `test/mocks/MockUsdcPool.sol`).
+  Without PropAMM, one-click buys can only be paid in USDC (launched tokens have no HyperCore market).
+- Not built: pump.fun-style creator fee share, router add/remove liquidity (only the launchpad adds LP), exact-output buys,
+  keeper/app integration (launch page, curve progress bar, live trades from `Trade` events).
+
+### Fees + creator rewards (user, 2026-09-28) — BUILT (90 tests), DEPLOYED on testnet
+- **Every fee a launched token generates → `FeeVault` (`src/launch/FeeVault.sol`), in HYPE: 80% to the token's creator**
+  (pull: `claim(to)`; `creatorBalance`, lifetime `creatorEarned[token]`), **20% protocol**, split **60% community rewards
+  wallet / 40% KNTQ buyback wallet** (`communityBps` owner-settable; creator 80% is a constant). Protocol share accrues until
+  the owner sets wallets (`setWallets`, **user will provide new addresses**, ideally a multisig); then anyone calls `payProtocol()`.
+- Curve: Launchpad sends its 0.75% fee to the vault per trade (`feesAccrued`/`withdrawFees` removed; `creatorOf(token)` added).
+- Graduated pools: **the full 0.25%** leaves the pool as WHYPE right after each swap (`SwapPair._takeFee` → vault
+  `notifyPoolFee`, unwrapped to HYPE) → creator 0.20%, protocol 0.05%. Trader outputs stay exactly V2's (aggregator adapters
+  unaffected); k never drops below pre-swap (proof in code + fuzz). V2 `feeTo`/`kLast` protocol fee removed; factory now has
+  `whype` + `feeVault` (set once).
+- **KNTQ buyback: MANUAL for now** (fees are HYPE on Elysium; KNTQ's market is HyperCore spot @334; no atomic path): buy on
+  HyperCore spot, send to a dead address, post txs publicly. Automate later.
+- "Platform fees" = the protocol 20% (+ the tiny HL builder fee, off-chain, which only attributes orders for points).
+- **DEPLOYED 2026-09-28** (see CURRENT testnet set below). Redeploy: `./script/deploy-launchpad.sh burner` (records `feeVault`; env COMMUNITY_WALLET/BUYBACK_WALLET optional) →
+  `./script/supabase-deploy.sh` → `./script/launchpad-test.sh burner` (now checks creator earnings + claim). **Burner has
+  ~0.33 HYPE; the live test funds 0.35 → top up first.** Anvil dry run passed. Not indexed yet: FeeVault events (creator
+  earnings UI), no app claim button yet.
+
+### FTF: "Friends Turned Fam" (idea, LATER)
+Combine 4 creators into one FTF. User's sketch: price it at the average market cap of the 4; every party must agree by signing;
+they create a new pool with their own liquidity on our swap. Not designed/built. Intro copy already mentions it.
+
+### "Tokenize Yourself" (user, 2026-09-27): who can launch
+**Legal framing (decided 2026-09-27): tokens are MEMES, not investments.** "Thesis / why invest in me / proof" was renamed
+to a **creator profile** ("about" + "links" to their work) everywhere (contract `profileHash`, table `creator_profiles`,
+function body `{ category, profile: { about, links } }`). UI copy rules: say back / support / trade, never invest / returns;
+disclaimer that tokens are memes with no promise of value and creators owe holders nothing; creators get no allocation or
+revenue share; creator rules against promising pumps/returns/buybacks (+ ability to hide profiles). Legal review before mainnet.
+(Older notes below that say "thesis" mean this profile.)
+Theme: invest in yourself, bring your following on board. **X is the only login** (app `loginMethods: ["twitter"]`, done 2026-09-27;
+also turn off other methods in the Privy dashboard). Every user who logs in with X can launch **exactly one token, of themselves**:
+- **CURRENT testnet set (2026-09-28, creator rewards / FeeVault):** Launchpad `0x88d474bbff6434b12d4d1cdd80d9dc6908e6a502`,
+  FeeVault `0x49a8fb439ef9565665e9f326b5372d71e5ce1cc1` (wallets NOT set yet: protocol share accrues), SwapRouter
+  `0x8553c72aba22f3969220ffbac1fa296190b0da0d`, factory in deployments; indexer from block 554838. Deployed as the user's
+  "reset" (their @von_hl test launch was on the previous launchpad; Supabase rows for the old tokens/trades/launch points
+  were cleared, the users row kept). Full live test NOT re-run on this set (burner ~0.30 HYPE, test needs 0.35).
+- *Superseded 2026-09-28 (no FeeVault):* Launchpad `0x1cc0838a1344577f5fb4547be8dd72456c3bc97e`,
+  SwapFactory `0x9ea7d4961f3d6c2d3e2f33f45674df505778a056`, SwapRouter `0x062737c7ad042bc47a810aed2d1d97d2efba1d3c` (emits
+  `Swapped`), same WHYPE + launchSigner; indexer from block 541136. Live test passed (`@test_62922022`); Supabase stored the
+  token (with `profile_hash`) + 6 trades; a temporary registered user got exactly 50 + 0.0054 points (removed after; trades
+  kept, unlinked). Burner ~0.33 HYPE after this: top it up before more live tests (`FUND` env, default 0.35).
+- *Superseded (thesisHash):* Launchpad `0xfd4b6e796456e2f76ddcccf46b9dea4c677cb5e1`, SwapFactory
+  `0x1e9b4d061e066aeb1ebc6ad743f9885d0738e45a`, SwapRouter `0x6e77ca284ed8727d5d00725bbeccb63d0ce42b57` (WHYPE reused),
+  launchSigner `0x25626586434fb2003d12957a1fC4B0fA5EA52886` (key only in Supabase secrets). Supabase schema pushed, secrets
+  set, `launch-pass` deployed (rejects missing/invalid Privy tokens: 401 verified). Live test passed (launch `@test_297219980`
+  → curve → graduate, LP burned → router). The earlier open-launch set (Launchpad `0x3a4b…b98a`, factory `0x37fb…418f`,
+  router `0x834e…d2508dd`) is superseded (fee 0.75%, idle). Not yet tested end-to-end: a real X login calling `launch-pass`.
+- **Contract (87 tests):**
+  `Launchpad.launch(LaunchPass, signature, minTokensOut)`. The pass is EIP-712-signed by our backend key `launchSigner` after it
+  verifies the X login via Privy: `{creator wallet, xUserId, handle, category, thesisHash, deadline}`. Rules on-chain: signer
+  must match, `msg.sender == creator`, one token per **X user ID** (permanent; handles can change), per wallet, and per handle
+  (case-insensitive). Name = `"@" + handle`, ticker = handle in CAPS (1–15 chars, A-Z a-z 0-9 _). Categories (enum):
+  Trader, MemeTrader, Researcher, Influencer, Builder, Creator. `profile(token)`, `tokenOfXUser`, `tokenOfCreator`,
+  `tokenOfHandle`; owner can rotate `launchSigner` (address(0) = launches off). Launch stays free with an optional first buy.
+  `LaunchToken` no longer has a `uri`.
+- **Thesis** (why invest in me + proof): full text/links/images in **Supabase**, keccak256 hash fixed on-chain at launch.
+- **Supabase project "Neuriio"** (ref `yviymgfgaepmtijgyyyo`, https://yviymgfgaepmtijgyyyo.supabase.co, us-west-2, free tier).
+  In repo: `supabase/migrations/20260927000000_tokenize_yourself.sql` (users [private], `profiles` view, theses, tokens,
+  launch_passes [private], trades [curve/pool/hl_perp/hl_spot/hl_outcome], points_ledger + `points_totals` view,
+  indexer_state; RLS on, public read-only where noted, writes only via service role) and Edge Function
+  `supabase/functions/launch-pass` (+ `_shared/launchPass.ts`): verifies the Privy access token (JWKS), reads X account +
+  embedded wallet from Privy's API (app secret), validates category + thesis (50–5,000 chars, ≤10 https proof links),
+  pre-checks the chain, stores user + thesis (exact hashed JSON string), signs the EIP-712 pass (15 min TTL).
+  viem-signed pass ↔ Launchpad.sol interop verified on anvil. Setup: `./script/supabase-setup.sh` (CLI install, login, link,
+  `db push`, creates the signer key INSIDE Supabase secrets and records only its address as `launchSigner` in
+  deployments, asks the Privy app secret hidden, deploys). Then `./script/deploy-launchpad.sh burner` (fresh launchpad with
+  that signer; updates the LAUNCHPAD_ADDRESS secret).
+- **Indexer + points: LIVE 2026-09-27** (migration `20260927010000_points.sql`, functions `indexer` + `register`):
+  - **Points rules (user):** launched tokens (curve + pool) **100 pts per $1M** traded; Hyperliquid perps/spot/outcomes via
+    Neuriio **75 pts per $1M**; **50 pts** for launching yourself; raw volume (no anti-wash rules); live public leaderboard.
+    Holding points: planned, math TBD. Rates live in `points_rules` (points per $1; changes apply going forward only).
+  - `award_points()` (SQL): links trades to users by wallet, writes one ledger row per trade / launch (idempotent via the
+    ledger's unique key). `leaderboard` view (rank, points, trading/launch split). `try_lock_indexer`/`unlock_indexer`.
+  - `indexer` Edge Function, **pg_cron every minute** (`neuriio-indexer`): Launchpad Launched/Trade/Graduated, SwapRouter
+    `Swapped` (new event: who traded), pair `Swap`s not via our router (trader = tx.from), and each registered user's HL
+    fills that carry a builder fee (`userFillsByTime`, per-user cursor in `indexer_state`). USD = HL **mainnet** HYPE price.
+    Secrets: ROUTER_ADDRESS, WHYPE_ADDRESS, INDEX_FROM_BLOCK (537958), HL_TESTNET=true. Scaling note: per-user HL polling
+    is fine for now; at scale switch to a websocket or HL's builder-fills data.
+  - `register` Edge Function: **the app must call it after every X login** (not wired yet) so non-launchers earn points;
+    returns profile, token, points, rank.
+  - Verified live: 1 token + 6 test trades indexed with USD values; a temporary test user got exactly 50 + 0.0054 points
+    ($54.02 × 100/1M), then removed. `users` is not readable with the anon key.
+  - **Builder fee (attribution only):** `app/src/lib/config.ts` `HL_BUILDER` (fee 1 = 0.1 bp on perp/spot/outcome; testnet
+    builder = burner, $775 perps value; use a separate account on mainnet). `hub.signBuilderApproval` (setup, silent) +
+    `submitBuilderApproval`; `OneClick.buy/buyFromHl({ builderApproval })` submit it with the agent approval. Not yet used by
+    any app screen (buy UI not built).
+  - SwapRouter `0xAc69…C4F0` (first with `Swapped`) is superseded by `0x0627…1d3c` in the current set.
+  - Scripts: `./script/supabase-deploy.sh` (db push + indexer secrets + deploy all functions), `./script/deploy-router.sh`,
+    `./script/test-supabase.sh` (Node tests for the shared function code; 6 passing).
+  `launchpad-test.sh` now signs with a throwaway test signer (owner swaps it in, restores the real one on exit).
+- **HL builder fee returns, tiny, only to attribute orders** (min 0.1 bps; one more silent setup signature `approveBuilderFee`;
+  builder account needs 100 USDC perps value).
+- Risks flagged to the user: the signer key is the gatekeeper (server secret only); "invest in me" + proof ≈ investment
+  solicitation → legal review before launch.
 
 ## 1. What this is
 
@@ -59,6 +184,11 @@ each side ("a cash drawer in both countries") and we rebalance slowly.
 | 6 | **UI** | **in progress** (2026-09-26/27): app shell, top bar, account + points panels, live ticker marquee, social footer built in `app/` (§10). Center card (the one-button buy) NOT started |
 | 6b | **tKNTQ/tUSDC PropAMM** (2nd pool, so KNTQ can pay for one-click buys; ~$100 test trades) | ✅ **deployed 2026-09-27** + registered with FastBridge; **$100 test swap not yet run** (needs bots, §10 step 1) |
 | 7 | **Security audit (AI, highest model) → public `docs/ARCHITECTURE.md` + `docs/SECURITY_AUDIT.md`** for the pro audit team | planned (see TODO 6) |
+| 8 | **Launchpad (bonding curve) + own swap, LP burned at graduation** (§0) | ✅ **deployed + live-tested on testnet 2026-09-27** |
+| 8b | Tokenize Yourself: X-only login, signed launch passes, Supabase (indexer, points), creator rewards (FeeVault) | ✅ testnet 2026-09-28 |
+| 8c | **Launch UI** `/launch` (intro → FTF line → 3-step flow) | ✅ done, user-approved 2026-09-28 |
+| 8d | **Explore page** (chart + details, handle search, top 25 by volume) | **next** (§10) |
+| paused | PropAMM (steps 2, 3, 6b): archived to `archive/propamm/` until capital | ⏸ |
 | later | Subscription gating contract; ERC-4626 vault for outside capital | not started |
 
 ## 4. Live on Elysium testnet (`deployments/elysium-testnet.json`)
@@ -114,8 +244,11 @@ TOPUP_FROM=0xe973105a27e17350500926ae664dfcfe6006d924 ./script/run-bots.sh burne
 npm --prefix app run dev            # the app on http://localhost:5173 (?demo = logged-in account panel with sample data,
                                     #   dev only; ?check = old Privy testnet check page). Run it in a terminal tab.
 SPONSOR_ACCOUNT=<keystore> TOPUP_FROM=... ./script/run-bots.sh burner   # also runs the gas sponsor on :8787 (SEPARATE keystore w/ a little HYPE)
-forge test                          # 84 passing (+ fork suite: forge test --match-path 'test/fork/*' --fork-url elysium_testnet, 3)
-cd keeper && npm test               # 56 passing
+./script/deploy-launchpad.sh burner # launchpad + swap (WHYPE, factory, router); testnet VIRTUAL_HYPE 0.1 HYPE
+./script/launchpad-test.sh burner   # live: launch -> buy -> sell -> graduate (LP burned) -> router swaps; deploys if missing
+forge test                          # 77 passing (PropAMM's 24 archived; +17 launchpad) (+ fork suite: forge test --match-path 'test/fork/*' --fork-url elysium_testnet, 3)
+cd keeper && npm test               # 61 passing
+./script/test-supabase.sh           # 6 passing (Edge Function shared logic, under Node)
 ./script/e2e-bridge.sh              # full local bridge e2e on anvil (no keys needed)
 ./script/e2e-oneclick.sh            # full local one-click e2e on anvil (7702 setup + sponsored buy + guards)
 ```
@@ -377,29 +510,64 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
    so subscriptions can start before the PropAMM is funded.
 7. **Before mainnet:** professional audit, legal/jurisdiction review (leveraged perps + prediction markets), confirm HL fees at scale, contract minEdge granularity (whole bps; 4.5 needs a contract change).
 
-## 10. Next session
+## 10. Next session (2026-09-29): the EXPLORE page
 
-**The user said they have "something big" for the next chat: start by asking what it is.** Open threads, in order:
+### Where we are (sessions 2026-09-27/28, summary)
+- **Backend (done, testnet):** pump.fun-style launchpad replaced the paused PropAMM (§0). One token per X account named
+  `@handle` / ticker `HANDLE`, signed launch passes from Supabase `launch-pass`, 6 categories, creator profile (about + links)
+  hashed on-chain. Fees: 0.75% curve, 0.25% pool, all into `FeeVault` → 80% creator (claim) / 20% protocol (60% community,
+  40% KNTQ buyback, manual; **wallet addresses still to come from the user**). Graduation at pump.fun shape (testnet tiny:
+  ~1.37 HYPE mcap; mainnet 60 HYPE virtual ≈ 822 HYPE mcap), LP burned. Current addresses: §0 "CURRENT testnet set".
+- **Supabase (done):** users / creator_profiles / tokens / trades / points_ledger / leaderboard; `register`, `launch-pass`,
+  `indexer` (pg_cron every minute: launches, curve trades, graduations, router `Swapped`, pair swaps, HL builder fills).
+  Points: 100/\$1M launched-token volume, 75/\$1M HL via Neuriio, 50 for launching. Tables are public-read (not `users`).
+- **Launch UI (DONE, user approved 2026-09-28)** at `app.neuriio.xyz/launch` (`app/src/components/LaunchCard.tsx`,
+  `app/src/lib/launch.ts`, styles `.li-*` / `.lp-*` in `app/src/app.css`):
+  1. Intro card **750 × 350**: solid `#1b1428`, lavender tint + 20px dot grid coming in from the right (reference-card look),
+     14 twinkling grid dots, the launchpad's bonding curve rising from the bottom-left with a glowing dot climbing it.
+     Only text: "THE FUTURE FOR CREATORS" (20px, cyan `--cyan-2`, semibold, uppercase, 0.22em) + one button in the top
+     Account/Points card style (104 × 38): **Login** (logged out) → after login it becomes **Launch** (no auto-advance).
+  2. Launch → label + button blur out, the FTF line reveals word by word in the same style at **14px**: "The platform to grow
+     your brand or combine yourself with friends to form a FTF (Friends Turned Fam) where you and 3 others create a group
+     ticker." → **Next** bottom-right.
+  3. Flow card **1000 × 512** (same background): left preview (pfp, @handle, $HANDLE, category chip, curve chart, supply /
+     graduation mcap / 0.75% fee, "No promise of value."); right 3 steps: Who you are (6 tiles) → Profile (about 50–5,000
+     + links) → Launch (optional first buy, estimate, checkbox "I understand @handle has no promise of value or promise any
+     returns to anyone.") → staged progress → "@handle is live" + Share on X.
+  - Already launched → straight to the live screen. `?demo` (logged in) / `?demo=out` (logged out) preview with fake data.
+  - **Verified with a real X login** (user, Firefox): @von_hl launched end to end on the previous launchpad (then reset:
+    new launchpad deployed, old Supabase token/trade/point rows cleared, `users` row kept).
+  - Known nit (user undecided): at 14px the FTF line's first line touches the rising curve on the right; options: narrow the
+    text to 4 lines or move the curve's steep part right.
+  - Browser pane pauses animations while hidden: screenshots can look half-faded; the app is fine (check in Firefox).
+  - Dev server: `npm --prefix app run dev` now binds **127.0.0.1:5173** (vite.config.js) — "localhost" was IPv6-only before.
 
-1. **KNTQ pool: deployed, not yet exercised.** Bots are stopped. Restart them
-   (`TOPUP_FROM=0xe973105a27e17350500926ae664dfcfe6006d924 ./script/run-bots.sh burner`, now feeds 107 + 334), confirm the feeder
-   log shows `@334` pushes, then a ~$100 test: `previewSellBase` / a swap on `0x4150…639c`, and a one-click buy paid in tKNTQ
-   (the burner holds 45,000 spare tKNTQ from the seed mint; anyone can mint more). Then point the app's KNTQ
-   (`app/src/lib/config.ts`, now the real bridged KNTQ) at tKNTQ if the app should show the test token, and optionally add
-   tKNTQ to the test faucet.
-2. **UI (step 6), where it stands.** Built one element at a time in the user's order; the user decides when an element is done
-   (memory "UI pacing"). Apply style requests only to the element being discussed.
-   - Look: page `#463764` with a soft glow + `#1b1229` dot grid fading to the edges; Lilex font (Google Fonts); cards are a solid
-     gradient `#463764→#40315d`, 0.75px `#8C7D9F` stroke, small dark shadow, 7px corners; white semibold 13px text.
-   - Top-left: logo (52px, 1.5px `#E8E0FF` stroke, soft glow, NO hover animation, links home) + ≡ menu (24px, stroke 2, no box).
-   - Top-center: ticker marquee (BTC ETH SOL ZEC HYPE NEAR XRP ENA XPL SUI; white icons; live price, green/red on the day).
-   - Top-right: layered deck: Account in front (left), Points behind (right), 100×36 each, 24px overlap; hover springs.
-   - Center: blank `tabs-slot` bar + blank `card-slot`. The one-button buy goes here: market → amount → live "est." → Buy →
-     staged loading → result; backend = `OneClick` quote/buy + quoteFromHl/buyFromHl (§8). Bottom: X / Docs / Telegram cards.
-   - Not decided/built: points system (Points shows blank boxes), menu pages, docs + Telegram URLs, our own X OAuth app (Privy's
-     shared one for now), Telegram login (needs a bot + a real domain).
-3. **Pitch deck** (TODO 6b) and the **fast-exit** idea (TODO 6a) are queued.
-4. Sponsor hosting is still open (§8 / TODO 1). `app/src/PrivyCheck.jsx` can be retired once the real buy flow exists.
+### Next: the Explore page (user's plan, 2026-09-28)
+After a successful launch the app goes to **Explore** (route e.g. `/explore`, same shell: header, marquee, Account/Points,
+footer; content in the center "modals", as many per page as needed — user designs the look together, one element at a time,
+per memory "UI pacing"). Contents the user described:
+- **A chart with all the details** for a token (price over time + stats: market cap, volume, holders?, curve progress to
+  graduation, creator profile/about/links, category, creator earnings from `FeeVault.creatorEarned`).
+- **Above it: a search for handles** and a **Top 25 handles ranked by volume** (etc. — other rankings to decide).
+- Right after a launch, land on the new token's Explore view.
+Data to build for it (Supabase, public-read):
+- `token_stats` view: per token 24h / all-time USD volume (from `trades`, venues curve + pool), trade count, last price,
+  mcap (price × 1B), curve progress (tokens sold / 793.1M, from the latest `Trade` event's virtual reserves or an on-chain
+  read), graduated flag, creator handle/pfp (join `users` via `x_user_id`), category.
+- Price history for the chart: from `trades` (price = quote_amount / size per trade) → candles/line by time bucket (SQL
+  view or RPC). Consider storing the Trade event's `virtualHype/virtualToken` (curve spot price) in the indexer.
+- Handle search: `tokens.handle ilike` (+ `users.x_handle`); top 25 by volume from `token_stats`.
+- Possibly index `FeeVault.FeeCredited` (creator earnings) and holders (ERC-20 Transfer logs) if the page shows them.
+- Open questions for the user: chart style (line vs candles, time ranges), which stats, ranking tabs (volume / newest /
+  near graduation / top gainers), whether Explore also lists tokens without a search, and buy/sell from Explore.
+
+### Also open (not tomorrow unless asked)
+- User to send **community + buyback wallet addresses** → `FeeVault.setWallets` (owner = burner).
+- Creator **claim** button in the UI (FeeVault `claim`), `register` call after login (points for non-launchers),
+  builder fee wired into the future buy UI (`HL_BUILDER`), holding-points math (TBD by user).
+- Burner ~0.30 testnet HYPE: top up before the next full live test (`./script/launchpad-test.sh burner`, needs 0.35).
+- FTF (Friends Turned Fam) contracts: LATER (§0).
+- Older queue: pitch deck (TODO 6b), fast-exit bridge idea (TODO 6a), sponsor hosting, PropAMM paused until capital.
 
 ## 11. Repository
 

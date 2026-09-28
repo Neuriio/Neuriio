@@ -630,6 +630,916 @@ body {
   cursor: default;
 }
 
+/* ---- /launch: "Tokenize yourself" card (preview left, 3 steps right) ---- */
+.launch-card {
+  height: auto;
+  min-height: 274px;
+}
+.launch-grid {
+  display: grid;
+  grid-template-columns: 216px 1fr;
+  min-height: 332px;
+}
+.lp-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 16px 14px;
+  border-right: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(18, 12, 29, 0.35), rgba(18, 12, 29, 0.1));
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+.lp-id {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.lp-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 7px;
+  overflow: hidden;
+  border: 1.5px solid #e8e0ff;
+  background: var(--surface);
+  box-shadow: 0 0 16px rgba(140, 125, 159, 0.45);
+  font-size: 20px;
+  font-weight: 700;
+}
+.lp-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.lp-names {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.lp-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lp-ticker {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cyan-2);
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lp-chip {
+  align-self: flex-start;
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--cyan-2);
+  background: rgba(204, 236, 236, 0.08);
+  border: 1px solid rgba(204, 236, 236, 0.35);
+  border-radius: 4px;
+}
+.lp-chip-empty {
+  color: var(--muted);
+  background: none;
+  border-style: dashed;
+  border-color: var(--line);
+}
+.lp-curve {
+  padding: 8px 8px 6px;
+  background: rgba(18, 12, 29, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.lp-curve svg {
+  display: block;
+  overflow: visible;
+}
+.lp-curve-line {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+.lp-curve-fill {
+  fill: rgba(204, 236, 236, 0.18);
+  stroke: var(--cyan-2);
+  stroke-width: 1.5;
+}
+.lp-curve-dot {
+  fill: var(--cyan-2);
+  filter: drop-shadow(0 0 4px rgba(216, 255, 254, 0.8));
+  transition: cx 0.3s ease, cy 0.3s ease;
+}
+.lp-curve-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.lp-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+}
+.lp-stats div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.lp-stats dt {
+  color: var(--muted);
+}
+.lp-stats dd {
+  margin: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.lp-meme {
+  margin: auto 0 0;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.lp-form {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0 18px 14px;
+}
+.lp-steps {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.lp-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 14px 10px 12px 0;
+  margin-right: 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: default;
+}
+.lp-step.is-done {
+  cursor: pointer;
+  color: var(--text-2);
+}
+.lp-step.is-current {
+  color: #ffffff;
+}
+.lp-step-n {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 10px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  opacity: 0.85;
+}
+.lp-step.is-current .lp-step-n {
+  color: var(--cyan-2);
+}
+.lp-step-bar {
+  position: absolute;
+  left: 0;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--cyan-2);
+  box-shadow: 0 0 8px rgba(216, 255, 254, 0.6);
+  border-radius: 2px;
+}
+.lp-body {
+  flex: 1;
+  padding-top: 14px;
+  min-height: 218px;
+}
+.lp-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lp-q {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.lp-cats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.lp-cat {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  row-gap: 3px;
+  align-items: center;
+  padding: 10px 10px 9px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: rgba(70, 55, 100, 0.35);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+.lp-cat svg {
+  color: var(--muted);
+  transition: color 0.18s ease;
+}
+.lp-cat:hover {
+  border-color: rgba(204, 236, 236, 0.35);
+}
+.lp-cat.is-on {
+  background: rgba(204, 236, 236, 0.08);
+  border-color: rgba(204, 236, 236, 0.6);
+  box-shadow: 0 0 14px rgba(204, 236, 236, 0.12);
+}
+.lp-cat.is-on svg {
+  color: var(--cyan-2);
+}
+.lp-cat-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.lp-cat-hint {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  color: var(--muted);
+}
+.lp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lp-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+.lp-count {
+  font-weight: 400;
+  color: var(--muted);
+}
+.lp-count.is-bad {
+  color: #ff8a8a;
+}
+.lp-form textarea,
+.lp-form input:not([type="checkbox"]) {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(18, 12, 29, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+.lp-form textarea {
+  resize: none;
+  line-height: 1.45;
+}
+.lp-form textarea:focus,
+.lp-form input:focus {
+  border-color: rgba(204, 236, 236, 0.5);
+}
+.lp-form ::placeholder {
+  color: rgba(140, 125, 159, 0.8);
+}
+.lp-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 104px;
+  overflow-y: auto;
+}
+.lp-link {
+  display: grid;
+  grid-template-columns: 92px 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+.lp-form .is-bad {
+  border-color: rgba(255, 138, 138, 0.6);
+}
+.lp-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+}
+.lp-buy {
+  position: relative;
+}
+.lp-buy input {
+  font-size: 18px !important;
+  font-weight: 700;
+  padding-right: 60px !important;
+  font-variant-numeric: tabular-nums;
+}
+.lp-buy-unit {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.lp-quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lp-quick-btn {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: rgba(70, 55, 100, 0.35);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.lp-quick-btn.is-on,
+.lp-quick-btn:hover {
+  color: var(--cyan-2);
+  border-color: rgba(204, 236, 236, 0.45);
+}
+.lp-balance {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted);
+}
+.lp-est {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.lp-est b {
+  color: var(--cyan-2);
+}
+.lp-warn {
+  margin: 0;
+  font-size: 11px;
+  color: #ffc98a;
+}
+.lp-agree {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 9px 10px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  background: rgba(18, 12, 29, 0.35);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.lp-agree input {
+  margin: 2px 0 0;
+  accent-color: #ccecec;
+}
+.lp-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.lp-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.lp-back:disabled {
+  visibility: hidden;
+}
+.lp-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 18px;
+  font-size: 13px;
+  text-decoration: none;
+}
+.lp-launch:not(:disabled) {
+  box-shadow: 0 0 18px rgba(204, 236, 236, 0.18);
+}
+.lp-stages {
+  gap: 14px;
+  padding: 18px 4px;
+}
+.lp-stage {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  transition: color 0.2s ease;
+}
+.lp-stage.is-now {
+  color: #ffffff;
+}
+.lp-stage.is-done {
+  color: var(--cyan-2);
+}
+.lp-stage-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.lp-live {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 250px;
+}
+.lp-live-icon {
+  color: var(--cyan-2);
+  filter: drop-shadow(0 0 10px rgba(216, 255, 254, 0.7));
+}
+.lp-live-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.lp-error-title {
+  color: #ffb3b3;
+}
+.lp-live-sub {
+  max-width: 330px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.lp-live-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 4px;
+}
+.lp-live-actions .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+}
+
+/* bigger launch card (no tabs bar on this page) */
+.stage-launch {
+  width: min(1000px, calc(100vw - 32px));
+}
+.stage-launch .launch-grid {
+  grid-template-columns: 310px 1fr;
+  min-height: 510px;
+}
+.stage-launch .lp-preview {
+  gap: 18px;
+  padding: 28px 24px 22px;
+}
+.stage-launch .lp-avatar {
+  width: 68px;
+  height: 68px;
+  font-size: 27px;
+}
+.stage-launch .lp-name {
+  font-size: 20px;
+}
+.stage-launch .lp-ticker {
+  font-size: 14px;
+}
+.stage-launch .lp-chip {
+  font-size: 13px;
+  padding: 5px 11px;
+}
+.stage-launch .lp-curve-axis {
+  font-size: 10px;
+}
+.stage-launch .lp-stats {
+  gap: 7px;
+}
+.stage-launch .lp-stats div {
+  font-size: 13px;
+}
+.stage-launch .lp-meme {
+  font-size: 12px;
+}
+.stage-launch .lp-form {
+  padding: 0 30px 24px;
+}
+.stage-launch .lp-step {
+  font-size: 14px;
+  padding: 20px 14px 17px 0;
+}
+.stage-launch .lp-step-n {
+  min-width: 24px;
+  height: 21px;
+  font-size: 11px;
+}
+.stage-launch .lp-body {
+  padding-top: 24px;
+  min-height: 350px;
+}
+.stage-launch .lp-pane {
+  gap: 18px;
+}
+.stage-launch .lp-q {
+  font-size: 17px;
+}
+.stage-launch .lp-cats {
+  gap: 12px;
+}
+.stage-launch .lp-cat {
+  padding: 20px 16px 18px;
+  row-gap: 6px;
+  column-gap: 10px;
+}
+.stage-launch .lp-cat svg {
+  width: 19px;
+  height: 19px;
+}
+.stage-launch .lp-cat-label {
+  font-size: 15px;
+}
+.stage-launch .lp-cat-hint {
+  font-size: 12px;
+}
+.stage-launch .lp-label {
+  font-size: 13px;
+}
+.stage-launch .lp-form textarea,
+.stage-launch .lp-form input:not([type="checkbox"]) {
+  font-size: 14px;
+  padding: 11px 13px;
+}
+.stage-launch .lp-buy input {
+  font-size: 21px !important;
+}
+.stage-launch .lp-quick-btn {
+  font-size: 12px;
+  padding: 5px 12px;
+}
+.stage-launch .lp-balance {
+  font-size: 11px;
+}
+.stage-launch .lp-links {
+  max-height: 170px;
+}
+.stage-launch .lp-link {
+  grid-template-columns: 124px 1fr auto;
+}
+.stage-launch .lp-est {
+  font-size: 14px;
+}
+.stage-launch .lp-agree {
+  font-size: 12.5px;
+  padding: 14px 16px;
+}
+.stage-launch .lp-foot {
+  padding-top: 18px;
+}
+.stage-launch .lp-cta {
+  padding: 11px 26px;
+  font-size: 15px;
+}
+.stage-launch .lp-back {
+  font-size: 13px;
+}
+.stage-launch .lp-stage {
+  font-size: 15px;
+}
+.stage-launch .lp-live {
+  min-height: 370px;
+}
+.stage-launch .lp-live-title {
+  font-size: 24px;
+}
+.stage-launch .lp-live-sub {
+  font-size: 13px;
+  max-width: 380px;
+}
+
+/* ---- /launch intro: the first screen (Login / Launch) ---- */
+/* reference look: solid dark card, lavender tint + dot grid coming in from the right, fading out to the left */
+.launch-intro,
+.launch-flow {
+  overflow: hidden;
+  background: #1b1428;
+  border-color: rgba(236, 221, 255, 0.1);
+  backdrop-filter: none;
+  box-shadow: 0 30px 80px rgba(7, 2, 12, 0.5);
+}
+.launch-intro {
+  display: grid;
+  place-items: center;
+  width: min(750px, 100%);
+  height: 350px;
+  min-height: 0;
+  margin: 0 auto; /* the flow card stays 1000 x 512 */
+}
+/* compact content for the 750 x 350 intro */
+.launch-intro .li-content {
+  gap: 18px;
+  padding: 24px 28px;
+}
+.launch-intro .li-kicker {
+  font-size: 20px;
+}
+/* stage 2: the FTF line, same style as "The Future for Creators", Next pinned bottom-right */
+.li-about {
+  max-width: 660px;
+}
+.li-ftf {
+  margin: 0;
+  line-height: 1.6;
+  text-align: center;
+}
+.launch-intro .li-ftf {
+  font-size: 14px; /* the kicker style, smaller */
+}
+.li-ftf span {
+  display: inline-block;
+  white-space: pre;
+}
+.launch-intro .li-next {
+  position: absolute;
+  right: 22px;
+  bottom: 20px;
+}
+.launch-intro .li-btn {
+  height: 38px;
+  min-width: 104px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+/* flow content sits above the shared background; the preview column stays a touch darker */
+.launch-flow .launch-grid {
+  position: relative;
+}
+.launch-flow .lp-preview {
+  background: rgba(10, 6, 18, 0.25);
+}
+.li-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.li-tint {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 55% 85% at 100% 55%, rgba(150, 132, 200, 0.26), transparent 72%),
+    linear-gradient(to left, rgba(129, 114, 152, 0.16), transparent 58%);
+}
+.li-dots {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, rgba(236, 221, 255, 0.2) 1px, transparent 1.4px) 0 0 / 20px 20px;
+  /* visible on the right, gone by ~70% toward the left, and softened along the top */
+  -webkit-mask-image: linear-gradient(to left, #000 25%, transparent 72%), linear-gradient(to bottom, transparent, #000 22%);
+  -webkit-mask-composite: source-in;
+  mask-image: linear-gradient(to left, #000 25%, transparent 72%), linear-gradient(to bottom, transparent, #000 22%);
+  mask-composite: intersect;
+}
+/* intro decoration: bonding curve rising from the bottom-left (see IntroCurve) */
+.li-curve {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+}
+.li-corner-glow {
+  position: absolute;
+  left: -120px;
+  bottom: -140px;
+  width: 420px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(129, 114, 152, 0.32), transparent 70%);
+  filter: blur(30px);
+}
+.li-curve svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.li-curve-line {
+  fill: none;
+  stroke-width: 1.6;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  filter: drop-shadow(0 0 4px rgba(216, 255, 254, 0.35));
+  animation: li-draw 2.2s 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.li-curve-area {
+  opacity: 0;
+  animation: li-fade 1.6s 1s ease forwards;
+}
+@keyframes li-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes li-fade {
+  to {
+    opacity: 1;
+  }
+}
+/* the dot climbs the curve (offset-path = the same path, in the 750 x 350 card's own pixels) */
+.li-curve-dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e9fffe;
+  box-shadow: 0 0 8px 3px rgba(216, 255, 254, 0.55), 0 0 18px 6px rgba(204, 236, 236, 0.2);
+  offset-rotate: 0deg;
+  offset-distance: 0%;
+  opacity: 0;
+  animation: li-climb 6.5s 2.4s ease-in infinite;
+}
+@keyframes li-climb {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+/* twinkling dots: a few grid dots glow cyan, fade, and relight elsewhere (positions set in LaunchBg) */
+.li-twinkle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: 50%;
+  background: #e9fffe;
+  box-shadow: 0 0 6px 2px rgba(216, 255, 254, 0.55), 0 0 14px 4px rgba(204, 236, 236, 0.18);
+  opacity: 0;
+  animation: li-twinkle 4.2s ease-in-out infinite;
+}
+@keyframes li-twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  60% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .li-twinkle,
+  .li-curve-dot {
+    display: none;
+  }
+  .li-curve-line,
+  .li-curve-area {
+    animation: none;
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+.li-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  max-width: 760px;
+  padding: 48px 24px;
+  text-align: center;
+}
+.li-kicker {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cyan-2);
+}
+/* same look as the top Account / Points cards, just bigger */
+.li-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-width: 200px;
+  height: 52px;
+  padding: 0 34px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(160deg, #463764, #40315d);
+  border: 0.75px solid #8c7d9f;
+  border-radius: var(--radius);
+  box-shadow: 0 2px 8px rgba(7, 2, 12, 0.45);
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.25s ease, border-color 0.2s ease;
+}
+.li-btn:hover:not(:disabled),
+.li-btn:focus-visible {
+  transform: translateY(-1px);
+  border-color: #b3a6c6;
+  box-shadow: 0 6px 16px rgba(7, 2, 12, 0.5);
+  outline: none;
+}
+.li-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* phones: preview on top, steps below */
+@media (max-width: 640px) {
+  .launch-grid {
+    grid-template-columns: 1fr;
+  }
+  .lp-preview {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  .lp-curve,
+  .lp-meme {
+    display: none;
+  }
+  .lp-cats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* phones: stack the header, keep the card centered */
 @media (max-width: 640px) {
   :root {

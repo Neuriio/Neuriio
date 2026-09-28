@@ -3,13 +3,11 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import {ERC7579Utils} from "@openzeppelin/contracts/account/utils/draft-ERC7579Utils.sol";
 import {Execution} from "@openzeppelin/contracts/interfaces/draft-IERC7579.sol";
 import {Account as OZAccount} from "@openzeppelin/contracts/account/Account.sol";
-import {KeeperHyperCoreOracle} from "../src/oracle/KeeperHyperCoreOracle.sol";
-import {PropAMM} from "../src/amm/PropAMM.sol";
+import {MockUsdcPool} from "./mocks/MockUsdcPool.sol";
 import {FastBridge} from "../src/bridge/FastBridge.sol";
 import {NeuriioAccount} from "../src/account/NeuriioAccount.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -20,7 +18,7 @@ contract NeuriioAccountTest is Test {
 
     MockERC20 usdc;
     MockERC20 hype;
-    PropAMM pool;
+    MockUsdcPool pool;
     FastBridge bridge;
     NeuriioAccount impl;
 
@@ -37,26 +35,8 @@ contract NeuriioAccountTest is Test {
         device = vm.addr(devicePk);
         usdc = new MockERC20("USD Coin", "USDC", 6);
         hype = new MockERC20("Hype", "HYPE", 18);
-
-        KeeperHyperCoreOracle oracle = new KeeperHyperCoreOracle(address(this), 500);
-        oracle.setUpdater(address(this), true);
-        KeeperHyperCoreOracle.Update[] memory u = new KeeperHyperCoreOracle.Update[](1);
-        u[0] = KeeperHyperCoreOracle.Update(107, 40e18, 40.01e18, 1_000e18, 1_000e18, 0, T0 * 1000);
-        oracle.push(u);
-        pool = new PropAMM(
-            address(this),
-            IERC20Metadata(address(hype)),
-            IERC20Metadata(address(usdc)),
-            oracle,
-            107,
-            PropAMM.RiskParams(5, 1_000, 0, 5_000, 50, 50),
-            PropAMM.QuoteParams(5, 5_000, 0, 0, 0)
-        );
-        hype.mint(address(this), 1_000e18);
-        usdc.mint(address(this), 40_000e6);
-        hype.approve(address(pool), type(uint256).max);
-        usdc.approve(address(pool), type(uint256).max);
-        pool.deposit(1_000e18, 40_000e6);
+        pool = new MockUsdcPool(IERC20(address(hype)), IERC20(address(usdc)), 40e6);
+        usdc.mint(address(pool), 40_000e6);
 
         bridge = new FastBridge(
             address(this),

@@ -39,7 +39,7 @@ contract NeuriioAccount is ERC7821, SignerERC7702, EIP712, IERC1271, ERC721Holde
     }
 
     struct Buy {
-        address token; // USDC or a token FastBridge converts through a PropAMM pool
+        address token; // USDC or a token FastBridge converts through a USDC pool
         uint256 amountIn;
         uint256 minUsdcOut; // slippage bound on the conversion (ignored for USDC)
         uint256 deadline;

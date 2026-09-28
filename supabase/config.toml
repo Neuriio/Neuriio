@@ -1,0 +1,12 @@
+# Supabase CLI config (project: Neuriio, ref yviymgfgaepmtijgyyyo). Setup: ./script/supabase-setup.sh
+project_id = "neuriio"
+
+[functions.launch-pass]
+# Callers authenticate with their Privy access token (verified inside the function), not a Supabase JWT.
+verify_jwt = false
+
+[functions.register]
+verify_jwt = false # Privy access token, verified inside
+
+[functions.indexer]
+verify_jwt = false # called by pg_cron; idempotent + run-locked
