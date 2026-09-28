@@ -621,6 +621,13 @@ Data to build for it (Supabase, public-read):
   BUSL applies. (3) hooks = main exploit surface → thorough tests + audit focus; hook address must be CREATE2-mined for its
   permission bits. (4) indexer: switch pool events to PoolManager `Swap(id, …)` for our pools.
 - Worth reading first (open source, audited, V4 launch hooks): Flaunch, Zora coins, Clanker v4, Doppler (whetstone).
+- **License (checked 2026-09-28, `Uniswap/v4-core/licenses/BUSL_LICENSE`, `PoolManager.sol` = `BUSL-1.1`):** Licensor Universal
+  Navigation Inc.; copying/modifying/**non-production** use allowed (testnet OK); **production use** only via an Additional Use
+  Grant (`v4-core-license-grants.uniswap.eth`) or a commercial license; **Change Date = earlier of 2027-06-15 or the date at
+  `v4-core-license-date.uniswap.eth`**, then MIT. Rewriting "an identical pool" from their code = derivative work = same license.
+  So: using an existing PoolManager + our own hook = fine; deploying our own V4 core on MAINNET before the change date = needs a
+  grant. Fallback: launch on our V2-style pool (Uniswap v2 is GPL, no restriction) and switch graduations to V4 when available.
+  **To check tomorrow:** the two ENS records (earlier MIT date? existing grants covering new chains?).
 - **Decide tomorrow: V4 hook first, or Explore first** (Explore's volume/price data comes from the indexer, which changes with
   the pool). Add to the Kinetiq questions: who owns the V4 PoolManager; V4 on Elysium mainnet?
 
