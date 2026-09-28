@@ -604,6 +604,26 @@ Data to build for it (Supabase, public-read):
 - Idea (user): fund each token's later HyperCore spot deployment from its pool fees (per-token "HyperCore fund" in FeeVault,
   released at a milestone). Open: which share funds it (creator 80 / protocol 20 / new split) and who holds the ticker key.
 
+### PROPOSED (user, 2026-09-28): graduate into Uniswap V4 with OUR hook — decide first thing tomorrow
+- User wants the V4-launchpad architecture. Honest status told to the user: our SwapPair is a from-scratch Solidity 0.8 port of
+  Uniswap V2 semantics (not a code fork) + our fee routing; Launchpad is custom (pump.fun parameters); tested, NOT audited.
+  Copying the other team's unverified hook bytecode = NO (no source/license/audit).
+- **Verified 2026-09-28:** the Elysium testnet PoolManager `0x889a96eedb1df35a012d7e48baf7f9c780f1243b` is **byte-identical**
+  to canonical Uniswap v4-core PoolManager (Ethereum `0x000000000004444c5dc75cB358380D2e3dE08A90`, Base
+  `0x498581fF718922c3f8e6A244956aF099B2652b2b`) after masking the embedded self-address (24,009 bytes; only the CBOR
+  metadata tail differs). owner = `0xf889…3e36` (an EOA, same team as the V4 launchpad hook); protocolFeeController = 0.
+- **Plan:** keep our bonding curve (Launchpad); at graduation create the token's pool on the existing PoolManager with **our
+  hook** (native HYPE / token, no WHYPE), full-range liquidity locked forever. Hook: fee (0.25%) via return deltas → FeeVault
+  (80/20), `beforeInitialize` only allows our Launchpad, optional EMA / max-deviation guards. Replaces SwapPair/Factory/Router.
+  Using (not deploying) v4-core avoids the BUSL license question; the hook is our own code.
+- **Risks / to confirm:** (1) PoolManager owner (EOA) can set a protocol fee up to 0.1% on any pool incl. ours → who is it?
+  (2) mainnet: will Uniswap V4 be deployed on Elysium mainnet (canonical or by that team)? if we must deploy it ourselves,
+  BUSL applies. (3) hooks = main exploit surface → thorough tests + audit focus; hook address must be CREATE2-mined for its
+  permission bits. (4) indexer: switch pool events to PoolManager `Swap(id, …)` for our pools.
+- Worth reading first (open source, audited, V4 launch hooks): Flaunch, Zora coins, Clanker v4, Doppler (whetstone).
+- **Decide tomorrow: V4 hook first, or Explore first** (Explore's volume/price data comes from the indexer, which changes with
+  the pool). Add to the Kinetiq questions: who owns the V4 PoolManager; V4 on Elysium mainnet?
+
 ### Also open (not tomorrow unless asked)
 - User to send **community + buyback wallet addresses** → `FeeVault.setWallets` (owner = burner).
 - Creator **claim** button in the UI (FeeVault `claim`), `register` call after login (points for non-launchers),
