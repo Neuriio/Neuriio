@@ -1,0 +1,670 @@
+/* Brand tokens (from the X logo + banner) */
+:root {
+  --bg: #463764;
+  --surface: #352751;
+  --surface-2: #463764;
+  --muted: #8c7d9f;
+  --lavender: #817298;
+  --text: #f3efff;
+  --text-2: #ecddff;
+  --cyan: #ccecec;
+  --cyan-2: #d8fffe;
+  --line: rgba(236, 221, 255, 0.14);
+
+  --gap: 24px;
+  --edge: 32px;
+  --radius: 7px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Lilex", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.app {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  /* banner glow behind the main card + dots (#1b1229) */
+  background:
+    radial-gradient(ellipse 55% 45% at 50% 50%, rgba(129, 114, 152, 0.28), transparent 70%),
+    radial-gradient(circle, #1b1229 1px, transparent 1.3px) 0 0 / 22px 22px,
+    var(--bg);
+}
+/* dots fade out toward the edges */
+.app::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 55% at 50% 50%, transparent 30%, var(--bg) 85%);
+  pointer-events: none;
+}
+
+.panel {
+  position: relative;
+  background: linear-gradient(160deg, rgba(70, 55, 100, 0.55), rgba(53, 39, 81, 0.35));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  backdrop-filter: blur(6px);
+}
+
+/* ---- top corners ---- */
+.top {
+  position: absolute;
+  top: 40px;
+  left: var(--edge);
+  right: var(--edge);
+  display: flex;
+  justify-content: space-between;
+  align-items: center; /* boxes sit on the logo's center line */
+  z-index: 3; /* above the center card, so the account panel overlaps it */
+}
+
+/* top-center marquee: centered on the page, level with the logo and buttons, never under them */
+.top-marquee {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(640px, calc(100vw - 2 * var(--edge) - 2 * 212px - 48px));
+}
+.marquee {
+  overflow: hidden;
+  padding: 8px 0;
+  /* edges fade out */
+  mask-image: linear-gradient(to right, transparent, black 25%, black 75%, transparent);
+}
+.slider {
+  overflow: hidden;
+}
+.slider-track {
+  display: flex;
+  width: max-content;
+}
+/* fixed width so a price changing length never changes the track width (which would restart the scroll) */
+.marquee-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 64px;
+}
+.marquee-price {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.price-up {
+  color: #6ee7a0;
+}
+.price-down {
+  color: #ff8a8a;
+}
+/* all ticker icons in white */
+.marquee-logo {
+  height: 24px;
+  width: 24px;
+  pointer-events: none;
+  user-select: none;
+  filter: brightness(0) invert(1);
+}
+
+/* logo tile: 52px, 1.5px #E8E0FF stroke, soft lavender glow. No hover animation. */
+.logo {
+  display: block;
+  width: 52px;
+  height: 52px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1.5px solid #e8e0ff;
+  box-shadow:
+    0 0 18px rgba(140, 125, 159, 0.45),
+    0 0 42px rgba(129, 114, 152, 0.22);
+}
+
+
+
+/* top-left group: logo + menu button; the menu's panel opens from here */
+.top-left {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.menu-slot {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex: none;
+}
+/* menu: just the three bold lines, no box (scoped so the generic .top-box padding can't squeeze it) */
+.menu-slot .menu-btn {
+  padding: 0;
+  color: #ffffff;
+  background: none;
+  border: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+.menu-slot .menu-btn svg {
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+.morph-panel-left {
+  left: 0;
+  right: auto;
+}
+/* menu panel: plain line items, no boxes */
+.menu-list {
+  display: flex;
+  flex-direction: column;
+}
+.menu-item {
+  padding: 10px 2px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  color: #ffffff;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  color: var(--muted);
+  outline: none;
+}
+.logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* two equal boxes, shorter than the logo, centered on its middle */
+.top-right {
+  --top-gap: 12px;
+  display: flex;
+  gap: var(--top-gap);
+  width: min(212px, calc(100vw - 2 * var(--edge) - 52px - 16px));
+}
+
+.top-box {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+}
+
+.top-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* "Account" (logged out): same type as Points */
+.login-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.morph-trigger:focus-visible {
+  outline: none;
+}
+
+/* logged out panel: placeholder blurred behind a small centered Login card */
+.panel-body-locked {
+  filter: blur(5px);
+  opacity: 0.7;
+  pointer-events: none;
+  user-select: none;
+}
+/* centered on the whole panel; clicks pass through to the × except on the card itself */
+.lock-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.lock-card {
+  pointer-events: auto;
+}
+.lock-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 22px;
+  background: rgba(18, 12, 29, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: 0 12px 30px rgba(7, 2, 12, 0.6);
+}
+.lock-title {
+  font-size: 12px;
+  color: var(--text-2);
+  letter-spacing: 0.03em;
+}
+.lock-login {
+  padding: 8px 30px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--cyan-2);
+  background: rgba(70, 55, 100, 0.35);
+  border: 1px solid rgba(204, 236, 236, 0.35);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: text-shadow 0.2s ease, border-color 0.2s ease;
+}
+.lock-login:hover:not(:disabled),
+.lock-login:focus-visible {
+  text-shadow: 0 0 6px rgba(216, 255, 254, 0.45);
+  border-color: rgba(204, 236, 236, 0.6);
+  outline: none;
+}
+.lock-login:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* the two top cards: opaque (the colors the center boxes' see-through fill makes on this background,
+   so the back card never shows through the front one), darker #8C7D9F stroke, a small depth shadow */
+.top-right .top-box {
+  background: linear-gradient(160deg, #463764, #40315d);
+  border: 0.75px solid #8c7d9f;
+  backdrop-filter: none;
+  box-shadow: 0 2px 8px rgba(7, 2, 12, 0.45);
+}
+
+/* layered deck: Account in front on the left, Points behind it on the right; the hovered card
+   comes to the front (and springs up, see Morph) */
+.card-stack {
+  display: block;
+  width: 176px;
+  height: 36px;
+}
+.card-stack > .top-box-slot {
+  position: absolute;
+  top: 0;
+  width: 100px;
+  height: 36px;
+}
+.card-stack > [data-card="Account"] {
+  left: 0;
+  z-index: 2;
+}
+.card-stack > [data-card="Points"] {
+  left: 76px;
+  z-index: 1;
+}
+.card-stack > .card-front {
+  z-index: 3;
+}
+/* "Points" sits in the part of its card that the Account card doesn't cover */
+.card-stack > [data-card="Points"] .morph-trigger {
+  justify-content: flex-end;
+  padding-right: 14px;
+}
+
+
+/* Account (logged in): the button morphs into the account panel on click */
+.top-right {
+  position: relative; /* the panel opens anchored to this row */
+}
+.top-box-slot {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 36px;
+}
+.morph-trigger {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+  cursor: pointer;
+}
+.account-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.avatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  object-fit: cover;
+  border: 1px solid rgba(232, 224, 255, 0.5);
+}
+.avatar-initial {
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.account-name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.morph-trigger-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.morph-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 5;
+  width: min(340px, calc(100vw - 2 * var(--edge)));
+  overflow: hidden;
+  background: linear-gradient(160deg, #1b1428, #120c1d);
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 40px rgba(7, 2, 12, 0.7), 0 0 30px rgba(129, 114, 152, 0.18);
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 42px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--line);
+}
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px 12px;
+}
+/* points panel: header + 8 blank boxes (2 x 4), to be designed */
+.points-head {
+  display: inline-flex;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+}
+.points-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.points-slot {
+  height: 64px;
+  background: rgba(70, 55, 100, 0.35);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.icon-btn {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+.icon-btn:hover {
+  color: var(--text);
+}
+
+/* account panel: deposit address with copy */
+.deposit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.deposit-label,
+.deposit-note {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.deposit-address {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(70, 55, 100, 0.35);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.deposit-address:hover {
+  border-color: rgba(204, 236, 236, 0.45);
+}
+.copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--cyan-2);
+}
+.total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.dropdown-actions {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+/* Elysium / HyperCore balances: each in its own box, like the address box */
+.venue-box {
+  padding: 10px 12px 8px;
+  background: rgba(70, 55, 100, 0.35);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.venue-box header {
+  border-bottom: 1px solid var(--line);
+}
+.venue header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.token {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  font-size: 12px;
+  padding: 4px 0;
+  color: var(--text);
+}
+.token-amt,
+.token-usd {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.token-usd {
+  color: var(--muted);
+  min-width: 76px;
+}
+.empty {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.link-btn {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.link-btn-small {
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+.link-btn:hover {
+  color: var(--text);
+}
+
+/* ---- center: main card dead-center of the viewport, tabs bar above it ---- */
+.stage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(668px, calc(100vw - 32px));
+  z-index: 1;
+}
+
+.card-slot {
+  width: 100%;
+  height: 274px;
+}
+
+.tabs-slot {
+  position: absolute;
+  bottom: calc(100% + var(--gap));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(496px, 100%);
+  height: 58px;
+}
+
+/* ---- bottom center ---- */
+.bottom {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  z-index: 1;
+}
+
+.foot-slot {
+  width: 64px;
+  height: 36px;
+}
+/* social cards: same solid look as the top cards, white logo centered */
+.social {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, #463764, #40315d);
+  border: 0.75px solid #8c7d9f;
+  backdrop-filter: none;
+  box-shadow: 0 2px 8px rgba(7, 2, 12, 0.45);
+}
+.social img {
+  width: 16px;
+  height: 16px;
+  filter: brightness(0) invert(1); /* white */
+}
+.social-soon {
+  cursor: default;
+}
+
+/* phones: stack the header, keep the card centered */
+@media (max-width: 640px) {
+  :root {
+    --edge: 16px;
+  }
+  .top {
+    top: 16px;
+  }
+  .logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 5px;
+  }
+  .menu-slot {
+    width: 32px;
+    height: 32px;
+  }
+  .top-right {
+    --top-gap: 8px;
+  }
+  .top-box {
+    height: 32px;
+    padding: 0 10px;
+  }
+  .top-label {
+    display: none;
+  }
+  .top-value,
+  .login-text {
+    font-size: 14px;
+  }
+  .bottom {
+    bottom: 16px;
+  }
+  .top-marquee {
+    display: none; /* no room between logo and buttons on phones */
+  }
+}

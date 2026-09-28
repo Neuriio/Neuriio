@@ -1,4 +1,4 @@
-# Handoff — Elysium trade hub (state as of 2026-09-25)
+# Handoff — Elysium trade hub (state as of 2026-09-27)
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
@@ -56,7 +56,8 @@ each side ("a cash drawer in both countries") and we rebalance slowly.
 | 5 | Trade hub backend (`keeper/src/trade/`) | ✅ real fills verified on HL testnet |
 | 5b | **One-click backend** (EIP-7702 `NeuriioAccount` + session keys, gas sponsor, `OneClick` client, auto perps↔spot USDC) | ✅ **live on testnet 2026-09-25**: zero-gas wallet → 3x BTC filled in 13 s, PURR spot filled in 10.4 s, all withdrawn |
 | 5c | **Wallet: Privy "Neuriio wallet"** (sign up with X or any wallet → Privy embedded wallet → 7702 to `NeuriioAccount`) | ✅ **verified on testnet 2026-09-25** via `app/` check page: X login → wallet auto-created → setup with **zero pop-ups** (4.7 s) → 3x BTC filled in 13.3 s → withdrawn, 0 gas ever held. Speed fixes landed after (not yet re-timed) |
-| 6 | **UI** | **next** — user brings branding/logo/design; only feature for now = one-button buy (§8) |
+| 6 | **UI** | **in progress** (2026-09-26/27): app shell, top bar, account + points panels, live ticker marquee, social footer built in `app/` (§10). Center card (the one-button buy) NOT started |
+| 6b | **tKNTQ/tUSDC PropAMM** (2nd pool, so KNTQ can pay for one-click buys; ~$100 test trades) | ✅ **deployed 2026-09-27** + registered with FastBridge; **$100 test swap not yet run** (needs bots, §10 step 1) |
 | 7 | **Security audit (AI, highest model) → public `docs/ARCHITECTURE.md` + `docs/SECURITY_AUDIT.md`** for the pro audit team | planned (see TODO 6) |
 | later | Subscription gating contract; ERC-4626 vault for outside capital | not started |
 
@@ -70,13 +71,28 @@ each side ("a cash drawer in both countries") and we rebalance slowly.
 | PropAMM (HYPE/USDC, prices HyperCore **mainnet** spot `@107`) | `0xcfda6518d10a686dc2d0c1d9934a4a43952a4f9b` |
 | FastBridge | `0x4f8730e682c2dd6ea524e4c81323b7a0d2cb7c41` |
 | NeuriioAccount (EIP-7702 delegate, stateless, no owner) | `0x78520083cbac74787d733c6de1b177521177ffbb` |
+| tKNTQ (mock, 18 dp, public `mint`) | `0x04338abe7d8da8a173bcf5a7e15ba704b1beaad2` |
+| PropAMM (KNTQ/USDC, prices HyperCore **mainnet** spot `@334`, edge 8 bps) | `0x4150763bd4c1de8b380d301e5aa4e04b2116639c` |
 
 - **Owner of everything + every operator role:** user's Foundry keystore account **`burner`** = `0xef584b1098e12c34d1d85de76285c408ab6917a8` (~0.91 HYPE gas left).
 - **Treasury wallet** (funds the HL inventory; its transfers are top-ups, not withdrawals): `0xe973105a27e17350500926ae664dfcfe6006d924`.
 - **Live settings:** pool edge 5 bps, minEdge 5, skew 0, impact 0, maxTrade 10% of pool, depth factor 2×, maxAge 5 s. Oracle clock slack 2.5 s. Bridge fee 0, refund delay 1 h, caps $25k/tx and $100k/day.
 - **State at handoff:** pool 106.43 tHYPE + 8,706.52 tUSDC; bridge credit 677.37, free liquidity 221.63 tUSDC; burner HL testnet inventory 777.37 USDC.
-- **Bots are STOPPED** (user stopped them at the end of the 2026-09-25 session). The pool refuses quotes (stale price) until
-  the feeder runs again. No sponsor service runs yet (needs its own keystore, see §5).
+- **Bots are STOPPED** (stopped 2026-09-27 for the KNTQ pool deploy). Pools refuse quotes (stale price) until the feeder runs.
+  `run-bots.sh` now feeds **two** markets: `MARKETS=107,334` (HYPE/USDC + KNTQ/USDC, HyperCore mainnet spot).
+- **KNTQ pool (deployed 2026-09-27, seeded at $0.3367: 5,000 tKNTQ + 1,683.58 tUSDC):** `./script/deploy-kntq-pool.sh burner` deploys mock **tKNTQ** (public mint) +
+  **PropAMM tKNTQ/tUSDC** priced off HyperCore mainnet spot **pair 334** (KNTQ/USDC, ~$0.325), **edge 8 bps / minEdge 8**
+  (KNTQ has no HL perp → would hedge on spot, taker ~7 bps), seeds 5,000 tKNTQ + ~$1.6k tUSDC (≈$3.2k pool → maxTrade ≈$325),
+  calls `FastBridge.setPool(tKNTQ, pool)`, and writes `tKNTQ` + `propAMMKntq` into `deployments/elysium-testnet.json`.
+  Not hedged (hedger only runs the HYPE pool; KNTQ needs spot hedging). **The deploy ran twice** (two broadcasts 45 s apart):
+  an unused duplicate exists at tKNTQ `0x6e53…850c` / pool `0x697b…a999` (mock tokens only, harmless; not registered: the live
+  `FastBridge.poolFor(tKNTQ)` = `0x4150…639c`). `broadcast/DeployKntqPool.s.sol/99801/` also holds a local-fork dry run.
+- **Other DEX pools on Elysium testnet (scanned 2026-09-26, blocks 0–332,227):** 23 UniV2-style, 8 V3-style, 3 V4 pools, mostly
+  meme/test tokens vs WHYPE/WETH. USDC-side: WHYPE/USDC v3 1% (`0x04cf…8c2d`, 2 WHYPE + 500 USDC), USDC/WETH v2 (`0xfb3a…746a`,
+  40 USDC + 0.43 WETH), two "tHYPE/tUSDC" v3 pools of OTHER teams' mock tokens. Prices are arbitrary (up to 30× off). That USDC
+  (`0x7d29…47b2`) is canonically bridged from HyperEVM `0x2B33…D8Ab`, NOT Hyperliquid testnet's linked USDC (`0x0b80…c206`).
+- Real testnet **KNTQ** is on Elysium at `0x9856148d9CAcf40F12BCAA9357ca016Ba5B0ED19` (18 dp; canonical bridge of HyperEVM
+  `0xf57e…1d32` = HL testnet KNTQ token 3167). HL mainnet KNTQ: spot `@334` KNTQ/USDC (also dead `@254` vs USDH), **no perp**.
 
 ## 5. Running things
 
@@ -94,6 +110,9 @@ TOPUP_FROM=0xe973105a27e17350500926ae664dfcfe6006d924 ./script/run-bots.sh burne
 ./script/privy-check.sh burner      # sponsor :8787 + test faucet :8788 for the Privy check page (app/, npm --prefix app run dev -> :5173)
 ./script/deploy-oneclick.sh burner  # (re)deploy NeuriioAccount only (run with bots STOPPED: same key as the feeder)
 ./script/deploy-testnet.sh burner   # fresh deploy of oracle + tokens + pool + bridge + NeuriioAccount
+./script/deploy-kntq-pool.sh burner # 2nd pool: tKNTQ/tUSDC + FastBridge.setPool (bots STOPPED)
+npm --prefix app run dev            # the app on http://localhost:5173 (?demo = logged-in account panel with sample data,
+                                    #   dev only; ?check = old Privy testnet check page). Run it in a terminal tab.
 SPONSOR_ACCOUNT=<keystore> TOPUP_FROM=... ./script/run-bots.sh burner   # also runs the gas sponsor on :8787 (SEPARATE keystore w/ a little HYPE)
 forge test                          # 84 passing (+ fork suite: forge test --match-path 'test/fork/*' --fork-url elysium_testnet, 3)
 cd keeper && npm test               # 56 passing
@@ -124,8 +143,23 @@ keeper/src/trade/                     TRADE HUB — what the UI calls (see §8)
 keeper/src/oneclick/                  ONE-CLICK: account.mjs (setup/sign), oneclick.mjs (quote + buy w/ stages),
                                       sponsor.mjs (gas sponsor logic), wire.mjs (HTTP format + SponsorClient)
 keeper/sponsor.mjs                    gas sponsor HTTP service (POST /setup, POST /buy, GET /health); kicks the relayer after a buy
-app/                                  Vite + React + Privy. Today: the testnet check page (src/PrivyCheck.jsx). Privy App ID in
-                                      app/.env.local (VITE_PRIVY_APP_ID, gitignored; public client id). Imports keeper/src directly.
+app/                                  Vite + React 18 + TypeScript (strict) + Privy. Privy App ID in app/.env.local
+                                      (VITE_PRIVY_APP_ID, gitignored; public client id). Imports keeper/src directly.
+  src/main.tsx App.tsx app.css chain.ts   entry (Privy: X/Google/Telegram login, embedded wallet for all, themed modal) ·
+                                      page layout · ALL styles (brand tokens at :root) · Elysium chain def
+  src/components/Morph.tsx            shared "button morphs into panel" (motion spring; Escape/×/outside closes; anchor L/R)
+  src/components/CardStack.tsx        top-right layered deck: hovered card springs up + to front, other sinks
+  src/components/AccountBox.tsx       Account: logged out = blurred placeholder + Login card (opens Privy); logged in = pfp+handle,
+                                      deposit address + copy, Elysium/HyperCore balances, export private key (Privy modal), logout
+  src/components/PointsBox.tsx        Points: 8 blank boxes (no points system yet); logged out = blur + "Login to Account"
+  src/components/MenuBox.tsx          ≡ menu (no box) → panel: Dashboard / Spot / Perps / Outcome (not wired to pages yet)
+  src/components/LogoMarquee.tsx      top-center infinite marquee (reference component, logic unchanged)
+  src/components/SocialLinks.tsx      bottom cards: X (x.com/Neuriio), Docs (GitBook, no URL yet), Telegram (no URL yet)
+  src/lib/tickers.ts                  marquee data: top-10 HL mainnet perps by volume, 5 s allMids poll, green/red vs prevDayPx
+  src/lib/balances.ts useBalances.ts  balances: Elysium (HYPE native+tHYPE, KNTQ, USDC) + HyperCore (HYPE, KNTQ, USDC=spot+perps)
+  src/lib/profile.ts format.ts config.ts motion.ts   social handle/pfp · number formats · token addresses · springs
+  public/brand/logo.png  public/tickers/white/*.svg  public/social/*.svg   logo (256px) · white ticker icons · footer icons
+  src/PrivyCheck.jsx                  old testnet check page (JS), still at ?check
 keeper/test/live/                     live scripts used by script/*-test.sh
 ```
 
@@ -148,6 +182,32 @@ Off-chain money-path code (relayer + sponsor + one-click, JS) ~910 lines. Still 
 - **What `ElysiumCoreWriter` changes for us:** best win = **on-chain hedging** (pool places its own hedge right after the swap; retires
   the hedger bot, easier to trust/audit). Does **not** replace FastBridge/relayer (can't move funds). App order flow stays direct to
   the HL API (already direct; CoreWriter only adds value when an order must be part of an Elysium tx, e.g. one-click "swap KNTQ + open position").
+- **Elysium token bridging (docs checked 2026-09-25, all pre-launch):** no direct Elysium ↔ HyperCore transfer; tokens hop
+  through HyperEVM. **Any standard ERC-20** bridges (not just USDC; no fee-on-transfer tokens). HyperEVM → Elysium ≈ 1 min
+  (canonical Arbitrum bridge / mirror bridge retryables). **Elysium → HyperEVM waits out the challenge period** (docs:
+  "standard optimistic withdrawals"). Read on-chain 2026-09-25 (testnet rollup `0xEbf08e34…39Df` on HyperEVM testnet, via
+  router `0x1aAE2caD…7C45` → inbox → bridge): `confirmPeriodBlocks = 10` (seconds), latest confirmed checkpoint was ~14 min
+  old. **MEASURED 2026-09-25: 0.001 HYPE `ArbSys.withdrawEth` (tx 0x1118f7…a555) was claimable on HyperEVM after
+  ~25 min** (checkpoint cadence, not the 10-block challenge). Elysium's own bridge UI says the same: HyperEVM → Elysium
+  "About a minute"; Elysium → HyperEVM "Claimable on HyperEVM once the rollup confirms it". Mainnet values unpublished.
+  The 0.001 HYPE is still unclaimed on HyperEVM testnet (burner has no HyperEVM gas). HyperEVM ↔ HyperCore via
+  Elysium "deposit wallets" (issuer links each token; factory published at launch). → The native route OUT of Elysium is
+  slow; FastBridge (our inventory) is how users reach HyperCore fast. Same-token 1:1 bridge for HYPE/KNTQ/NEST = possible
+  FastBridge extension (inventory both sides, no pricing/hedge), not built.
+- **App/dev gotchas (2026-09-26):** installing an npm package while Vite runs re-optimizes deps and can load TWO copies of
+  React (blank page, "Invalid hook call"). Fixed in `app/vite.config.js` (`resolve.dedupe` react/react-dom + `optimizeDeps.include`);
+  if it recurs: restart with `npm --prefix app run dev -- --force` and hard-refresh. The Browser pane can't do X OAuth: the user
+  tests logged-in states in Firefox; `?demo` shows the logged-in account panel with sample data. The Elysium RPC returns 403 to
+  Python's default user agent (send one, e.g. `curl/8.4.0`). Anvil forks can't run the oracle push (ArbSys stub).
+- **Hyperliquid API budget per viewer** (limit 1,200 weight/min/IP): allMids = 2, clearinghouse/spotClearinghouse = 2,
+  metaAndAssetCtxs/spotMetaAndAssetCtxs = 20. App today ≈ 26/min (marquee: allMids every 5 s + prevDayPx every 10 min) +
+  ≈ 65/min when logged in (balances every 10 s, spot price lists cached 60 s).
+- **HyperCore price sources:** `allMids` (one call, all main-dex markets); HIP-3 builder dexes (`xyz` 125 markets incl. stock/index
+  perps, `km`, `cash`, …) via `allMids {dex}`; the same ticker can differ a lot between dexes (AAPL xyz $341 vs km $292), pick one.
+  HL serves coin icons at `app.hyperliquid.xyz/coins/<COIN>.svg`; we copy what we use into `app/public/` (never hotlink).
+- **Elysium bridge UI** (`elysium.kinetiq.xyz/testnet-bridge`): HyperEVM → Elysium "About a minute"; Elysium → HyperEVM "Claimable on
+  HyperEVM once the rollup confirms it" (the ~25 min measured above). Validation is permissioned at launch (rollup allowlist on,
+  0.1 HYPE stake), BoLD later.
 - With the read precompile live, the ~2 s price lag mostly disappears → fewer `StaleByTime` reverts, far less lag-arb risk at 5 bps.
 - On Elysium, Solidity `block.number` = **HyperEVM's** height; use ArbSys (`ElysiumBlock.number()`). `block.timestamp` is 1 s resolution and trails real time by ~1–2 s. Blocks only happen when there are txs.
 - Foundry forks don't execute Nitro precompiles (ArbSys is a `0xfe` stub) and don't emulate the `block.number` behavior.
@@ -299,20 +359,53 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
    Up: EIP-7702 delegate (novel, whole-wallet risk), oracle/bridge logic, off-chain relayer/sponsor (+30–60% if in scope, or a
    separate backend review). Down: small codebase on OpenZeppelin, good tests, our ARCHITECTURE/SECURITY_AUDIT docs.
    Recommended: AI audit → one mid-tier firm or top solo (~$15k–$40k) → contest/bug bounty before raising caps (~$30k–$70k total).
+6a. **"Fast exit" for all of Elysium (idea, 2026-09-25):** nobody has one (official bridge page lists only the native rollup
+   bridge). Generalize FastBridge: user sends a token on Elysium, our relayer pays the SAME token on HyperEVM or HyperCore
+   from inventory in seconds; we refill via the ~25 min native withdrawal and charge a small fee (Across/Relay model).
+   Inventory: HyperCore spot + HyperEVM ERC-20s + Elysium (fills with exits, pays re-entries). Pitch to Kinetiq + grant
+   material. Also ask Kinetiq: more frequent checkpoints (the real delay), and whether mainnet will use fast confirmation.
+   Context: every fast bridge skips the challenge window one of two ways: **liquidity** (Across/Relay/deBridge: MM fronts
+   funds; any token; needs inventory) or **messaging** (LayerZero/Hyperlane/Wormhole/CCTP: burn + mint on an off-chain
+   verifier attestation; no inventory, per-token opt-in, trust the verifiers). Hyperlane is permissionless to deploy, so a
+   token issuer (e.g. KNTQ) could run Elysium↔HyperEVM warp routes in seconds. Elysium validation is permissioned at launch
+   (rollup allowlist on, 0.1 HYPE stake) → BoLD later; only then could we post checkpoints ourselves.
+6b. **Pitch deck (user asked 2026-09-25: start it next handoff):** for a raise and/or the Elysium builder grant. Launch capital
+   is needed for: pool reserves on Elysium (both sides), hedge margin on HyperCore, bridge inventory (USDC on HyperCore +
+   on Elysium). Content: what's built + testnet-verified (timings: bridged buy 9.3 s, HL-balance buy 2.9 s, zero-pop-up
+   Privy setup), architecture, security/audit plan (TODO 6), funding ask. Levers that cut capital: ERC-4626 LP vault,
+   start with one pool at low caps, and a **USDC-only launch** (FastBridge needs no pool for USDC, only bridge inventory)
+   so subscriptions can start before the PropAMM is funded.
 7. **Before mainnet:** professional audit, legal/jurisdiction review (leveraged perps + prediction markets), confirm HL fees at scale, contract minEdge granularity (whole bps; 4.5 needs a contract change).
 
-## 10. Next session: UI
+## 10. Next session
 
-Start here. User brings **branding, logo and design**. Build ONLY the one-button buy (§8 "UI direction") on top of
-`keeper/src/oneclick/` + `TradeHub`, in `app/` (Privy is set up; `src/PrivyCheck.jsx` shows the working wiring:
-`usePrivyMain` adapter, setup, buy, withdraw). Still to decide: hosting for the sponsor service (needs its own keystore with a
-little HYPE; `SPONSOR_ACCOUNT=... ./script/run-bots.sh burner`). The backend is ready: quote → live "est.",
-`onStage` → loading animation, result → "boom". Bots must be running for anything to work (§5).
+**The user said they have "something big" for the next chat: start by asking what it is.** Open threads, in order:
+
+1. **KNTQ pool: deployed, not yet exercised.** Bots are stopped. Restart them
+   (`TOPUP_FROM=0xe973105a27e17350500926ae664dfcfe6006d924 ./script/run-bots.sh burner`, now feeds 107 + 334), confirm the feeder
+   log shows `@334` pushes, then a ~$100 test: `previewSellBase` / a swap on `0x4150…639c`, and a one-click buy paid in tKNTQ
+   (the burner holds 45,000 spare tKNTQ from the seed mint; anyone can mint more). Then point the app's KNTQ
+   (`app/src/lib/config.ts`, now the real bridged KNTQ) at tKNTQ if the app should show the test token, and optionally add
+   tKNTQ to the test faucet.
+2. **UI (step 6), where it stands.** Built one element at a time in the user's order; the user decides when an element is done
+   (memory "UI pacing"). Apply style requests only to the element being discussed.
+   - Look: page `#463764` with a soft glow + `#1b1229` dot grid fading to the edges; Lilex font (Google Fonts); cards are a solid
+     gradient `#463764→#40315d`, 0.75px `#8C7D9F` stroke, small dark shadow, 7px corners; white semibold 13px text.
+   - Top-left: logo (52px, 1.5px `#E8E0FF` stroke, soft glow, NO hover animation, links home) + ≡ menu (24px, stroke 2, no box).
+   - Top-center: ticker marquee (BTC ETH SOL ZEC HYPE NEAR XRP ENA XPL SUI; white icons; live price, green/red on the day).
+   - Top-right: layered deck: Account in front (left), Points behind (right), 100×36 each, 24px overlap; hover springs.
+   - Center: blank `tabs-slot` bar + blank `card-slot`. The one-button buy goes here: market → amount → live "est." → Buy →
+     staged loading → result; backend = `OneClick` quote/buy + quoteFromHl/buyFromHl (§8). Bottom: X / Docs / Telegram cards.
+   - Not decided/built: points system (Points shows blank boxes), menu pages, docs + Telegram URLs, our own X OAuth app (Privy's
+     shared one for now), Telegram login (needs a bot + a real domain).
+3. **Pitch deck** (TODO 6b) and the **fast-exit** idea (TODO 6a) are queued.
+4. Sponsor hosting is still open (§8 / TODO 1). `app/src/PrivyCheck.jsx` can be retired once the real buy flow exists.
 
 ## 11. Repository
 
 - **GitHub:** https://github.com/finding-agi/Neuriio. **PRIVATE.** Branch `main`, tracking `origin/main`.
 - **One-click commit:** all 2026-09-25 work (NeuriioAccount, oneclick/, sponsor, scripts, tests, HANDOFF) committed + pushed to `main`.
+- **UI + KNTQ pool commit (2026-09-27):** the `app/` UI so far, the tKNTQ pool scripts + deploy records, HANDOFF, pushed to `main`.
 - **First commit:** `7210a75` "Initial commit: Elysium trade hub (Steps 1-5, testnet-verified)", 64 files, pushed 2026-09-24.
 - **GitHub CLI:** active account `finding-agi` (`holdfebu` also logged in; switch with `gh auth switch`).
   Commits are authored as `von <von@hlos.org>`.

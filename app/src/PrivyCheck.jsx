@@ -12,7 +12,7 @@ import { OneClick } from "../../keeper/src/oneclick/oneclick.mjs";
 import { isDelegatedTo, prepareSetup } from "../../keeper/src/oneclick/account.mjs";
 import { SponsorClient } from "../../keeper/src/oneclick/wire.mjs";
 import { makeTransport } from "../../keeper/src/rpc.mjs";
-import { elysiumTestnet } from "./chain.js";
+import { elysiumTestnet } from "./chain";
 
 const SPONSOR_URL = "http://localhost:8787";
 const FAUCET_URL = "http://localhost:8788";

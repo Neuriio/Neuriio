@@ -7,7 +7,7 @@
 # The key is unlocked from the Foundry keystore once, kept in memory only (never written to
 # disk or printed), and handed to each bot through its environment.
 #
-#   feeder  live       HyperCore mainnet HYPE/USDC prices -> oracle about every 1.5s
+#   feeder  live       HyperCore mainnet HYPE/USDC (107) + KNTQ/USDC (334) prices -> oracle about every 1.5s
 #   hedger  simulated  the pool prices off mainnet HYPE; testnet HYPE is a different market,
 #                      so fills are simulated at the live mainnet price
 #   relayer live       bridge credit follows the account's HyperCore *testnet* USDC balance
@@ -33,7 +33,7 @@ MID=$(curl -s -X POST https://api.hyperliquid.xyz/info -H 'content-type: applica
 PIDS=()
 trap 'echo; echo "stopping bots"; kill "${PIDS[@]}" 2>/dev/null || true' INT TERM EXIT
 
-HL_API=https://api.hyperliquid.xyz/info RPC_URL=$RPC ORACLE=$(jq -r .oracle $D) PRIVATE_KEY=$KEY MARKETS=107 \
+HL_API=https://api.hyperliquid.xyz/info RPC_URL=$RPC ORACLE=$(jq -r .oracle $D) PRIVATE_KEY=$KEY MARKETS=107,334 \
   node keeper/feed-bbo.mjs --loop 1000 >logs/feeder.log 2>&1 &
 PIDS+=($!)
 sleep 4 # let the first price land before the hedger reads the pool
