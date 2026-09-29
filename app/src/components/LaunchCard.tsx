@@ -130,7 +130,7 @@ export function LaunchCard() {
 }
 
 const FTF_LINE =
-  "The platform to grow your brand or combine yourself with friends to form a FTF (Friends Turned Fam) where you and 3 others create a group ticker.";
+  "The platform to tokenize your account and own your defi, or get 3 friends to form a FTF (Friends Turned Fam) and put everyone onchain.";
 
 /**
  * First screen for everyone (750 x 350): "The Future for Creators" + one button (Login / Launch). Launch plays a
@@ -158,6 +158,8 @@ function LaunchIntro({
     <div className="panel card-slot launch-card launch-intro">
       <LaunchBg />
       <IntroCurve />
+      {/* the Neuriio mark, top center on both intro screens (stays while the text changes) */}
+      <motion.img className="li-mark" src="/brand/mark.png" alt="Neuriio" draggable={false} {...rise(0)} />
       <AnimatePresence mode="wait">
         {stage === "welcome" ? (
           <motion.div key="welcome" className="li-content" {...leave}>

@@ -1,4 +1,4 @@
-# Handoff — Neuriio (state as of 2026-09-28 late: pool is now a Uniswap V2 fork, NOT yet redeployed; next: testnet redeploy, then Explore)
+# Handoff — Neuriio (state as of 2026-09-29 end: launchpad + Explore + FTF built and live on testnet; START AT §10 "START HERE")
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
@@ -558,7 +558,48 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
    so subscriptions can start before the PropAMM is funded.
 7. **Before mainnet:** professional audit, legal/jurisdiction review (leveraged perps + prediction markets), confirm HL fees at scale, contract minEdge granularity (whole bps; 4.5 needs a contract change).
 
-## 10. Next session (2026-09-29): redeploy on testnet (V2 fork), then the EXPLORE page
+## 10. START HERE (next session, after 2026-09-29)
+
+### Where things stand
+- **Live on Elysium testnet (redeployed 2026-09-29 late, includes FTF):** Launchpad `0x3c1b64c5d4ecc1ffc7fa8ab2eb643e86aba8932f`,
+  FeeVault `0x24b4a7dae0177a05e9c72b3decd935bc2a418df4`, SwapFactory (our Uniswap V2 fork) `0xd330c4fa19ed9781e3e0f2c3533719e435a14d29`,
+  SwapRouter `0xa96e4c0111e13b62d1d74add60187984d0d16e2f`, WHYPE `0x517f…14c7`. All in `deployments/elysium-testnet.json`.
+  Burner (owner of everything) has ~0.687 testnet HYPE. Supabase secrets + indexer point at this set (from block 987104).
+- **Built and working:** pump.fun-style launchpad (personal tokens + **FTF**: 4 members, one token, fees split 4 ways),
+  V2-fork pool with fees to FeeVault (80% creators / 20% protocol), Explore page (Top 25 by total volume, search,
+  TradingView Lightweight chart with stored gap-free candles + live trades via watcher -> Supabase Realtime, order card
+  that trades from the Neuriio wallet, positions, profile modal, creator fees earned), Account panel (balances,
+  creator-fee Claim, notifications bell), /launch flow (Type: Personal or FTF -> ... ), X login via Privy.
+- **Last commit** includes everything up to the logo on the intro card. Tests: 96 forge, 66 keeper, 11 supabase-shared,
+  app typecheck 0 errors; all 13 migrations pass in order on PGlite (scratch harness, not in the repo).
+
+### How to run (each in its own terminal tab)
+```bash
+npm --prefix app run dev          # then open http://localhost:5173 (NOT 127.0.0.1: Privy only allows localhost)
+./script/run-watcher.sh           # live trades for charts; ONE instance only; restart after any redeploy
+```
+Redeploy flow (only when contracts change): `./script/deploy-launchpad.sh burner` -> `./script/supabase-deploy.sh`
+(db push + secrets + all 4 functions) -> restart the watcher -> optional `./script/launchpad-test.sh burner`.
+`?demo` on /launch and /explore shows everything with sample data (dev only).
+
+### Open items (user's call / next up)
+1. **FTF live test** needs 4 real X accounts that have each logged into Neuriio once (user has a 2nd account).
+2. **Old tokens** (@von_hl, @test_2727525035) from the previous launchpad are still in Supabase, so Explore lists them,
+   but they trade on contracts the app no longer uses. Offer to clear their rows (tokens/trades/candles/points) like
+   the earlier resets; ask first.
+3. **"Ask to be added"** to an FTF exists in the backend (`ftf` action `request`, founder approves in notifications)
+   but there is no UI to browse open FTFs and request yet.
+4. FeeVault **community + buyback wallet addresses** (user still to send) -> `FeeVault.setWallets`.
+5. Move contract ownership from the hot `burner` key to a **multisig** before mainnet.
+6. Decide: do FTF members get launch points (currently none)?
+7. **Formal security audit** (Fable, TODO 6) + `docs/ARCHITECTURE.md` / `docs/SECURITY_AUDIT.md`; two quick sweeps done
+   2026-09-29 (see "Security review" and "Security sweep #2" below).
+8. Later: promo video (`notes/promo-video-higgsfield.md`), pitch deck, hosting for watcher/bots, Supabase Pro before
+   mainnet, Realtime relies on Supabase *legacy* keys (re-test when Supabase retires them).
+9. Working preferences (see memory): build UI one element at a time in the user's order; don't ask "which box next";
+   **don't commit/push unless the user says so, and don't ask about it**.
+
+## 10b. Session notes 2026-09-29 (detail; the summary above is current)
 
 ### DECIDED + BUILT (user, 2026-09-28 late): the pool is a FORK OF UNISWAP V2 (V4 hook idea dropped)
 - User's reasoning: V2 is audited and battle-tested, and a fork lets us keep our own fees. Chosen: "option 2" = the exact
@@ -618,9 +659,9 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
      14 twinkling grid dots, the launchpad's bonding curve rising from the bottom-left with a glowing dot climbing it.
      Only text: "THE FUTURE FOR CREATORS" (20px, cyan `--cyan-2`, semibold, uppercase, 0.22em) + one button in the top
      Account/Points card style (104 × 38): **Login** (logged out) → after login it becomes **Launch** (no auto-advance).
-  2. Launch → label + button blur out, the FTF line reveals word by word in the same style at **14px**: "The platform to grow
-     your brand or combine yourself with friends to form a FTF (Friends Turned Fam) where you and 3 others create a group
-     ticker." → **Next** bottom-right.
+  2. Launch → label + button blur out, the FTF line reveals word by word in the same style at **14px**: "The platform to tokenize
+     your account and own your defi, or get 3 friends to form a FTF (Friends Turned Fam) and put everyone onchain."
+     (text changed 2026-09-29) → **Next** bottom-right.
   3. Flow card **1000 × 512** (same background): left preview (pfp, @handle, $HANDLE, category chip, curve chart, supply /
      graduation mcap / 0.75% fee, "No promise of value."); right 3 steps: Who you are (6 tiles) → Profile (about 50–5,000
      + links) → Launch (optional first buy, estimate, checkbox "I understand @handle has no promise of value or promise any
@@ -628,8 +669,10 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
   - Already launched → straight to the live screen. `?demo` (logged in) / `?demo=out` (logged out) preview with fake data.
   - **Verified with a real X login** (user, Firefox): @von_hl launched end to end on the previous launchpad (then reset:
     new launchpad deployed, old Supabase token/trade/point rows cleared, `users` row kept).
-  - Known nit (user undecided): at 14px the FTF line's first line touches the rising curve on the right; options: narrow the
-    text to 4 lines or move the curve's steep part right.
+  - Neuriio mark (2026-09-29): `app/public/brand/mark.png` (from the user's "Frame 143.png", semi-transparent halo
+    removed, cropped, 480 px wide) shown top center of the intro card on both intro screens (`.li-mark`, 56 px).
+  - FTF line (2026-09-29): centered, max-width 595px -> 3 lines, none touching the curve (gaps 17 / 25 / 45 px at
+    1600px wide; a sweep of 480-680px showed only 590-600px gives 3 lines that all clear it).
   - Browser pane pauses animations while hidden: screenshots can look half-faded; the app is fine (check in Firefox).
   - Dev server: `npm --prefix app run dev` now binds **127.0.0.1:5173** (vite.config.js) — "localhost" was IPv6-only before.
 
