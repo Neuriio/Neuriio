@@ -20,6 +20,12 @@ export class HttpError extends Error {
   }
 }
 
+/** Logs a server-side failure with its details and throws a generic 500 (details never reach the caller). */
+export function internalError(fn: string, what: string, detail: string): never {
+  console.error(`${fn}: ${what}: ${detail}`);
+  throw new HttpError(500, "Something went wrong, try again");
+}
+
 export type XUser = {
   did: string;
   xUserId: string; // permanent X user ID

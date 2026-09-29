@@ -2,7 +2,11 @@
 // Forming an FTF ("Friends Turned Fam": exactly 4 people, one token on the bonding curve) before it launches.
 // Every caller is identified from their Privy login (X account + Neuriio wallet), never from the body.
 //
-//   create  { name, ticker, profile: { about, links } }  -> you're the founder (accepted); returns the draft
+//   create  { name, ticker }            -> you're the founder (accepted); then invite 3 people
+//   mine    {}                          the FTF you're forming (as founder), with member cards
+//   inbox   {}                          notifications: invites to you + requests on FTFs you founded
+//   profile { draftId, category, about, links }   founder, after all 4 accepted
+//   pfp     { draftId, contentType, base64 }      founder: the FTF's picture (png/jpeg/webp, <= 512 KB)
 //   invite  { draftId, handle }        founder invites a Neuriio user by X handle
 //   request { draftId }                ask to be added (anyone logged in)
 //   approve { draftId, xUserId }       founder accepts a request
@@ -19,6 +23,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { createPublicClient, getAddress, http, keccak256, parseAbi, toBytes, zeroAddress } from "npm:viem@2";
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import {
+  CATEGORIES,
+  type Category,
   canonicalFtfProfile,
   FTF_MEMBERS,
   ftfPassTypes,
@@ -26,7 +32,7 @@ import {
   PASS_TTL_SECONDS,
   validFtfIdentity,
 } from "../_shared/launchPass.ts";
-import { CORS, HttpError, json, privyAuth, userRow, type XUser } from "../_shared/privy.ts";
+import { CORS, HttpError, internalError, json, privyAuth, userRow, type XUser } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
 
 const CHAIN_ID = Number(env("CHAIN_ID"));
@@ -45,7 +51,17 @@ const padAbi = parseAbi([
   "function launchSigner() view returns (address)",
 ]);
 
-type Draft = { id: string; founder: string; name: string; ticker: string; profile: string; profile_hash: string; status: string };
+type Draft = {
+  id: string;
+  founder: string;
+  name: string;
+  ticker: string;
+  profile: string | null;
+  profile_hash: string | null;
+  category: Category | null;
+  pfp_url: string | null;
+  status: string;
+};
 type Member = { draft_id: string; x_user_id: string; role: "founder" | "member"; status: string; created_at: string };
 
 // deno-lint-ignore no-explicit-any
@@ -57,10 +73,7 @@ const fail = (status: number, message: string): never => {
   throw new HttpError(status, message);
 };
 
-function dbError(what: string, detail: string): never {
-  console.error(`ftf: ${what}: ${detail}`); // details stay server-side
-  throw new HttpError(500, "Something went wrong, try again");
-}
+const dbError = (what: string, detail: string): never => internalError("ftf", what, detail);
 
 async function draftOf(id: unknown): Promise<Draft> {
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) fail(400, "Unknown FTF");
@@ -89,6 +102,8 @@ async function setMember(draftId: string, xUserId: string, patch: Partial<Member
     .from("ftf_members")
     .upsert({ draft_id: draftId, x_user_id: xUserId, updated_at: new Date().toISOString(), ...patch }, { onConflict: "draft_id,x_user_id" });
   if (error) dbError("member upsert", error.message);
+  // member activity counts as activity on the draft (drafts idle for 7 days expire: expire_ftf_drafts)
+  await db.from("ftf_drafts").update({ updated_at: new Date().toISOString() }).eq("id", draftId);
 }
 
 const accepted = (ms: Member[]) => ms.filter((m) => m.status === "accepted");
@@ -98,8 +113,30 @@ async function tickerTakenOnChain(ticker: string) {
   return token !== zeroAddress;
 }
 
+/** The draft + its members with their X cards (handle, name, picture). */
 async function view(d: Draft) {
-  return { draft: { id: d.id, founder: d.founder, name: d.name, ticker: d.ticker, status: d.status }, members: await membersOf(d.id) };
+  const members = await membersOf(d.id);
+  const cards = await cardsOf(members.map((m) => m.x_user_id));
+  let about: string | null = null;
+  let links: unknown[] = [];
+  if (d.profile) {
+    try {
+      const p = JSON.parse(d.profile);
+      about = p.about ?? null;
+      links = p.links ?? [];
+    } catch { /* stored by us; never malformed */ }
+  }
+  return {
+    draft: { id: d.id, founder: d.founder, name: d.name, ticker: d.ticker, status: d.status, category: d.category, pfpUrl: d.pfp_url, about, links },
+    members: members.map((m) => ({ ...m, ...cards.get(m.x_user_id) })),
+  };
+}
+
+async function cardsOf(ids: string[]) {
+  if (!ids.length) return new Map<string, { x_handle: string; x_name: string | null; x_pfp_url: string | null }>();
+  const { data, error } = await db.from("users").select("x_user_id, x_handle, x_name, x_pfp_url").in("x_user_id", ids);
+  if (error) dbError("cards", error.message);
+  return new Map((data ?? []).map((u) => [u.x_user_id as string, { x_handle: u.x_handle as string, x_name: u.x_name, x_pfp_url: u.x_pfp_url }]));
 }
 
 // ------------------------------------------------------------------ actions
@@ -109,23 +146,107 @@ async function create(who: XUser, body: Body) {
   const { count } = await db.from("ftf_drafts").select("id", { count: "exact", head: true }).eq("founder", who.xUserId).eq("status", "open");
   if ((count ?? 0) >= MAX_OPEN_DRAFTS) fail(429, `You can have ${MAX_OPEN_DRAFTS} open FTFs at a time`);
   if (await tickerTakenOnChain(ticker)) fail(409, `$${ticker} is already an FTF`);
-  let profile: { content: string; hash: `0x${string}` };
-  try {
-    profile = canonicalFtfProfile(body.profile, { name, ticker, founderXUserId: who.xUserId });
-  } catch (e) {
-    return fail(422, (e as Error).message);
-  }
-  const { data, error } = await db
-    .from("ftf_drafts")
-    .insert({ founder: who.xUserId, name, ticker, profile: profile.content, profile_hash: profile.hash })
-    .select("*")
-    .single();
+  const { data, error } = await db.from("ftf_drafts").insert({ founder: who.xUserId, name, ticker }).select("*").single();
   if (error) {
     if (error.code === "23505") fail(409, `$${ticker} is taken by another FTF being formed`);
     dbError("draft insert", error.message);
   }
   await setMember(data.id, who.xUserId, { role: "founder", status: "accepted" });
   return view(data as Draft);
+}
+
+/** The FTF you're forming as founder (newest open one), or null. */
+async function mine(who: XUser) {
+  const { data, error } = await db.from("ftf_drafts").select("*").eq("founder", who.xUserId).eq("status", "open")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) dbError("mine", error.message);
+  return data ? view(data as Draft) : { draft: null, members: [] };
+}
+
+/** Notifications: invites waiting for you, and people asking to join FTFs you founded. */
+async function inbox(who: XUser) {
+  const { data: mineRows, error: e1 } = await db.from("ftf_members").select("draft_id, status, created_at")
+    .eq("x_user_id", who.xUserId).eq("status", "invited");
+  if (e1) dbError("inbox invites", e1.message);
+  const { data: founded, error: e2 } = await db.from("ftf_drafts").select("id").eq("founder", who.xUserId).eq("status", "open");
+  if (e2) dbError("inbox drafts", e2.message);
+  const foundedIds = (founded ?? []).map((d) => d.id as string);
+  const { data: reqRows, error: e3 } = foundedIds.length
+    ? await db.from("ftf_members").select("draft_id, x_user_id, created_at").in("draft_id", foundedIds).eq("status", "requested")
+    : { data: [], error: null };
+  if (e3) dbError("inbox requests", e3.message);
+
+  const draftIds = [...new Set([...(mineRows ?? []).map((r) => r.draft_id as string), ...foundedIds])];
+  const { data: drafts, error: e4 } = draftIds.length
+    ? await db.from("ftf_drafts").select("id, founder, name, ticker, status").in("id", draftIds).eq("status", "open")
+    : { data: [], error: null };
+  if (e4) dbError("inbox draft rows", e4.message);
+  const byId = new Map((drafts ?? []).map((d) => [d.id as string, d]));
+  const cards = await cardsOf([...(drafts ?? []).map((d) => d.founder as string), ...(reqRows ?? []).map((r) => r.x_user_id as string)]);
+
+  const invites = (mineRows ?? []).filter((r) => byId.has(r.draft_id)).map((r) => {
+    const d = byId.get(r.draft_id)!;
+    return { kind: "invite", draftId: d.id, name: d.name, ticker: d.ticker, from: { x_user_id: d.founder, ...cards.get(d.founder) }, at: r.created_at };
+  });
+  const requests = (reqRows ?? []).filter((r) => byId.has(r.draft_id)).map((r) => {
+    const d = byId.get(r.draft_id)!;
+    return { kind: "request", draftId: d.id, name: d.name, ticker: d.ticker, from: { x_user_id: r.x_user_id, ...cards.get(r.x_user_id) }, at: r.created_at };
+  });
+  return { items: [...invites, ...requests].sort((a, b) => String(b.at).localeCompare(String(a.at))) };
+}
+
+/** Founder, once all 4 accepted: category + about + links (the picture comes from `pfp`). */
+async function profile(who: XUser, body: Body) {
+  const d = await draftOf(body.draftId);
+  mustBeOpen(d);
+  mustBeFounder(d, who);
+  if (accepted(await membersOf(d.id)).length !== FTF_MEMBERS) fail(409, `All ${FTF_MEMBERS} members have to accept first`);
+  const category = String(body.category) as Category;
+  if (!CATEGORIES.includes(category)) fail(422, `Pick a category: ${CATEGORIES.join(", ")}`);
+  let p: { content: string; hash: `0x${string}` };
+  try {
+    p = canonicalFtfProfile(body, { name: d.name, ticker: d.ticker, founderXUserId: d.founder, category, pfpUrl: d.pfp_url });
+  } catch (e) {
+    return fail(422, (e as Error).message);
+  }
+  const { error } = await db.from("ftf_drafts")
+    .update({ category, profile: p.content, profile_hash: p.hash, updated_at: new Date().toISOString() }).eq("id", d.id);
+  if (error) dbError("profile", error.message);
+  return view({ ...d, category, profile: p.content, profile_hash: p.hash });
+}
+
+const PFP_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+
+/** Founder: the FTF's picture (stored in the public ftf-pfp bucket). Clears the profile hash (it includes the URL). */
+async function pfp(who: XUser, body: Body) {
+  const d = await draftOf(body.draftId);
+  mustBeOpen(d);
+  mustBeFounder(d, who);
+  const ext = PFP_TYPES[String(body.contentType)];
+  if (!ext) fail(422, "Picture must be PNG, JPEG or WebP");
+  const b64 = typeof body.base64 === "string" ? body.base64 : "";
+  if (b64.length > 700_000) fail(413, "Picture must be 512 KB or smaller");
+  let bytes: Uint8Array;
+  try {
+    bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  } catch {
+    return fail(422, "Couldn't read that picture");
+  }
+  if (bytes.length > 524_288) fail(413, "Picture must be 512 KB or smaller");
+  const path = `${d.id}/${Date.now()}.${ext}`; // new name each time, so caches never show an old picture
+  const { error: upErr } = await db.storage.from("ftf-pfp").upload(path, bytes, { contentType: String(body.contentType), upsert: false });
+  if (upErr) dbError("pfp upload", upErr.message);
+  const url = db.storage.from("ftf-pfp").getPublicUrl(path).data.publicUrl;
+  // the profile document includes the picture URL, so it has to be saved again after a new picture
+  let patch: Partial<Draft> = { pfp_url: url };
+  if (d.profile && d.category) {
+    const old = JSON.parse(d.profile);
+    const p = canonicalFtfProfile({ about: old.about, links: old.links }, { name: d.name, ticker: d.ticker, founderXUserId: d.founder, category: d.category, pfpUrl: url });
+    patch = { ...patch, profile: p.content, profile_hash: p.hash };
+  }
+  const { error } = await db.from("ftf_drafts").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", d.id);
+  if (error) dbError("pfp save", error.message);
+  return view({ ...d, ...patch });
 }
 
 async function invite(who: XUser, body: Body) {
@@ -135,7 +256,8 @@ async function invite(who: XUser, body: Body) {
   const handle = typeof body.handle === "string" ? body.handle.trim().replace(/^@/, "") : "";
   if (!/^[A-Za-z0-9_]{1,15}$/.test(handle)) fail(422, "Enter an X handle");
   // they must have logged into Neuriio once (so we know their X account + wallet)
-  const { data: user } = await db.from("users").select("x_user_id").ilike("x_handle", handle).maybeSingle();
+  // case-insensitive exact match: escape "_" (a LIKE wildcard, and common in handles) so @a_b can't match @axb
+  const { data: user } = await db.from("users").select("x_user_id").ilike("x_handle", handle.replace(/_/g, "\\_")).maybeSingle();
   if (!user) fail(404, `@${handle} hasn't logged into Neuriio yet`);
   const ms = await membersOf(d.id);
   const existing = ms.find((m) => m.x_user_id === user!.x_user_id);
@@ -236,6 +358,7 @@ async function pass(who: XUser, body: Body) {
   mustBeFounder(d, who);
   const acc = accepted(await membersOf(d.id));
   if (acc.length !== FTF_MEMBERS) fail(409, `An FTF launches with exactly ${FTF_MEMBERS} members (${acc.length} accepted)`);
+  if (!d.profile || !d.profile_hash || !d.category) fail(409, "Add the FTF's category and profile first");
   // founder first, then in the order they joined
   const ordered = [acc.find((m) => m.role === "founder")!, ...acc.filter((m) => m.role !== "founder")];
   const { data: users, error } = await db.from("users").select("x_user_id, wallet").in("x_user_id", ordered.map((m) => m.x_user_id));
@@ -280,7 +403,7 @@ async function pass(who: XUser, body: Body) {
 }
 
 const ACTIONS: Record<string, (who: XUser, body: Body) => Promise<unknown>> = {
-  create, invite, request, approve, accept, decline, leave, remove, cancel, pass,
+  create, mine, inbox, profile, pfp, invite, request, approve, accept, decline, leave, remove, cancel, pass,
 };
 
 // ------------------------------------------------------------------ entry

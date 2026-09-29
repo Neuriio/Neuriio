@@ -73,6 +73,9 @@ function toStat(r: Record<string, unknown>): TokenStat {
   return out as TokenStat;
 }
 
+/** For PostgREST `ilike`: "_" is a LIKE wildcard (and common in handles), so escape it; then URL-encode. */
+const likeEscape = (s: string) => encodeURIComponent(s.replace(/_/g, "\\_"));
+
 /** How a token is shown: an FTF by its name, a person by "@handle". */
 export const displayName = (t: TokenStat) => (t.kind === "ftf" ? t.name ?? t.symbol : `@${t.handle}`);
 
@@ -107,7 +110,7 @@ export async function searchTokens(query: string, limit = 10): Promise<TokenStat
       .slice(0, limit);
   }
   const rows = await rest<Record<string, unknown>[]>(
-    `token_stats?select=*&or=(handle.ilike.*${encodeURIComponent(q)}*,name.ilike.*${encodeURIComponent(q)}*)&order=volume_usd_24h.desc&limit=${limit}`,
+    `token_stats?select=*&or=(handle.ilike.*${likeEscape(q)}*,name.ilike.*${likeEscape(q)}*)&order=volume_usd_24h.desc&limit=${limit}`,
   );
   return rows.map(toStat);
 }
@@ -121,7 +124,7 @@ export async function getToken(addressOrHandle: string, opts: { chainFallback?: 
   const byAddress = /^0x[0-9a-fA-F]{40}$/.test(v);
   if (DEMO) return demoTokens().find((t) => (byAddress ? t.address === v.toLowerCase() : t.handle.toLowerCase() === v.toLowerCase())) ?? null;
   if (!byAddress && !/^[A-Za-z0-9_]{1,15}$/.test(v)) return null;
-  const filter = byAddress ? `address=eq.${v.toLowerCase()}` : `handle=ilike.${v}`;
+  const filter = byAddress ? `address=eq.${v.toLowerCase()}` : `handle=ilike.${likeEscape(v)}`; // exact, any case
   const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&${filter}&limit=1`).catch(() => []);
   if (rows[0]) return toStat(rows[0]);
   return opts.chainFallback === false ? null : tokenFromChain(v, byAddress);

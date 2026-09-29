@@ -105,9 +105,19 @@ export function validFtfIdentity(name: unknown, ticker: unknown): { name: string
 /** The FTF's profile, as hashed into its pass: who they are together + links. */
 export function canonicalFtfProfile(
   input: ProfileInput,
-  ftf: { name: string; ticker: string; founderXUserId: string },
+  ftf: { name: string; ticker: string; founderXUserId: string; category: Category; pfpUrl: string | null },
 ): { content: string; hash: `0x${string}` } {
   const { about, links } = validAboutAndLinks(input);
-  const content = JSON.stringify({ v: 1, kind: "ftf", name: ftf.name, ticker: ftf.ticker, founder: ftf.founderXUserId, about, links });
+  const content = JSON.stringify({
+    v: 1,
+    kind: "ftf",
+    name: ftf.name,
+    ticker: ftf.ticker,
+    founder: ftf.founderXUserId,
+    category: ftf.category,
+    pfp: ftf.pfpUrl,
+    about,
+    links,
+  });
   return { content, hash: keccak256(toBytes(content)) };
 }

@@ -20,7 +20,7 @@ import {
   launchPassTypes,
   PASS_TTL_SECONDS,
 } from "../_shared/launchPass.ts";
-import { CORS, HttpError, json, privyAuth, userRow, type XUser } from "../_shared/privy.ts";
+import { CORS, HttpError, internalError, json, privyAuth, userRow, type XUser } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
 
 
@@ -35,17 +35,21 @@ const xUserFromRequest = privyAuth(PRIVY_APP_ID, PRIVY_APP_SECRET);
 
 const PASSES_PER_10_MIN = 5;
 
+/** A server-side failure: logged with details, the caller gets a generic message. */
+function failed(what: string, detail: string) {
+  try {
+    internalError("launch-pass", what, detail);
+  } catch (e) {
+    return json(500, { error: (e as Error).message });
+  }
+  return json(500, { error: "Something went wrong, try again" });
+}
+
 const launchpadAbi = parseAbi([
   "function tokenOfXUser(uint64) view returns (address)",
   "function tokenOfCreator(address) view returns (address)",
   "function launchSigner() view returns (address)",
 ]);
-
-/** Logs the database error server-side; the caller only gets a generic message. */
-function serverError(what: string, detail: string) {
-  console.error(`launch-pass: ${what}: ${detail}`);
-  return json(500, { error: "Could not save your profile, try again" });
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -101,12 +105,12 @@ Deno.serve(async (req) => {
   // 5. record the user + profile, sign
   const now = new Date();
   const { error: userErr } = await db.from("users").upsert(userRow(who), { onConflict: "privy_id" });
-  if (userErr) return serverError("users upsert", userErr.message);
+  if (userErr) return failed("users upsert", userErr.message);
   const { error: profileErr } = await db.from("creator_profiles").upsert(
     { hash: profile.hash, x_user_id: xUserId, content: profile.content },
     { onConflict: "hash", ignoreDuplicates: true },
   );
-  if (profileErr) return serverError("creator_profiles upsert", profileErr.message);
+  if (profileErr) return failed("creator_profiles upsert", profileErr.message);
 
   const deadline = BigInt(Math.floor(now.getTime() / 1000) + PASS_TTL_SECONDS);
   const pass = {

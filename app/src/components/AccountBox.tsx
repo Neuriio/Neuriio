@@ -7,11 +7,13 @@
 //   export (Privy's own secure modal) and log out.
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
-import { Check, Copy } from "lucide-react";
+import { Bell, Check, Copy } from "lucide-react";
+import { useNotifications } from "../lib/ftf";
+import { NotificationsModal } from "./NotificationsModal";
 import { useExportWallet, usePrivy, useWallets } from "@privy-io/react-auth";
 import { formatEther, type Address, type EIP1193Provider } from "viem";
-import { elysiumTestnet } from "../chain";
 import { claimCreatorFees, creatorFees } from "../lib/fees";
+import { elysiumProvider } from "../lib/tx";
 import { useHypeUsd } from "../lib/tickers";
 import { useBalances } from "../lib/useBalances";
 import type { Balances, VenueBalance } from "../lib/balances";
@@ -36,8 +38,7 @@ function AccountMorph() {
   const wallet = wallets.find((w) => w.walletClientType === "privy");
   const { balances } = useBalances(wallet?.address as Address | undefined);
   const fees = useCreatorFees(wallet?.address as Address | undefined, async () => {
-    await wallet!.switchChain(elysiumTestnet.id);
-    return (await wallet!.getEthereumProvider()) as EIP1193Provider;
+    return elysiumProvider(wallet!);
   });
   return (
     <MorphView
@@ -72,6 +73,9 @@ type MorphViewProps = {
 
 function MorphView({ me, address, balances, fees, onExport, onLogout, locked = false, loginReady = true, onLogin }: MorphViewProps) {
   const reduce = useReducedMotion();
+  const { items } = useNotifications();
+  const count = locked ? 0 : items.length;
+  const [bellOpen, setBellOpen] = useState(false);
   return (
     <Morph
       label="Account"
@@ -83,6 +87,11 @@ function MorphView({ me, address, balances, fees, onExport, onLogout, locked = f
           <span className="account-id">
             <Avatar src={me.avatar} initial={me.initial} />
             <span className="account-name">{me.name}</span>
+            {count > 0 && (
+              <span className="notif-count" aria-label={`${count} notifications`}>
+                {count}
+              </span>
+            )}
           </span>
         )
       }
@@ -90,9 +99,15 @@ function MorphView({ me, address, balances, fees, onExport, onLogout, locked = f
         locked ? (
           <span className="account-name">Account</span>
         ) : (
-          <span className="account-id">
-            <Avatar src={me.avatar} initial={me.initial} />
-            <span className="account-name">{me.name}</span>
+          <span className="account-head">
+            <span className="account-id">
+              <Avatar src={me.avatar} initial={me.initial} />
+              <span className="account-name">{me.name}</span>
+            </span>
+            <button className="notif-bell" onClick={() => setBellOpen(true)} aria-label="Notifications" title="Notifications">
+              <Bell size={14} />
+              {count > 0 && <span className="notif-count">{count}</span>}
+            </button>
           </span>
         )
       }
@@ -129,6 +144,7 @@ function MorphView({ me, address, balances, fees, onExport, onLogout, locked = f
       <Venue name="Elysium" v={balances?.elysium} />
       <Venue name="HyperCore" v={balances?.hypercore} />
       {!locked && fees && <CreatorFees fees={fees} />}
+      {!locked && <NotificationsModal open={bellOpen} onClose={() => setBellOpen(false)} />}
       {!locked && (
         <div className="dropdown-actions">
           {onExport && (

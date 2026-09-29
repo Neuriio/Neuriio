@@ -2,8 +2,8 @@
 //   on the bonding curve: Launchpad.buy / sell   (quotes: previewBuy / previewSell; fee 0.75%)
 //   graduated:            SwapRouter.buy / sell  (quotes: quoteBuy / quoteSell;     fee 0.25%)
 // Quotes are exact on-chain previews (price impact + fee included). Sells approve the exact amount first.
-import { createWalletClient, custom, erc20Abi, parseAbi, type Address, type EIP1193Provider } from "viem";
-import { elysiumTestnet } from "../chain";
+import { erc20Abi, parseAbi, type Address, type EIP1193Provider } from "viem";
+import { confirmed, walletClientFor } from "./tx";
 import { deployment } from "./config";
 import { LAUNCHPAD, launchpadAbi as padAbi, pub } from "./launch";
 
@@ -57,7 +57,7 @@ export async function trade(
   args: { token: Address; graduated: boolean; side: Side; amountIn: bigint; minOut: bigint },
   onStage: (s: "approving" | "confirming") => void,
 ) {
-  const wallet = createWalletClient({ account, chain: elysiumTestnet, transport: custom(provider) });
+  const wallet = walletClientFor(provider, account);
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
   const { token, graduated, side, amountIn } = args;
   if (side === "sell") {
@@ -66,7 +66,7 @@ export async function trade(
     if (allowance < amountIn) {
       onStage("approving");
       const h = await wallet.writeContract({ address: token, abi: erc20Abi, functionName: "approve", args: [spender, amountIn] });
-      await pub.waitForTransactionReceipt({ hash: h });
+      await confirmed(h);
     }
   }
   onStage("confirming");
@@ -77,8 +77,7 @@ export async function trade(
     : side === "buy"
       ? await wallet.writeContract({ address: LAUNCHPAD, abi: padAbi, functionName: "buy", args: [token, args.minOut, deadline], value: amountIn })
       : await wallet.writeContract({ address: LAUNCHPAD, abi: padAbi, functionName: "sell", args: [token, amountIn, args.minOut, deadline] });
-  const receipt = await pub.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success") throw new Error("Transaction reverted");
+  await confirmed(hash);
   return hash;
 }
 

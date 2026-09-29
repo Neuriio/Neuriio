@@ -1,6 +1,6 @@
 // Launch ("Tokenize yourself"): categories, curve math for the first-buy estimate, the launch-pass backend call and
 // the Launchpad transaction. Mirrors src/launch/Launchpad.sol and supabase/functions/launch-pass.
-import { createPublicClient, fallback, formatEther, http, parseAbi, parseEther, type Address } from "viem";
+import { createPublicClient, fallback, formatEther, http, keccak256, parseAbi, parseEther, toBytes, type Address } from "viem";
 import { elysiumTestnet } from "../chain";
 import { deployment, ELYSIUM_RPCS, SUPABASE_URL } from "./config";
 
@@ -29,6 +29,9 @@ const VIRTUAL_TOKENS = 1_073_000_000;
 export const launchpadAbi = parseAbi([
   "struct LaunchPass { address creator; uint64 xUserId; string handle; uint8 category; bytes32 profileHash; uint256 deadline; }",
   "function launch(LaunchPass pass, bytes signature, uint256 minTokensOut) payable returns (address)",
+  "struct FtfPass { address founder; string name; string ticker; uint64[4] memberXIds; address[4] members; bytes32 profileHash; uint256 deadline; }",
+  "function launchFtf(FtfPass pass, bytes signature, uint256 minTokensOut) payable returns (address)",
+  "function tokenOfFtfTicker(bytes32) view returns (address)",
   "function buy(address token, uint256 minTokensOut, uint256 deadline) payable returns (uint256)",
   "function sell(address token, uint256 tokensIn, uint256 minHypeOut, uint256 deadline) returns (uint256)",
   "function previewBuy(address token, uint256 value) view returns (uint256 tokensOut, uint256 hypeIn, uint256 fee, uint256 refund)",
@@ -102,4 +105,27 @@ export function launchArgs(r: LaunchPassResponse, firstBuyHype: number, p: Curve
   const minOut = firstBuyHype > 0 ? parseEther(String(Math.floor(est * 0.98))) : 0n;
   const pass = { ...r.pass, xUserId: BigInt(r.pass.xUserId), deadline: BigInt(r.pass.deadline) };
   return { args: [pass, r.signature, minOut] as const, value: firstBuyHype > 0 ? parseEther(String(firstBuyHype)) : 0n };
+}
+
+/** Arguments for Launchpad.launchFtf (same first-buy handling as `launchArgs`). */
+export function launchFtfArgs(
+  r: { pass: { founder: Address; name: string; ticker: string; memberXIds: string[]; members: Address[]; profileHash: `0x${string}`; deadline: string }; signature: `0x${string}` },
+  firstBuyHype: number,
+  p: CurveParams,
+) {
+  const est = estimateFirstBuy(firstBuyHype, p).tokens;
+  const minOut = firstBuyHype > 0 ? parseEther(String(Math.floor(est * 0.98))) : 0n;
+  const pass = {
+    ...r.pass,
+    memberXIds: r.pass.memberXIds.map(BigInt) as unknown as readonly [bigint, bigint, bigint, bigint],
+    members: r.pass.members as unknown as readonly [Address, Address, Address, Address],
+    deadline: BigInt(r.pass.deadline),
+  };
+  return { args: [pass, r.signature, minOut] as const, value: firstBuyHype > 0 ? parseEther(String(firstBuyHype)) : 0n };
+}
+
+/** The launched FTF token for a ticker (or null). */
+export async function ftfTokenOf(ticker: string): Promise<Address | null> {
+  const t = await pub.readContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "tokenOfFtfTicker", args: [keccak256(toBytes(ticker))] });
+  return /^0x0{40}$/i.test(t) ? null : t;
 }

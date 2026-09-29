@@ -5,7 +5,7 @@
 // Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are provided by Supabase.)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { CORS, HttpError, json, privyAuth, userRow } from "../_shared/privy.ts";
+import { CORS, HttpError, internalError, json, privyAuth, userRow } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
 
 
@@ -18,10 +18,7 @@ Deno.serve(async (req) => {
   try {
     const who = await xUserFromRequest(req);
     const { error } = await db.from("users").upsert(userRow(who), { onConflict: "privy_id" });
-    if (error) {
-      console.error(`register: users upsert: ${error.message}`); // details stay server-side
-      return json(500, { error: "Could not save your profile, try again" });
-    }
+    if (error) internalError("register", "users upsert", error.message);
 
     const [{ data: token }, { data: points }] = await Promise.all([
       db.from("tokens").select("*").eq("x_user_id", who.xUserId).maybeSingle(),

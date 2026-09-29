@@ -12,16 +12,20 @@ D=deployments/elysium-testnet.json
 SIGNER=$(jq -r '.launchSigner // empty' $D)
 [ -n "$SIGNER" ] || { echo "No launchSigner in $D: run ./script/supabase-setup.sh first" >&2; exit 1; }
 
-LAUNCH_SIGNER=$SIGNER WHYPE=$(jq -r '.whype // empty' $D) VIRTUAL_HYPE=${VIRTUAL_HYPE:-100000000000000000} FEE_BPS=${FEE_BPS:-75} \
-  forge script script/DeployLaunchpad.s.sol --rpc-url elysium_testnet --account "$ACCOUNT" --broadcast --slow
-
-RUN=broadcast/DeployLaunchpad.s.sol/99801/run-latest.json
-addr() { jq -r --arg c "$1" '[.transactions[] | select(.contractName==$c and .transactionType=="CREATE")][0].contractAddress' $RUN; }
-W=$(addr WHYPE); [ "$W" = "null" ] && W=$(jq -r .whype $D)
-jq --arg w "$W" --arg f "$(addr UniswapV2Factory)" --arg l "$(addr Launchpad)" --arg r "$(addr SwapRouter)" --arg v "$(addr FeeVault)" \
+# Addresses come from the script's own console lines ("Launchpad: 0x..."), not from the broadcast's contractName
+# (forge leaves that null for contracts built with a separate compiler profile, like the size-optimized Launchpad).
+OUT=$(LAUNCH_SIGNER=$SIGNER WHYPE=$(jq -r '.whype // empty' $D) VIRTUAL_HYPE=${VIRTUAL_HYPE:-100000000000000000} FEE_BPS=${FEE_BPS:-75} \
+  forge script script/DeployLaunchpad.s.sol --rpc-url elysium_testnet --account "$ACCOUNT" --broadcast --slow | tee /dev/stderr)
+addr() { echo "$OUT" | awk -v k="$1" '$1 == k":" { print tolower($2) }' | tail -1; }
+W=$(addr WHYPE); F=$(echo "$OUT" | awk '/SwapFactory \(UniswapV2Factory\):/ { print tolower($NF) }' | tail -1)
+L=$(addr Launchpad); R=$(addr SwapRouter); V=$(addr FeeVault)
+for x in "$W" "$F" "$L" "$R" "$V"; do
+  [[ "$x" =~ ^0x[0-9a-f]{40}$ ]] || { echo "Couldn't read a deployed address from the script output: '$x'" >&2; exit 1; }
+done
+jq --arg w "$W" --arg f "$F" --arg l "$L" --arg r "$R" --arg v "$V" \
   '. + {whype: $w, swapFactory: $f, launchpad: $l, swapRouter: $r, feeVault: $v}' $D > $D.tmp && mv $D.tmp $D
 if [ -f supabase/.temp/project-ref ]; then
-  supabase secrets set --project-ref "$(cat supabase/.temp/project-ref)" LAUNCHPAD_ADDRESS="$(addr Launchpad)" >/dev/null \
+  supabase secrets set --project-ref "$(cat supabase/.temp/project-ref)" LAUNCHPAD_ADDRESS="$L" >/dev/null \
     && echo "== Supabase LAUNCHPAD_ADDRESS updated"
 fi
 echo "== Deployed (saved to $D)"

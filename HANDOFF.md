@@ -79,8 +79,21 @@ bonding curve: at /launch users choose "Launch yourself" (individual, unchanged)
 - **App (built):** `register` now called after every X login (`lib/register.ts`, once per session: fresh pfp, invitable,
   points). Explore shows FTFs by name with an "FTF" badge, search matches FTF name/ticker, Profile modal lists the 4
   members (links to X), chain fallback reads FTFs too. `?demo` has one FTF: "Degen Den" ($DEN).
-- **NOT built yet (design with the user, one element at a time):** the /launch choice screen and the FTF screens
-  (create draft, invite / ask to join, approve / accept, status of each FTF being formed, launch).
+- **FTF launch UI BUILT (user's design, 2026-09-29):** /launch flow card starts with **Type: Personal or FTF**
+  (Personal disabled with an "Open in Explore" link if you already launched). Personal: Type -> Who you are ->
+  Profile -> Launch (unchanged after Type). FTF: Type -> **Members** (FTF name + ticker + 3 X handles -> "Send
+  invites"; live member list: In / Invited / Declined, remove, invite someone else; Next unlocks at 4/4) ->
+  **Category** ("What is this FTF known for?") -> **Profile** (+ **FTF picture upload**, PNG/JPEG/WebP <= 512 KB,
+  Storage bucket `ftf-pfp`) -> Launch (signed pass from `ftf` -> `launchFtf`). The flow resumes an open FTF you
+  founded (`mine`). Left preview shows the FTF name / ticker / picture and 4 member slots.
+  **Notifications:** green count on the Account card; bell next to your name in the Account panel opens
+  `NotificationsModal` (blurred page): invites to you (Accept / Decline: an off-chain yes, no transaction) and
+  requests on FTFs you founded (Approve / Decline). `lib/ftf.ts` polls `inbox` every 20 s. Morph panels ignore
+  clicks/Escape inside `[data-morph-keep]` windows. Backend: migration `20260929030000_ftf_flow.sql` (draft profile
+  set later, category + pfp_url, tokens.pfp_url shown by token_stats, public ftf-pfp bucket), `ftf` actions `mine`,
+  `inbox`, `profile`, `pfp`; `create` is name + ticker only; indexer copies picture + category onto the token.
+  Verified end to end in `?demo`. **Real FTF launch needs the Launchpad redeploy** (the live one has no launchFtf);
+  invitees must have logged into Neuriio once (register runs after login).
 - **Needs a redeploy** (new Launchpad + FeeVault + factory, like 2026-09-29) before FTFs work on-chain: the current
   testnet Launchpad `0x6ef0…cb53` has no `launchFtf`, and redeploying orphans its tokens (@von_hl) again.
 
@@ -669,7 +682,17 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
     blockTimestamp or receive time). Supabase's REST broadcast endpoint takes ~300-490 ms to reach a viewer; a
     persistent Realtime websocket ~75-135 ms, so the watcher now sends over joined private channels (one per active
     token, LRU 80, left after 10 idle min; newest tokens pre-joined at start; REST only while a channel joins).
-  - **REDEPLOYED 2026-09-29 (V2 fork), CURRENT testnet set:** Launchpad `0x6ef011b34d8c08e20a35f4d25cdcc84070e4cb53`,
+  - **REDEPLOYED AGAIN 2026-09-29 late (FTF), CURRENT testnet set:** Launchpad
+    `0x3c1b64c5d4ecc1ffc7fa8ab2eb643e86aba8932f` (launchFtf, 20,943 B), FeeVault `0x24b4a7dae0177a05e9c72b3decd935bc2a418df4`
+    (wallets not set), SwapFactory `0xd330c4fa19ed9781e3e0f2c3533719e435a14d29`, SwapRouter
+    `0xa96e4c0111e13b62d1d74add60187984d0d16e2f`, WHYPE reused; indexer from block 987104. Wiring verified on-chain.
+    **Deploy-script bug found + fixed:** forge left `contractName` null for contracts built with the extra "size"
+    compiler profile, so `deploy-launchpad.sh` wrote "null" addresses (and a "null" LAUNCHPAD_ADDRESS secret);
+    it now reads addresses from the script's own console lines and refuses to write anything that isn't an address.
+    `supabase-deploy.sh` now also deploys `ftf`. The earlier "PropAMM got deployed" worry was forge's stale-artifact
+    warning (fixed by `forge clean`). Tokens from the previous launchpad (@von_hl, @test_2727525035) are still
+    in Supabase and show in Explore, but trade against contracts the app no longer points at.
+  - *Superseded 2026-09-29 (V2 fork, no FTF):* Launchpad `0x6ef011b34d8c08e20a35f4d25cdcc84070e4cb53`,
     SwapFactory (UniswapV2 fork) `0xabef87d6c9b502d8062faea07c05d2b807f5c26b`, SwapRouter
     `0x92a1452f58e27b45bc6bd964b40a779dd3ed167e`, FeeVault `0xf6e6c291447cc72938a458639b3eccf72b4f3b43` (wallets not
     set), WHYPE reused. Wiring verified on-chain; `launchpad-test.sh` ALL CHECKS PASSED (@test_2727525035 graduated,
@@ -792,6 +815,18 @@ Data to build for it (Supabase, public-read):
   blocks sells when paused; the change ships with the next deploy (mainnet); (2) **every contract is owned by the single hot `burner` key**
   (Launchpad pause/fee<=2%/signer, FeeVault wallets, factory feeToSetter): move to a multisig before mainnet;
   (3) `indexer` stays public (idempotent + run-locked; the app pings it after launches/trades).
+
+### Security sweep #2 (2026-09-29 late, FTF code)
+- **FIXED:** `_` is a LIKE wildcard, so the FTF invite lookup (`users.x_handle ilike`) could match a different
+  account (`von_hl` ~ `vonXhl`; verified live) and Explore's `?t=<handle>` too. Escaped everywhere; indexer uses exact
+  ticker matches.
+- **FIXED:** open FTF drafts reserved tickers forever: `expire_ftf_drafts()` cancels drafts idle 7 days (pg_cron
+  daily, migration `20260929040000_ftf_expiry.sql`; member activity counts as activity).
+- Verified: anon can't upload to the `ftf-pfp` bucket (RLS 403); pictures limited to PNG/JPEG/WebP <= 512 KB (no SVG);
+  FTF identity always from Privy; founder-only actions checked; FeeVault claims are per member (no DoS).
+- Known limit: the `ftf` function's rate limit is per function instance (in memory).
+- Consolidated: shared `internalError()` for Edge Functions; `app/src/lib/tx.ts` (Elysium provider, wallet client,
+  confirmed receipt) replaces 5 hand-written copies.
 
 ### "Their pool": Elysium AMMs + fees (researched 2026-09-28)
 - **Docs:** Kinetiq runs NO pool/DEX; AMMs are left to builders ("launch on an Elysium AMM", "prop-AMM markets", market-making

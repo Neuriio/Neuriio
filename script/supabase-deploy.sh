@@ -20,7 +20,7 @@ supabase secrets set --project-ref $REF LAUNCHPAD_ADDRESS="$PAD" ROUTER_ADDRESS=
   WHYPE_ADDRESS="$(jq -r .whype $D)" INDEX_FROM_BLOCK="$FROM" RPC_URL=$RPC HL_TESTNET=true >/dev/null
 echo "   indexing Launchpad $PAD from block $FROM"
 
-for f in launch-pass register indexer; do
+for f in launch-pass register indexer ftf; do
   echo "== Deploying $f"
   supabase functions deploy $f --project-ref $REF --use-api
 done

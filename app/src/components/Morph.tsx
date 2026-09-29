@@ -54,9 +54,13 @@ export function Morph({
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    // a window opened from inside the panel (e.g. notifications) is marked data-morph-keep: while one is open,
+    // clicks in it and Escape belong to it, not to this panel
+    const keep = () => document.querySelector("[data-morph-keep]");
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !keep() && setOpen(false);
     const onPointer = (e: PointerEvent) => {
       const t = e.target as Node;
+      if ((t as Element).closest?.("[data-morph-keep]")) return;
       if (!slotRef.current?.contains(t) && !panelRef.current?.contains(t)) setOpen(false);
     };
     window.addEventListener("keydown", onKey);

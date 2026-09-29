@@ -125,11 +125,18 @@ async function indexElysium(usd: number | null) {
     const { error } = await db.from("tokens").upsert(launched, { onConflict: "address", ignoreDuplicates: true });
     if (error) throw new Error(`tokens: ${error.message}`);
   }
-  // an FTF that launched: close its draft (matched by ticker; only one open draft per ticker)
+  // an FTF that launched: copy its picture + category onto the token, then close its draft (matched by ticker;
+  // only one open draft per ticker)
   for (const t of launched.filter((x) => x.kind === "ftf")) {
+    const { data: draft } = await db.from("ftf_drafts").select("pfp_url, category")
+      .eq("status", "open").eq("ticker", t.symbol).maybeSingle(); // tickers are stored upper-case
+    if (draft) {
+      const { error: tErr } = await db.from("tokens").update({ pfp_url: draft.pfp_url, category: draft.category }).eq("address", t.address);
+      if (tErr) throw new Error(`ftf token: ${tErr.message}`);
+    }
     const { error } = await db.from("ftf_drafts")
       .update({ status: "launched", token: t.address, updated_at: new Date().toISOString() })
-      .eq("status", "open").ilike("ticker", t.symbol);
+      .eq("status", "open").eq("ticker", t.symbol);
     if (error) throw new Error(`ftf draft: ${error.message}`);
   }
   for (const l of padLogs.filter((l) => l.eventName === "Graduated")) {

@@ -3,12 +3,12 @@
 //   (price impact + fee); 1% slippage limit; sells approve the exact amount first. `?demo`: simulated wallet + trades.
 import { useEffect, useMemo, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { formatEther, parseEther, type Address, type EIP1193Provider } from "viem";
-import { elysiumTestnet } from "../chain";
+import { formatEther, parseEther, type Address } from "viem";
 import { DEMO, displayName, type TokenStat } from "../lib/explore";
 import { compactUsd } from "../lib/format";
 import { SUPABASE_URL } from "../lib/config";
 import { balances, friendlyTradeError, minOut, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
+import { elysiumProvider } from "../lib/tx";
 
 const QUICK_BUY = ["0.1", "0.5", "1", "5"];
 const QUICK_SELL = [25, 50, 75, 100];
@@ -96,8 +96,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
       if (DEMO) {
         await new Promise((r) => setTimeout(r, 1200));
       } else {
-        await wallet!.switchChain(elysiumTestnet.id);
-        const provider = (await wallet!.getEthereumProvider()) as EIP1193Provider;
+        const provider = await elysiumProvider(wallet!);
         await trade(
           provider,
           account,

@@ -18,10 +18,14 @@ import {
   Microscope,
   Plus,
   Rocket,
+  Upload,
+  UserRound,
+  Users,
   X,
 } from "lucide-react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { createWalletClient, custom, formatEther, type Address } from "viem";
+import { formatEther, type Address, type EIP1193Provider } from "viem";
+import { confirmed, elysiumProvider, walletClientFor } from "../lib/tx";
 import { elysiumTestnet } from "../chain";
 import { amount } from "../lib/format";
 import { profileOf } from "../lib/profile";
@@ -37,7 +41,9 @@ import {
   graduationMcapHype,
   LAUNCHPAD,
   launchArgs,
+  ftfTokenOf,
   launchedTokenOf,
+  launchFtfArgs,
   launchpadAbi,
   MAX_LINKS,
   pub,
@@ -45,6 +51,7 @@ import {
 } from "../lib/launch";
 import { EASE_OUT } from "../lib/motion";
 import { SUPABASE_URL } from "../lib/config";
+import { fileToBase64, FTF_NAME_RE, FTF_TICKER_RE, ftfCall, type FtfPassResponse, type FtfView } from "../lib/ftf";
 
 // Dev-only previews with a sample profile and a simulated launch:
 //   localhost:5173/launch?demo      logged in (intro shows "Launch")
@@ -61,7 +68,21 @@ const ICONS: Record<CategoryId, typeof Flame> = {
   builder: Hammer,
   creator: Brush,
 };
-const STEPS = ["Who you are", "Profile", "Launch"] as const;
+type Mode = "personal" | "ftf";
+type StepId = "type" | "who" | "members" | "category" | "profile" | "launch";
+const STEP_IDS: Record<Mode, StepId[]> = {
+  personal: ["type", "who", "profile", "launch"],
+  ftf: ["type", "members", "category", "profile", "launch"],
+};
+const STEP_LABEL: Record<StepId, string> = {
+  type: "Type",
+  who: "Who you are",
+  members: "Members",
+  category: "Category",
+  profile: "Profile",
+  launch: "Launch",
+};
+const FTF_SIZE = 4;
 const STAGES = ["Checking your X account", "Launching on Elysium", "You're live"] as const;
 const QUICK_BUYS = ["0", "0.1", "0.5", "1"];
 const TESTNET_PARAMS: CurveParams = { virtualHype: 0.1, feeBps: 75 }; // until the chain answers
@@ -86,6 +107,7 @@ export function LaunchCard() {
   }, [wallet?.address]);
 
   if (!started && !launchedToken) {
+    // (someone who already launched personally skips the intro; the Type step offers them an FTF)
     return (
       <LaunchIntro
         loggedIn={loggedIn}
@@ -102,7 +124,7 @@ export function LaunchCard() {
       avatar={me.avatar}
       address={wallet?.address as Address | undefined}
       getAccessToken={getAccessToken}
-      getProvider={wallet ? async () => (await wallet.switchChain(elysiumTestnet.id), wallet.getEthereumProvider()) : undefined}
+      getProvider={wallet ? () => elysiumProvider(wallet) : undefined}
     />
   );
 }
@@ -196,12 +218,21 @@ type ViewProps = {
   address?: Address;
   demo?: boolean;
   getAccessToken?: () => Promise<string | null>;
-  getProvider?: () => Promise<unknown>;
+  getProvider?: () => Promise<EIP1193Provider>;
 };
 
 function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider }: ViewProps) {
   const reduce = useReducedMotion();
+  const [mode, setMode] = useState<Mode | null>(null);
+  const [personalToken, setPersonalToken] = useState<Address | null>(null);
   const [step, setStep] = useState(0);
+  // FTF being formed
+  const [ftf, setFtf] = useState<FtfView>({ draft: null, members: [] });
+  const [ftfName, setFtfName] = useState("");
+  const [ftfTicker, setFtfTicker] = useState("");
+  const [invites, setInvites] = useState(["", "", ""]);
+  const [ftfBusy, setFtfBusy] = useState(false);
+  const [ftfError, setFtfError] = useState<string | null>(null);
   const [category, setCategory] = useState<CategoryId | null>(null);
   const [about, setAbout] = useState("");
   const [links, setLinks] = useState<Link[]>([{ label: "X", url: `https://x.com/${handle}` }]);
@@ -214,20 +245,97 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   useEffect(() => {
     fetchCurveParams().then(setParams).catch(() => {});
   }, []);
-  // already launched? (one token per X account and wallet)
+  // already launched personally? (one per X account and wallet) Then only an FTF is left to launch.
   useEffect(() => {
     if (!address) return;
-    launchedTokenOf(address).then((t) => t && setPhase({ kind: "live", token: t })).catch(() => {});
+    launchedTokenOf(address).then(setPersonalToken).catch(() => {});
     pub.getBalance({ address }).then((b) => setBalance(Number(formatEther(b)))).catch(() => {});
   }, [address]);
 
+  const ids = STEP_IDS[mode ?? "personal"];
+  const current = ids[step];
+  const tokenFor = getAccessToken ?? (async () => null);
+  const acceptedCount = ftf.members.filter((m) => m.status === "accepted").length;
+
+  // FTF: pick up the one you're forming (resume), and keep member statuses fresh while on Members
+  const loadFtf = async () => {
+    const v = await ftfCall<FtfView>(tokenFor, "mine");
+    setFtf(v);
+    if (v.draft) {
+      if (v.draft.category) setCategory(v.draft.category);
+      if (v.draft.about) setAbout(v.draft.about);
+      if (v.draft.links?.length) setLinks(v.draft.links);
+    }
+    return v;
+  };
+  useEffect(() => {
+    if (mode !== "ftf") return;
+    loadFtf().catch(() => {});
+  }, [mode]);
+  useEffect(() => {
+    if (mode !== "ftf" || current !== "members" || !ftf.draft) return;
+    const id = setInterval(() => loadFtf().catch(() => {}), 4_000);
+    return () => clearInterval(id);
+  }, [mode, current, ftf.draft?.id]);
+
+  async function ftfDo(action: string, body: Record<string, unknown>) {
+    setFtfBusy(true);
+    setFtfError(null);
+    try {
+      const v = await ftfCall<FtfView>(tokenFor, action, body);
+      setFtf(v);
+      return v;
+    } catch (e) {
+      setFtfError((e as Error).message);
+      throw e;
+    } finally {
+      setFtfBusy(false);
+    }
+  }
+
+  /** Members step, before the draft exists: create it, then invite the 3 handles. */
+  async function sendInvites() {
+    try {
+      const v = await ftfDo("create", { name: ftfName.trim(), ticker: ftfTicker.trim() });
+      for (const h of invites.map((x) => x.trim().replace(/^@/, "")).filter(Boolean)) {
+        await ftfDo("invite", { draftId: v.draft!.id, handle: h });
+      }
+    } catch {
+      /* shown in ftfError */
+    }
+  }
+
+  async function uploadPfp(file: File) {
+    if (!ftf.draft) return;
+    if (file.size > 512 * 1024) return setFtfError("Picture must be 512 KB or smaller");
+    try {
+      await ftfDo("pfp", { draftId: ftf.draft.id, contentType: file.type, base64: await fileToBase64(file) });
+    } catch {
+      /* shown */
+    }
+  }
+
   const buy = Number(firstBuy) || 0;
   const est = useMemo(() => estimateFirstBuy(buy, params), [buy, params]);
-  const ticker = handle.toUpperCase();
+  const ticker = mode === "ftf" ? (ftf.draft?.ticker ?? ftfTicker.trim().toUpperCase()) || "TICKER" : handle.toUpperCase();
   const cleanLinks = links.filter((l) => l.label.trim() && l.url.trim());
   const linksOk = cleanLinks.every((l) => /^https:\/\/\S+\.\S+/.test(l.url.trim()));
   const aboutLen = about.trim().length;
-  const canNext = [category !== null, aboutLen >= ABOUT_MIN && aboutLen <= ABOUT_MAX && linksOk, agreed && buy >= 0][step];
+  const ftfTickerOk = FTF_TICKER_RE.test(ftfTicker.trim());
+  const ftfNameOk = ftfName.trim().length > 0 && ftfName.trim().length <= 32 && FTF_NAME_RE.test(ftfName.trim());
+  const inviteHandles = invites.map((x) => x.trim().replace(/^@/, "").toLowerCase()).filter(Boolean);
+  const invitesOk = inviteHandles.length === FTF_SIZE - 1 && new Set(inviteHandles).size === inviteHandles.length
+    && inviteHandles.every((h) => /^[a-z0-9_]{1,15}$/.test(h) && h !== handle.toLowerCase());
+  const canNext = {
+    type: mode !== null && !(mode === "personal" && personalToken),
+    who: category !== null,
+    members: acceptedCount === FTF_SIZE,
+    category: category !== null,
+    profile: aboutLen >= ABOUT_MIN && aboutLen <= ABOUT_MAX && linksOk,
+    launch: agreed && buy >= 0,
+  }[current];
+  const isFtf = mode === "ftf";
+  const ftfTickerShown = ftf.draft?.ticker ?? (ftfTicker.trim().toUpperCase() || "TICKER");
   const lowGas = balance !== null && balance < buy + 0.0005 && !demo;
 
   async function launch() {
@@ -240,6 +348,17 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
         setPhase({ kind: "live", token: null });
         return;
       }
+      if (isFtf) {
+        const r = await ftfCall<FtfPassResponse>(tokenFor, "pass", { draftId: ftf.draft!.id });
+        setPhase({ kind: "launching", stage: 1 });
+        const provider = await getProvider!();
+        const { args, value } = launchFtfArgs(r, buy, params);
+        const hash = await walletClientFor(provider, address!).writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launchFtf", args, value });
+        await confirmed(hash);
+        fetch(`${SUPABASE_URL}/functions/v1/indexer`, { method: "POST" }).catch(() => {});
+        setPhase({ kind: "live", token: await ftfTokenOf(r.pass.ticker) });
+        return;
+      }
       const token = await getAccessToken!();
       if (!token) throw new Error("Session expired, log in again");
       const pass = await requestLaunchPass(token, {
@@ -248,14 +367,9 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
       });
       setPhase({ kind: "launching", stage: 1 });
       const provider = await getProvider!();
-      const walletClient = createWalletClient({
-        account: address!,
-        chain: elysiumTestnet,
-        transport: custom(provider as Parameters<typeof custom>[0]),
-      });
       const { args, value } = launchArgs(pass, buy, params);
-      const hash = await walletClient.writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launch", args, value });
-      await pub.waitForTransactionReceipt({ hash });
+      const hash = await walletClientFor(provider, address!).writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launch", args, value });
+      await confirmed(hash);
       // ask the indexer to run now (it's idempotent + run-locked) so Supabase has the token within seconds;
       // Explore shows it straight from the chain meanwhile
       fetch(`${SUPABASE_URL}/functions/v1/indexer`, { method: "POST" }).catch(() => {});
@@ -275,13 +389,33 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
         <aside className="lp-preview">
           <div className="lp-id">
             <div className="lp-avatar">
-              {avatar ? <img src={avatar} alt="" /> : <span>{handle.charAt(0).toUpperCase()}</span>}
+              {isFtf ? (
+                ftf.draft?.pfpUrl ? <img src={ftf.draft.pfpUrl} alt="" /> : <Users size={20} />
+              ) : avatar ? (
+                <img src={avatar} alt="" />
+              ) : (
+                <span>{handle.charAt(0).toUpperCase()}</span>
+              )}
             </div>
             <div className="lp-names">
-              <span className="lp-name">@{handle}</span>
-              <span className="lp-ticker">${ticker}</span>
+              <span className="lp-name">{isFtf ? ftf.draft?.name || ftfName.trim() || "Your FTF" : `@${handle}`}</span>
+              <span className="lp-ticker">${isFtf ? ftfTickerShown : ticker}</span>
             </div>
           </div>
+          {isFtf && (
+            <div className="lp-members-mini" aria-label="Members">
+              {Array.from({ length: FTF_SIZE }, (_, i) => {
+                const m = ftf.members.filter((x) => x.status !== "declined")[i];
+                const ok = m?.status === "accepted";
+                return (
+                  <span key={i} className={`lp-member-dot${ok ? " is-in" : m ? " is-pending" : ""}`} title={m?.x_handle ? `@${m.x_handle}` : "Open spot"}>
+                    {m?.x_pfp_url ? <img src={m.x_pfp_url} alt="" referrerPolicy="no-referrer" /> : m?.x_handle ? m.x_handle[0].toUpperCase() : "+"}
+                  </span>
+                );
+              })}
+              <span className="lp-members-count">{acceptedCount}/{FTF_SIZE} in</span>
+            </div>
+          )}
           <div className={`lp-chip${category ? "" : " lp-chip-empty"}`}>
             {category ? CATEGORIES.find((c) => c.id === category)!.label : "Pick a category"}
           </div>
@@ -306,11 +440,12 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
         {/* ---- right: steps ---- */}
         <section className="lp-form">
           <header className="lp-steps">
-            {STEPS.map((s, i) => {
+            {ids.map((id, i) => {
+              const s = STEP_LABEL[id];
               const done = i < step || phase.kind === "live";
               return (
                 <button
-                  key={s}
+                  key={id}
                   className={`lp-step${i === step && !done ? " is-current" : ""}${done ? " is-done" : ""}`}
                   onClick={() => i < step && phase.kind === "form" && setStep(i)}
                   disabled={i > step || phase.kind !== "form"}
@@ -327,9 +462,138 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
 
           <div className="lp-body">
             <AnimatePresence mode="wait" initial={false}>
-              {phase.kind === "form" && step === 0 && (
+              {phase.kind === "form" && current === "type" && (
+                <motion.div key="type" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
+                  <p className="lp-q">What are you launching?</p>
+                  <div className="lp-types">
+                    <button
+                      className={`lp-type${mode === "personal" ? " is-on" : ""}`}
+                      onClick={() => !personalToken && setMode("personal")}
+                      disabled={!!personalToken}
+                    >
+                      <UserRound size={20} strokeWidth={1.8} />
+                      <span className="lp-cat-label">Personal</span>
+                      <span className="lp-cat-hint">
+                        {personalToken ? `You already launched @${handle}` : `Your own token: @${handle} / $${handle.toUpperCase()}`}
+                      </span>
+                      {personalToken && (
+                        <a className="link-btn lp-type-link" href={`/explore?t=${personalToken}`} onClick={(e) => e.stopPropagation()}>
+                          Open in Explore
+                        </a>
+                      )}
+                    </button>
+                    <button className={`lp-type${mode === "ftf" ? " is-on" : ""}`} onClick={() => setMode("ftf")}>
+                      <Users size={20} strokeWidth={1.8} />
+                      <span className="lp-cat-label">FTF</span>
+                      <span className="lp-cat-hint">Friends Turned Fam: you + 3 others, one group ticker, fees split 4 ways</span>
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {phase.kind === "form" && current === "members" && (
+                <motion.div key="members" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
+                  {!ftf.draft ? (
+                    <>
+                      <div className="lp-ftf-id">
+                        <label className="lp-field">
+                          <span className="lp-label">FTF name</span>
+                          <input className="lp-input" value={ftfName} maxLength={32} placeholder="Degen Den" onChange={(e) => setFtfName(e.target.value)} />
+                        </label>
+                        <label className="lp-field lp-ticker-field">
+                          <span className="lp-label">Ticker</span>
+                          <input
+                            className="lp-input"
+                            value={ftfTicker}
+                            maxLength={10}
+                            placeholder="DEN"
+                            onChange={(e) => setFtfTicker(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+                          />
+                        </label>
+                      </div>
+                      <div className="lp-field">
+                        <span className="lp-label">
+                          Invite 3 people <span className="lp-count">X handles</span>
+                        </span>
+                        <div className="lp-invites">
+                          {invites.map((v, i) => (
+                            <div key={i} className="lp-invite">
+                              <span className="lp-at">@</span>
+                              <input
+                                className="lp-input"
+                                value={v}
+                                maxLength={16}
+                                placeholder={`member ${i + 2}`}
+                                onChange={(e) => setInvites(invites.map((x, j) => (j === i ? e.target.value.replace(/[^A-Za-z0-9_@]/g, "") : x)))}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <p className="lp-est">
+                        They get a notification to accept (not a transaction). Each needs to have logged into Neuriio once.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="lp-q">
+                        {ftf.draft.name} <span className="lp-count">${ftf.draft.ticker}</span>
+                      </p>
+                      <ul className="lp-member-list">
+                        {ftf.members.filter((m) => m.status !== "declined" || m.role === "member").map((m) => (
+                          <li key={m.x_user_id} className={`lp-member is-${m.status}`}>
+                            <span className="lp-member-av">
+                              {m.x_pfp_url ? <img src={m.x_pfp_url} alt="" referrerPolicy="no-referrer" /> : (m.x_handle ?? "?")[0].toUpperCase()}
+                            </span>
+                            <span className="lp-member-name">
+                              @{m.x_handle ?? "unknown"}
+                              {m.role === "founder" && <span className="lp-count"> · you, founder</span>}
+                            </span>
+                            <span className="lp-member-status">
+                              {m.status === "accepted" ? (
+                                <>
+                                  <Check size={12} strokeWidth={3} /> In
+                                </>
+                              ) : m.status === "invited" ? (
+                                <>
+                                  <LoaderCircle size={12} className="spin" /> Invited
+                                </>
+                              ) : m.status === "requested" ? (
+                                "Asked to join"
+                              ) : (
+                                "Declined"
+                              )}
+                            </span>
+                            {m.role !== "founder" && m.status !== "declined" && (
+                              <button
+                                className="icon-btn"
+                                aria-label={`Remove @${m.x_handle}`}
+                                disabled={ftfBusy}
+                                onClick={() => ftfDo("remove", { draftId: ftf.draft!.id, xUserId: m.x_user_id }).catch(() => {})}
+                              >
+                                <X size={13} />
+                              </button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                      {ftf.members.filter((m) => m.status !== "declined").length < FTF_SIZE && (
+                        <InviteMore busy={ftfBusy} onInvite={(h) => ftfDo("invite", { draftId: ftf.draft!.id, handle: h }).catch(() => {})} />
+                      )}
+                      <p className="lp-est">
+                        {acceptedCount === FTF_SIZE
+                          ? "All 4 are in. Next: category, profile and picture."
+                          : `${acceptedCount}/${FTF_SIZE} in. Waiting for everyone to accept from their notifications.`}
+                      </p>
+                    </>
+                  )}
+                  {ftfError && <p className="lp-warn">{ftfError}</p>}
+                </motion.div>
+              )}
+
+              {phase.kind === "form" && (current === "who" || current === "category") && (
                 <motion.div key="s0" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
-                  <p className="lp-q">What are you known for?</p>
+                  <p className="lp-q">{isFtf ? "What is this FTF known for?" : "What are you known for?"}</p>
                   <div className="lp-cats">
                     {CATEGORIES.map((c) => {
                       const Icon = ICONS[c.id];
@@ -345,11 +609,31 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                 </motion.div>
               )}
 
-              {phase.kind === "form" && step === 1 && (
+              {phase.kind === "form" && current === "profile" && (
                 <motion.div key="s1" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
+                  {isFtf && (
+                    <div className="lp-field">
+                      <span className="lp-label">
+                        FTF picture <span className="lp-count">PNG, JPEG or WebP · up to 512 KB</span>
+                      </span>
+                      <label className="lp-pfp">
+                        <span className="lp-pfp-preview">{ftf.draft?.pfpUrl ? <img src={ftf.draft.pfpUrl} alt="" /> : <Users size={18} />}</span>
+                        <span className="link-btn">
+                          <Upload size={12} /> {ftf.draft?.pfpUrl ? "Change picture" : "Upload picture"}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          hidden
+                          onChange={(e) => e.target.files?.[0] && uploadPfp(e.target.files[0])}
+                        />
+                      </label>
+                      {ftfError && <p className="lp-warn">{ftfError}</p>}
+                    </div>
+                  )}
                   <label className="lp-field">
                     <span className="lp-label">
-                      About you
+                      {isFtf ? "About this FTF" : "About you"}
                       <span className={`lp-count${aboutLen > 0 && (aboutLen < ABOUT_MIN || aboutLen > ABOUT_MAX) ? " is-bad" : ""}`}>
                         {aboutLen < ABOUT_MIN ? `${ABOUT_MIN - aboutLen} more to go` : `${aboutLen}/${ABOUT_MAX}`}
                       </span>
@@ -358,7 +642,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                       value={about}
                       maxLength={ABOUT_MAX}
                       onChange={(e) => setAbout(e.target.value)}
-                      placeholder="Who you are, what you do, what people can see you've done."
+                      placeholder={isFtf ? "Who you are together, what you do, why these 4." : "Who you are, what you do, what people can see you've done."}
                       rows={5}
                     />
                   </label>
@@ -398,7 +682,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                 </motion.div>
               )}
 
-              {phase.kind === "form" && step === 2 && (
+              {phase.kind === "form" && current === "launch" && (
                 <motion.div key="s2" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
                   <div className="lp-field">
                     <span className="lp-label">
@@ -433,7 +717,9 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                   </div>
                   <label className="lp-agree">
                     <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-                    <span>I understand @{handle} has no promise of value or promise any returns to anyone.</span>
+                    <span>
+                      I understand {isFtf ? `$${ticker}` : `@${handle}`} has no promise of value or promise any returns to anyone.
+                    </span>
                   </label>
                 </motion.div>
               )}
@@ -460,14 +746,16 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                   transition={{ type: "spring", stiffness: 380, damping: 26 }}
                 >
                   <Rocket size={22} className="lp-live-icon" />
-                  <p className="lp-live-title">@{handle} is live</p>
+                  <p className="lp-live-title">{isFtf ? `${ftf.draft?.name ?? "Your FTF"} ($${ticker})` : `@${handle}`} is live</p>
                   <p className="lp-live-sub">Your token trades on its bonding curve now. It graduates to a locked pool when the curve sells out.</p>
                   <div className="lp-live-actions">
                     <a
                       className="lock-login lp-cta"
                       target="_blank"
                       rel="noreferrer"
-                      href={`https://x.com/intent/post?text=${encodeURIComponent(`I just tokenized my account: $${ticker} is live on @Neuriio`)}`}
+                      href={`https://x.com/intent/post?text=${encodeURIComponent(
+                        isFtf ? `Our FTF $${ticker} is live on @Neuriio` : `I just tokenized my account: $${ticker} is live on @Neuriio`,
+                      )}`}
                     >
                       Share on X
                     </a>
@@ -500,8 +788,31 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
               <button className="link-btn lp-back" onClick={() => setStep(step - 1)} disabled={step === 0}>
                 <ArrowLeft size={12} /> Back
               </button>
-              {step < 2 ? (
-                <button className="lock-login lp-cta" disabled={!canNext} onClick={() => setStep(step + 1)}>
+              {current === "members" && !ftf.draft ? (
+                <button className="lock-login lp-cta" disabled={!ftfNameOk || !ftfTickerOk || !invitesOk || ftfBusy} onClick={sendInvites}>
+                  {ftfBusy ? <LoaderCircle size={13} className="spin" /> : null} Send invites
+                </button>
+              ) : current !== "launch" ? (
+                <button
+                  className="lock-login lp-cta"
+                  disabled={!canNext || ftfBusy}
+                  onClick={async () => {
+                    // FTF: save category + profile before the launch step (the pass is signed from what's saved)
+                    if (isFtf && current === "profile") {
+                      try {
+                        await ftfDo("profile", {
+                          draftId: ftf.draft!.id,
+                          category,
+                          about: about.trim(),
+                          links: cleanLinks.map((l) => ({ label: l.label.trim(), url: l.url.trim() })),
+                        });
+                      } catch {
+                        return;
+                      }
+                    }
+                    setStep(step + 1);
+                  }}
+                >
                   Next <ArrowRight size={13} />
                 </button>
               ) : (
@@ -632,4 +943,26 @@ function friendly(msg: string) {
   if (/insufficient funds/i.test(msg)) return "Not enough HYPE for this first buy plus gas.";
   if (/rejected|denied/i.test(msg)) return "The transaction was cancelled.";
   return msg.length > 160 ? `${msg.slice(0, 160)}…` : msg;
+}
+
+/** Members step: invite someone for an open spot (after a decline or a removal). */
+function InviteMore({ busy, onInvite }: { busy: boolean; onInvite: (handle: string) => void }) {
+  const [h, setH] = useState("");
+  const clean = h.trim().replace(/^@/, "");
+  return (
+    <div className="lp-invite lp-invite-more">
+      <span className="lp-at">@</span>
+      <input className="lp-input" value={h} maxLength={16} placeholder="invite someone" onChange={(e) => setH(e.target.value.replace(/[^A-Za-z0-9_@]/g, ""))} />
+      <button
+        className="link-btn"
+        disabled={busy || !/^[A-Za-z0-9_]{1,15}$/.test(clean)}
+        onClick={() => {
+          onInvite(clean);
+          setH("");
+        }}
+      >
+        <Plus size={12} /> Invite
+      </button>
+    </div>
+  );
 }

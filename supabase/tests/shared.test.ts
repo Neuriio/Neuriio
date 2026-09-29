@@ -110,6 +110,7 @@ test("FTF name + ticker rules match the contract", () => {
   assert.deepEqual(validFtfIdentity(" Degen Den ", "den"), { name: "Degen Den", ticker: "DEN" });
   for (const bad of ["", "De  n", "Den<script>", "x".repeat(33)]) assert.throws(() => validFtfIdentity(bad, "DEN"), /Name/);
   for (const bad of ["D", "DEN!", "ABCDEFGHIJK"]) assert.throws(() => validFtfIdentity("Degen Den", bad), /Ticker/);
-  const a = canonicalFtfProfile({ about: "z".repeat(60) }, { name: "Degen Den", ticker: "DEN", founderXUserId: "1" });
+  const a = canonicalFtfProfile({ about: "z".repeat(60) }, { name: "Degen Den", ticker: "DEN", founderXUserId: "1", category: "trader", pfpUrl: null });
+  assert.match(a.content, /"category":"trader"/);
   assert.match(a.content, /"kind":"ftf"/);
 });
