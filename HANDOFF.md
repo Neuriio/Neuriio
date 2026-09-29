@@ -786,8 +786,10 @@ Data to build for it (Supabase, public-read):
   raw DB errors logged server-side instead of returned, one shared `_shared/env.ts`. Redeployed; 401s verified.
 - **App consolidation:** one Launchpad ABI (`lib/launch.ts`), one `Avatar` component (all avatars now fall back to the
   initial on a broken X picture).
-- **For the user to decide (not changed):** (1) `pause()` also blocks SELLS on the curve (holders can't exit while
-  paused; safer for a sell-math bug, worse for trust); (2) **every contract is owned by the single hot `burner` key**
+- **For the user to decide (not changed):** (1) DECIDED (user, 2026-09-29): **sells stay open during a pause**
+  (pause stops launches + buys, and so graduations; `sell` no longer has `whenNotPaused`; test
+  `test_pauseStopsBuysAndLaunchesButNotSells`). In the source only: the deployed testnet Launchpad `0x6ef0…cb53` still
+  blocks sells when paused; the change ships with the next deploy (mainnet); (2) **every contract is owned by the single hot `burner` key**
   (Launchpad pause/fee<=2%/signer, FeeVault wallets, factory feeToSetter): move to a multisig before mainnet;
   (3) `indexer` stays public (idempotent + run-locked; the app pings it after launches/trades).
 

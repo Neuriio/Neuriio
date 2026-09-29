@@ -204,11 +204,11 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         tokensOut = _buy(token, msg.value, minTokensOut);
     }
 
-    /// @notice Sell tokens back to the curve for HYPE (needs an approval of `tokensIn`).
+    /// @notice Sell tokens back to the curve for HYPE (needs an approval of `tokensIn`). Works even while paused:
+    /// a pause stops launches and buys, but holders can always exit.
     function sell(address token, uint256 tokensIn, uint256 minHypeOut, uint256 deadline)
         external
         nonReentrant
-        whenNotPaused
         returns (uint256 hypeOut)
     {
         if (block.timestamp > deadline) revert Expired();
@@ -310,6 +310,7 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         _setLaunchSigner(signer);
     }
 
+    /// @notice Emergency stop for launches and buys (and so graduations). Sells stay open so holders can always exit.
     function pause() external onlyOwner {
         _pause();
     }

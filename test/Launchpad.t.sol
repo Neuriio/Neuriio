@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Launchpad, ICurveFeeVault} from "../src/launch/Launchpad.sol";
 import {FeeVault} from "../src/launch/FeeVault.sol";
 import {LaunchToken} from "../src/launch/LaunchToken.sol";
@@ -541,13 +542,28 @@ contract LaunchpadTest is Test {
         vm.stopPrank();
     }
 
-    function test_pauseStopsTrading() public {
+    /// Pause stops launches and buys, but holders can still sell (always able to exit).
+    function test_pauseStopsBuysAndLaunchesButNotSells() public {
         address token = _launch();
+        uint256 got = _buy(alice, token, 1 ether);
         vm.prank(owner);
         pad.pause();
-        vm.prank(alice);
-        vm.expectRevert();
+
+        vm.prank(bob);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
         pad.buy{value: 1 ether}(token, 0, block.timestamp);
+
+        Launchpad.LaunchPass memory p = _pass(bob, 9_999, "pausedlaunch");
+        bytes memory sig = _sign(p, signerPk);
+        vm.prank(bob);
+        vm.expectRevert(Pausable.EnforcedPause.selector);
+        pad.launch(p, sig, 0);
+
+        uint256 before = alice.balance;
+        uint256 out = _sell(alice, token, got);
+        assertGt(out, 0);
+        assertEq(alice.balance - before, out);
+        assertEq(IERC20(token).balanceOf(alice), 0);
     }
 
     function test_revert_feeCap() public {
