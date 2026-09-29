@@ -2,7 +2,7 @@
 // Deno's npm: specifiers to plain package names by the script.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { curveTradeToRow, hlFillToRow, hlVenue, launchedToToken, pairSwapToRow } from "./indexer.ts";
+import { curveTradeToRow, hlFillToRow, hlVenue, launchedToToken, pairSwapToRow, poolPrice } from "./indexer.ts";
 import { canonicalProfile } from "./launchPass.ts";
 
 const log = <A>(args: A) => ({ args, transactionHash: "0xabc" as const, logIndex: 3, blockNumber: 42n });
@@ -32,11 +32,33 @@ test("only builder-fee fills count", () => {
 
 test("curve trade -> row with USD", () => {
   const r = curveTradeToRow(
-    log({ token: T, trader: "0xAA", isBuy: false, hypeAmount: 2n * 10n ** 18n, tokenAmount: 5n * 10n ** 18n, fee: 10n ** 16n }),
+    log({ token: T, trader: "0xAA", isBuy: false, hypeAmount: 2n * 10n ** 18n, tokenAmount: 5n * 10n ** 18n, fee: 10n ** 16n, virtualHype: 10n ** 18n, virtualToken: 10n ** 27n }),
     "2026-09-27T00:00:00.000Z",
     90,
   );
   assert.deepEqual([r.venue, r.side, r.quote_amount, r.size, r.usd_value, r.fee], ["curve", "sell", "2", "5", 180, "0.01"]);
+});
+
+test("curve trade -> spot price + curve progress", () => {
+  const e = 10n ** 18n;
+  // 60 HYPE virtual at launch; after 100M tokens sold: virtualToken = 973M, virtualHype = 60 * 1073 / 973
+  const r = curveTradeToRow(
+    log({
+      token: T, trader: "0xAA", isBuy: true, hypeAmount: e, tokenAmount: e, fee: 0n,
+      virtualHype: 66n * e, virtualToken: 973_000_000n * e,
+    }),
+    "t",
+    null,
+  );
+  assert.equal(r.curve_sold, "100000000");
+  assert.ok(Math.abs(Number(r.price_hype) / (66 / 973_000_000) - 1) < 1e-15);
+});
+
+test("pool price from Sync reserves (either token order)", () => {
+  const e = 10n ** 18n;
+  // 170 HYPE vs 206.9M tokens
+  assert.ok(Math.abs(Number(poolPrice(206_900_000n * e, 170n * e, T, W_HIGH)) / (170 / 206_900_000) - 1) < 1e-15); // token is token0
+  assert.ok(Math.abs(Number(poolPrice(170n * e, 206_900_000n * e, T, W_LOW)) / (170 / 206_900_000) - 1) < 1e-15); // token is token1
 });
 
 test("pair swap orientation (token0 and token1)", () => {
@@ -53,10 +75,10 @@ test("pair swap orientation (token0 and token1)", () => {
 
 test("launched -> token row", () => {
   const r = launchedToToken(
-    log({ token: T, creator: "0xCC", xUserId: 1850000000000000123n, handle: "Von_Builds9", category: 2, profileHash: "0x11" }),
+    log({ token: T, creator: "0xCC", xUserId: 1850000000000000123n, handle: "Von_Builds9", category: 2, profileHash: "0x11", virtualHype: 60n * 10n ** 18n }),
     "t",
   );
-  assert.deepEqual([r.x_user_id, r.symbol, r.category, r.creator], ["1850000000000000123", "VON_BUILDS9", "researcher", "0xcc"]);
+  assert.deepEqual([r.x_user_id, r.symbol, r.category, r.creator, r.virtual_hype], ["1850000000000000123", "VON_BUILDS9", "researcher", "0xcc", "60"]);
 });
 
 test("profile validation + stable hash", () => {

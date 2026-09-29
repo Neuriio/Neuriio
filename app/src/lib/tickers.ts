@@ -98,3 +98,23 @@ export function useTickerLogos(everyMs = 5_000): Logo[] {
     };
   });
 }
+
+/** Live HYPE price in USD (HyperCore mainnet mid), for showing HYPE-priced launched tokens in dollars. 0 until loaded. */
+export function useHypeUsd(everyMs = 15_000): number {
+  const [px, setPx] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      info.allMids().then((m) => {
+        const v = Number(m.HYPE);
+        if (alive && v > 0) setPx(v);
+      }, () => {});
+    load();
+    const id = setInterval(load, everyMs);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [everyMs]);
+  return px;
+}

@@ -26,7 +26,7 @@ interface ICurveFeeVault {
 /// seed liquidity is needed. Each curve trade pays a fee (`feeBps`, 0.75% at deploy) to the FeeVault: 80% to the
 /// creator, 20% to the protocol. The buy that sells the last curve token
 /// graduates the token in the same tx: every HYPE raised plus the remaining 206.9M tokens go into our
-/// SwapPair (TOKEN/WHYPE) and the LP tokens are sent to the dead address (burned), so that liquidity is
+/// pool on our Uniswap V2 fork (TOKEN/WHYPE, src/swap/v2) and the LP tokens are sent to the dead address (burned), so that liquidity is
 /// locked forever. The curve's final price equals the pool's opening price.
 contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
@@ -342,7 +342,7 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         if (refund > 0) _sendHype(msg.sender, refund);
     }
 
-    /// Curve sold out: all raised HYPE + LP_SUPPLY tokens into a new SwapPair, LP tokens burned.
+    /// Curve sold out: all raised HYPE + LP_SUPPLY tokens into a new V2 pair, LP tokens burned.
     function _graduate(address token, Curve storage c) internal {
         c.graduated = true;
         uint256 hype = c.realHype;

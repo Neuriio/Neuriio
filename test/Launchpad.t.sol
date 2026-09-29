@@ -8,17 +8,21 @@ import {Launchpad, ICurveFeeVault} from "../src/launch/Launchpad.sol";
 import {FeeVault} from "../src/launch/FeeVault.sol";
 import {LaunchToken} from "../src/launch/LaunchToken.sol";
 import {WHYPE} from "../src/swap/WHYPE.sol";
-import {SwapFactory} from "../src/swap/SwapFactory.sol";
-import {SwapPair} from "../src/swap/SwapPair.sol";
 import {SwapRouter} from "../src/swap/SwapRouter.sol";
-import {ISwapFactory, IWHYPE} from "../src/swap/interfaces.sol";
+import {ISwapFactory, ISwapFactoryAdmin, ISwapPair, IWHYPE} from "../src/swap/interfaces.sol";
+
+/// Our Uniswap V2 fork's pair (0.5.16, src/swap/v2), as seen from 0.8 tests.
+interface IPair is ISwapPair, IERC20 {
+    function name() external view returns (string memory);
+    function factory() external view returns (address);
+}
 
 contract LaunchpadTest is Test {
     uint256 constant VH = 60 ether; // graduates at ~170 HYPE raised (~822 HYPE market cap)
     address constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
     WHYPE whype;
-    SwapFactory factory;
+    ISwapFactoryAdmin factory;
     SwapRouter router;
     Launchpad pad;
     FeeVault vault;
@@ -34,7 +38,7 @@ contract LaunchpadTest is Test {
 
     function setUp() public {
         whype = new WHYPE();
-        factory = new SwapFactory(owner, address(whype));
+        factory = ISwapFactoryAdmin(deployCode("UniswapV2Factory.sol:UniswapV2Factory", abi.encode(owner, address(whype))));
         vault = new FeeVault(owner, IWHYPE(address(whype)), ISwapFactory(address(factory)));
         pad = new Launchpad(
             owner, ISwapFactory(address(factory)), IWHYPE(address(whype)), VH, 75, signer, ICurveFeeVault(address(vault))
@@ -310,10 +314,11 @@ contract LaunchpadTest is Test {
         assertEq(IERC20(token).balanceOf(address(pad)), 0);
         assertEq(address(pad).balance, 0); // everything went to the pool; fees are in the vault
 
-        SwapPair pair = SwapPair(factory.getPair(token, address(whype)));
+        IPair pair = IPair(factory.getPair(token, address(whype)));
         assertTrue(address(pair) != address(0));
-        // every LP token is burned
-        assertEq(pair.balanceOf(DEAD), pair.totalSupply());
+        // every LP token is burned (V2 locks the first 1,000 units at address(0), the rest went to DEAD)
+        assertEq(pair.balanceOf(DEAD) + pair.balanceOf(address(0)), pair.totalSupply());
+        assertEq(pair.balanceOf(address(0)), 1_000);
         assertEq(pair.balanceOf(address(pad)), 0);
 
         // pool opens at the curve's closing price
@@ -345,7 +350,7 @@ contract LaunchpadTest is Test {
         vm.stopPrank();
 
         _buy(bob, token, 200 ether);
-        SwapPair pair = SwapPair(factory.getPair(token, address(whype)));
+        IPair pair = IPair(factory.getPair(token, address(whype)));
         assertEq(address(pair), predicted);
         (uint112 r0, uint112 r1,) = pair.getReserves();
         uint256 rTok = pair.token0() == token ? r0 : r1;
@@ -355,7 +360,7 @@ contract LaunchpadTest is Test {
 
     function test_revert_nobodyElseCanCreatePairs() public {
         address token = _launch();
-        vm.expectRevert(SwapFactory.NotLaunchpad.selector);
+        vm.expectRevert(bytes("UniswapV2: FORBIDDEN"));
         factory.createPair(token, address(whype));
     }
 
@@ -447,6 +452,61 @@ contract LaunchpadTest is Test {
         assertApproxEqRel(vault.creatorBalance(creator) - mid, back * 25 / 9975 * 8 / 10, 0.01e18);
     }
 
+    // ------------------------------------------------------------------ our Uniswap V2 fork (src/swap/v2)
+
+    /// An aggregator swapping on the pair directly (no router) gets V2's 0.25% output and still pays the fee.
+    function test_directPairSwapPaysFeeAndMatchesV2Math() public {
+        address token = _launch();
+        _buy(alice, token, 200 ether);
+        IPair pair = IPair(factory.getPair(token, address(whype)));
+        (uint112 r0, uint112 r1,) = pair.getReserves();
+        bool whypeIs0 = pair.token0() == address(whype);
+        (uint256 rHype, uint256 rTok) = whypeIs0 ? (uint256(r0), uint256(r1)) : (uint256(r1), uint256(r0));
+        uint256 amountIn = 2 ether;
+        uint256 out = router.getAmountOut(amountIn, rHype, rTok);
+        uint256 creatorBefore = vault.creatorBalance(creator);
+
+        vm.startPrank(bob);
+        whype.deposit{value: amountIn}();
+        whype.transfer(address(pair), amountIn);
+        // one wei more than the 0.25% quote breaks K
+        (uint256 a0, uint256 a1) = whypeIs0 ? (uint256(0), out + 1) : (out + 1, uint256(0));
+        vm.expectRevert(bytes("UniswapV2: K"));
+        pair.swap(a0, a1, bob, "");
+        (a0, a1) = whypeIs0 ? (uint256(0), out) : (out, uint256(0));
+        pair.swap(a0, a1, bob, "");
+        vm.stopPrank();
+
+        assertEq(IERC20(token).balanceOf(bob), out);
+        assertEq(vault.creatorBalance(creator) - creatorBefore, amountIn * 25 / 10_000 * 8 / 10);
+        (r0, r1,) = pair.getReserves();
+        assertEq(whypeIs0 ? r0 : r1, rHype + amountIn - amountIn * 25 / 10_000); // the fee left the pool
+    }
+
+    function test_v2ForkAdmin() public {
+        IPair pair;
+        {
+            address token = _launch();
+            _buy(alice, token, 200 ether);
+            pair = IPair(factory.getPair(token, address(whype)));
+        }
+        assertEq(pair.name(), "Neuriio LP");
+        assertEq(pair.factory(), address(factory));
+        assertEq(factory.feeToSetter(), owner);
+        assertEq(factory.launchpad(), address(pad));
+        assertEq(factory.feeVault(), address(vault));
+        assertEq(factory.whype(), address(whype));
+        // set-once, owner only
+        vm.expectRevert(bytes("UniswapV2: FORBIDDEN"));
+        factory.setFeeVault(alice);
+        vm.startPrank(owner);
+        vm.expectRevert(bytes("UniswapV2: ALREADY_SET"));
+        factory.setFeeVault(alice);
+        vm.expectRevert(bytes("UniswapV2: ALREADY_SET"));
+        factory.setLaunchpad(alice);
+        vm.stopPrank();
+    }
+
     function test_revert_onlyPairsAndLaunchpadFeedTheVault() public {
         address token = _launch();
         vm.expectRevert(FeeVault.NotPair.selector);
@@ -460,7 +520,7 @@ contract LaunchpadTest is Test {
     function testFuzz_poolFeeNeverShrinksK(uint256 seed) public {
         address token = _launch();
         _buy(alice, token, 200 ether);
-        SwapPair pair = SwapPair(factory.getPair(token, address(whype)));
+        IPair pair = IPair(factory.getPair(token, address(whype)));
         vm.startPrank(bob);
         IERC20(token).approve(address(router), type(uint256).max);
         for (uint256 i; i < 12; i++) {
@@ -531,7 +591,7 @@ contract LaunchpadTest is Test {
                 uint256(
                     keccak256(
                         abi.encodePacked(
-                            hex"ff", address(factory), keccak256(abi.encodePacked(t0, t1)), factory.pairCodeHash()
+                            hex"ff", address(factory), keccak256(abi.encodePacked(t0, t1)), keccak256(vm.getCode("UniswapV2Pair.sol:UniswapV2Pair"))
                         )
                     )
                 )

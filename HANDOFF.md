@@ -1,4 +1,4 @@
-# Handoff — Neuriio (state as of 2026-09-28: launchpad + launch UI done; next: Explore page)
+# Handoff — Neuriio (state as of 2026-09-28 late: pool is now a Uniswap V2 fork, NOT yet redeployed; next: testnet redeploy, then Explore)
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
@@ -15,13 +15,14 @@ with **our own swap** (like pump.fun's PumpSwap). Decided by the user:
   unlike the subscription model below. Graduated pools charge **0.25%** per swap (0.20% stays in the pool, 0.05% to the factory `feeTo`).
 - **pump.fun graduation numbers:** 1B supply; 793.1M sold on a constant-product curve over virtual reserves
   (`virtualHype` : 1.073B tokens); when the last curve token sells, the same tx moves all raised HYPE + the remaining 206.9M
-  tokens into our `SwapPair` and sends **all LP tokens to 0x…dEaD (burned)**. Pool opening price = curve closing price.
+  tokens into our pool (Uniswap V2 fork pair) and sends **all LP tokens to 0x…dEaD (burned)** (V2 itself locks the first 1,000 LP units at 0x0). Pool opening price = curve closing price.
   **Mainnet default `virtualHype` = 60 HYPE** (double pump.fun's shape, user 2026-09-27): graduates at ~170 HYPE raised and
   ~822 HYPE fully diluted market cap (~$74k at HYPE $90). Both scale linearly with `virtualHype` (owner-settable, new launches only).
 - Safety built in: only the launchpad can create pairs (nobody can open the pool first at a bad price); tokens/WHYPE pre-sent to
   the predictable pair address are skimmed to 0x…dEaD before the LP mint; slippage + deadline on every trade; owner pause.
-- Code: `src/launch/{Launchpad,LaunchToken}.sol`, `src/swap/{SwapPair,SwapFactory,SwapRouter,WHYPE,interfaces}.sol`
-  (SwapPair = Uniswap V2 ported to 0.8, V2-compatible interface so aggregator V2 adapters work; flash-swap callback `swapCall`).
+- Code: `src/launch/{Launchpad,LaunchToken,FeeVault}.sol`, `src/swap/{SwapRouter,WHYPE,interfaces}.sol`, and the pool =
+  **`src/swap/v2/` = fork of Uniswap v2-core v1.0.1** (see §10 "DECIDED + BUILT"; replaced our 0.8 port `SwapPair`/`SwapFactory`
+  on 2026-09-28). Flash-swap callback is V2's `uniswapV2Call`.
   Tests: `test/Launchpad.t.sol` (17 incl. a solvency fuzz).
 - **DEPLOYED on Elysium testnet 2026-09-27** (`VIRTUAL_HYPE` 0.1 HYPE → graduates at ~0.29 HYPE, kept small for the burner's budget; fee set to 0.75%; owner + swap `feeTo` = burner):
   Launchpad `0x3a4b7a2604918ce8a4a055d353056f988355b98a`, SwapRouter `0x834ef7af43877a2338ccad5557656cb22d2508dd`,
@@ -41,7 +42,7 @@ with **our own swap** (like pump.fun's PumpSwap). Decided by the user:
   wallet / 40% KNTQ buyback wallet** (`communityBps` owner-settable; creator 80% is a constant). Protocol share accrues until
   the owner sets wallets (`setWallets`, **user will provide new addresses**, ideally a multisig); then anyone calls `payProtocol()`.
 - Curve: Launchpad sends its 0.75% fee to the vault per trade (`feesAccrued`/`withdrawFees` removed; `creatorOf(token)` added).
-- Graduated pools: **the full 0.25%** leaves the pool as WHYPE right after each swap (`SwapPair._takeFee` → vault
+- Graduated pools: **the full 0.25%** leaves the pool as WHYPE right after each swap (`UniswapV2Pair._takeFee` → vault
   `notifyPoolFee`, unwrapped to HYPE) → creator 0.20%, protocol 0.05%. Trader outputs stay exactly V2's (aggregator adapters
   unaffected); k never drops below pre-swap (proof in code + fuzz). V2 `feeTo`/`kLast` protocol fee removed; factory now has
   `whype` + `feeVault` (set once).
@@ -53,11 +54,39 @@ with **our own swap** (like pump.fun's PumpSwap). Decided by the user:
   ~0.33 HYPE; the live test funds 0.35 → top up first.** Anvil dry run passed. Not indexed yet: FeeVault events (creator
   earnings UI), no app claim button yet.
 
-### FTF: "Friends Turned Fam" (idea, LATER)
-Combine 4 creators into one FTF. User's sketch: price it at the average market cap of the 4; every party must agree by signing;
-they create a new pool with their own liquidity on our swap. Not designed/built. Intro copy already mentions it.
+### FTF: "Friends Turned Fam" — DESIGN DECIDED (user, 2026-09-28), not built. Build AFTER Explore.
+Why not "combine liquidity / market cap": graduated LP is burned (nobody can move it) and curve HYPE must stay in the
+Launchpad; market cap is price x supply, not movable money. So an FTF is a NEW token made from its members' tokens:
+- **Exactly 4 members**, all 4 must accept (sign), every member token must be **graduated** (no curve tokens). A person
+  can be in several FTFs. Name/ticker chosen by the team.
+- **Burn-to-mint, one way (no redeem):** the only way to create FTF tokens is to burn X of each member's token
+  (X per member set by the team) -> 1 FTF. Minting is free. Every mint shrinks the members' supplies.
+- **Launch:** the team funds the FTF's own FTF/HYPE pool together (the user's figure: **$40K of liquidity**; open:
+  total both sides vs HYPE side, enforced as an owner-updated HYPE minimum since contracts can't read USD). The
+  starting FTF tokens come from the members burning their tokens. **LP burned** (locked forever), like graduation.
+- **Opening price: deliberately ABOVE the ingredient cost** (market value of X of each member token) -> a big
+  arbitrage at launch: people buy the single tokens, burn them to mint FTF and sell FTF until it balances. Intended:
+  it pumps all 4 singles and burns their supply. (Dumping singles to buy FTF self-corrects: cheaper ingredients make
+  minting profitable, which brings buyers back to the singles. Caveat: if FTF trades BELOW ingredient cost nobody
+  mints and FTF moves on its own; with no redeem nothing pulls it back.)
+- **Fees:** FTF pool trades pay the pool fee to FeeVault, creator share split between the 4 members.
+- **"Apply for FTF" = a QUEUE (user):** teams apply; the app works out exactly what's needed for THAT FTF (it changes
+  with each member's market cap: no set price) and shows it; it should feel like anyone can spawn one and it's
+  something to work for. Suggested flow: application -> all 4 accept -> each member deposits their HYPE share into an
+  escrow (auto-launch when all 4 signed + funded; refund after a deadline).
+  **UI TO DESIGN (with the user, one element at a time): the "Apply for FTF" application form, and a place to check
+  applications / queue status / what each FTF still needs.**
+- Contracts: **FTFFactory** (applications/queue, signatures, escrow + refunds, pool creation with burned LP) +
+  **FTFToken** (burn-to-mint only) + small changes: our V2 factory must also let the FTFFactory create pairs (~3 marked
+  lines), FeeVault must split one token's creator share across 4 members. Existing SwapRouter trades FTF/HYPE as-is.
+  A one-click "buy FTF with HYPE" zap is optional (buyers can use the FTF pool). Plus indexer + Explore support (the
+  search placeholder already says "@handle or FTF").
+- Still open: $40K total vs HYPE side; the HYPE minimum's value; max FTF supply or unlimited minting; how far above
+  ingredient cost the opening price is set (who picks it: the team within limits, or a fixed premium).
 
 ### "Tokenize Yourself" (user, 2026-09-27): who can launch
+**Public headline renamed (user, 2026-09-28): "Tokenize Accounts"** (not "Tokenize Yourself", which reads as tokenizing a person).
+Message: grow your account, reach new audiences, stay relevant. "Tokenize Yourself" survives only in code comments / the migration name.
 **Legal framing (decided 2026-09-27): tokens are MEMES, not investments.** "Thesis / why invest in me / proof" was renamed
 to a **creator profile** ("about" + "links" to their work) everywhere (contract `profileHash`, table `creator_profiles`,
 function body `{ category, profile: { about, links } }`). UI copy rules: say back / support / trade, never invest / returns;
@@ -246,7 +275,10 @@ npm --prefix app run dev            # the app on http://localhost:5173 (?demo = 
 SPONSOR_ACCOUNT=<keystore> TOPUP_FROM=... ./script/run-bots.sh burner   # also runs the gas sponsor on :8787 (SEPARATE keystore w/ a little HYPE)
 ./script/deploy-launchpad.sh burner # launchpad + swap (WHYPE, factory, router); testnet VIRTUAL_HYPE 0.1 HYPE
 ./script/launchpad-test.sh burner   # live: launch -> buy -> sell -> graduate (LP burned) -> router swaps; deploys if missing
-forge test                          # 77 passing (PropAMM's 24 archived; +17 launchpad) (+ fork suite: forge test --match-path 'test/fork/*' --fork-url elysium_testnet, 3)
+forge test                          # 92 passing (launchpad 32, bridge 23, account 23, oracle 14)
+./script/run-watcher.sh             # live trades -> Supabase Realtime (charts); ONE instance (node allows 1 websocket/IP)
+./script/v2-diff.sh                 # every change our V2 fork makes vs upstream v2-core v1.0.1 (for auditors)
+#                                     fork suite (+ forge test --match-path 'test/fork/*' --fork-url elysium_testnet, 3)
 cd keeper && npm test               # 61 passing
 ./script/test-supabase.sh           # 6 passing (Edge Function shared logic, under Node)
 ./script/e2e-bridge.sh              # full local bridge e2e on anvil (no keys needed)
@@ -266,6 +298,9 @@ src/oracle/KeeperHyperCoreOracle.sol  keeper-pushed prices (bid/ask, sizes withi
 src/libraries/HyperCoreReader.sol     freshness / spread guards      ElysiumBlock.sol  L2 block via ArbSys
 src/amm/PropAMM.sol                   pool: ask=coreAsk*(1+edge..), bid=coreBid*(1-edge..), no-arb clamp
 src/bridge/FastBridge.sol             deposit/markFulfilled/refund, payout, compare-and-set credit
+src/launch/                           Launchpad (bonding curve, launch passes), LaunchToken, FeeVault (80% creator / 20% protocol)
+src/swap/v2/                          POOL = Uniswap v2-core v1.0.1 fork (solc 0.5.16, GPL-3.0; changes marked "Neuriio",
+                                      ./script/v2-diff.sh); src/swap/SwapRouter.sol (our router, `Swapped` event), WHYPE.sol
 src/account/NeuriioAccount.sol        EIP-7702 delegate: ERC-7821 batching (owner), session keys (caps/expiry/revoke),
                                       buy() -> FastBridge with HL recipient = the wallet itself, ERC-1271 (owner key only)
 keeper/feed-bbo.mjs  hedger.mjs  relayer.mjs     bot entry points
@@ -510,7 +545,50 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
    so subscriptions can start before the PropAMM is funded.
 7. **Before mainnet:** professional audit, legal/jurisdiction review (leveraged perps + prediction markets), confirm HL fees at scale, contract minEdge granularity (whole bps; 4.5 needs a contract change).
 
-## 10. Next session (2026-09-29): the EXPLORE page
+## 10. Next session (2026-09-29): redeploy on testnet (V2 fork), then the EXPLORE page
+
+### DECIDED + BUILT (user, 2026-09-28 late): the pool is a FORK OF UNISWAP V2 (V4 hook idea dropped)
+- User's reasoning: V2 is audited and battle-tested, and a fork lets us keep our own fees. Chosen: "option 2" = the exact
+  upstream source with a small, marked fee change (option 1, unmodified V2 with `feeTo`, would give us only 0.05% as LP
+  tokens and creators nothing from pool trades).
+- **`src/swap/v2/`** = `UniswapV2Pair`, `UniswapV2Factory`, `UniswapV2ERC20`, interfaces, libraries copied from
+  **`lib/v2-core` (git submodule pinned at tag v1.0.1, `4dd5906`)**, compiled with the original **solc 0.5.16**
+  (`foundry.toml`: `auto_detect_solc` + `compilation_restrictions` for `src/swap/v2/**`; everything else builds with 0.8.28,
+  the only 0.8 compiler installed; installing a newer 0.8.x could change what auto-detect picks).
+  License **GPL-3.0** for those files (`src/swap/v2/LICENSE`).
+- **Every change is marked `// Neuriio`**; `./script/v2-diff.sh` prints the full diff (about 40 changed lines + new
+  `interfaces/INeuriio.sol`): fee 0.30% → **0.25%** in the K check; `_takeFee` right after the K check moves the whole fee
+  out as WHYPE to `feeVault` + `notifyPoolFee` (same math as the old port, proof in the comment; skipped if no vault or
+  not a WHYPE pair); `FeeTaken` event; factory: `createPair` only from `launchpad`, + `whype`, set-once `feeVault` /
+  `launchpad` (by `feeToSetter` = owner); LP token name "Neuriio LP" / "NLP". **Everything else is Uniswap's audited code
+  byte for byte.** Keep V2's `feeTo` OFF (if the owner set it, `_mintFee` would mint it LP for k growth: tiny, as the fee
+  leaves the pool, but it's an admin lever).
+- **Router: kept our own `SwapRouter`** (stateless, no funds; emits `Swapped` = who traded, which the indexer needs; V2's
+  Router02 has no such event; aggregators call pairs directly anyway). Math unchanged (25 bps).
+- Deploy: `DeployLaunchpad.s.sol` deploys the factory from its artifact (`deployCode("UniswapV2Factory.sol:...")`);
+  `deploy-launchpad.sh` records it as `swapFactory` (broadcast contractName `UniswapV2Factory`). **Anvil dry run passed.**
+  `launchpad-test.sh`: LP-burn check now counts DEAD + the 1,000 units at 0x0.
+- Tests: 92 passing (+2 new: direct pair swap like an aggregator = exact V2 0.25% output, 1 wei more reverts `K`, fee
+  still reaches the creator; factory admin set-once). All fuzz tests pass at 10,000 runs (k never shrinks).
+- **NOT DEPLOYED YET.** The CURRENT testnet set (§0) still runs the old 0.8 port. Next: top up the burner (~0.30 HYPE; full
+  live test needs 0.35 + deploy gas) → `./script/deploy-launchpad.sh burner` → `./script/supabase-deploy.sh` (new
+  LAUNCHPAD/ROUTER addresses; set INDEX_FROM_BLOCK to the deploy block) → `./script/launchpad-test.sh burner`. The indexer
+  needs no change (pair `Swap` event is identical).
+- Not committed yet at time of writing (see git log).
+
+### Elysium / Kinetiq fees (researched 2026-09-28 late)
+- **Kinetiq's "burn" is about SEQUENCER (gas) fees, not pool fees** (launch announcement Aug 24–26, not in the docs):
+  **50%** buys KNTQ on the open market → Hyperliquid Assistance Fund → burned; **25%** to "applications consuming Elysium
+  blockspace" (for rebates / incentives; = the docs' "builders allocation of sequencer revenue"); **25%** Kinetiq treasury.
+  → Kinetiq takes nothing from our pool/curve fees. We should qualify for the 25% app share (our launches/trades use gas):
+  **ask Kinetiq how it is allocated and how to apply.** Our manual KNTQ buyback (protocol 40%) fits their story.
+- **Mainnet date:** CoinMarketCal lists "by 20 Oct 2026" (4-week public test from the 22 Sep testnet). Unofficial; the docs
+  still give no date.
+- **HyperCore deployer fee share EXISTS:** the Elysium spot-deployment docs list HL action `spotDeploy` →
+  `setDeployerTradingFeeShare {token, share}` (the deployer's cut of that pair's HyperCore trading fees). Answers the open
+  question in the "HyperCore graduation" notes below.
+- Sources: financefeeds.com/kinetiq-unveils-elysium-l2-for-hyperliquid-using-hype-as-gas, bankless.com (Kinetiq unveils
+  Elysium), elysium.kinetiq.xyz/docs/building-on-elysium and /docs/hypercore-spot-deployment.
 
 ### Where we are (sessions 2026-09-27/28, summary)
 - **Backend (done, testnet):** pump.fun-style launchpad replaced the paused PropAMM (§0). One token per X account named
@@ -542,7 +620,86 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
   - Browser pane pauses animations while hidden: screenshots can look half-faded; the app is fine (check in Firefox).
   - Dev server: `npm --prefix app run dev` now binds **127.0.0.1:5173** (vite.config.js) — "localhost" was IPv6-only before.
 
-### Next: the Explore page (user's plan, 2026-09-28)
+### Explore page: FIRST PASS BUILT (2026-09-28 late), user reviewing it
+- **Data (LIVE on Supabase):** migration `20260928000000_explore.sql` pushed: `trades.price_hype` (spot HYPE/token after
+  each trade: curve from the Trade event's virtual reserves, pool from the pair's `Sync`, 36-decimal precision),
+  `trades.curve_sold`, `tokens.virtual_hype`; view **`token_stats`** (price, mcap, 24h change, curve progress, 24h +
+  all-time volume/trades, creator card) and RPC **`token_candles(p_token, p_bucket_seconds, p_since)`** (OHLC, open =
+  previous close). Indexer redeployed with these (8 shared tests pass). Tables were empty (testnet reset), so nothing
+  was backfilled; real data appears after the next launches/trades.
+- **App:** `/explore` (`app/src/components/ExploreCard.tsx`, `app/src/lib/explore.ts`, styles `.ex-*`): side by side
+  (user: "place side by side and once I see it we go from there"): left = search @handle + Top 25 by 24h volume (mcap,
+  24h change); right = picked token (avatar, @handle, $TICKER, category chip, USD price with subscript zeros, 24h change,
+  SVG line chart with 1H/24H/7D/All, 5 stat tiles, curve progress bar). `?t=<handle|address>` opens a token (for landing
+  after a launch; the launch "live" screen doesn't link there yet). `?demo` = 28 generated sample tokens. USD via
+  `useHypeUsd()` (HL mainnet HYPE mid, 15 s). Reads use the Supabase **publishable** key (`config.ts`, public by design).
+  Narrow screens: cards stack and the page scrolls.
+- **Stored candles (user, 2026-09-28: "charts instant, no glitches"; LIVE):** migration `20260928010000_candles.sql`:
+  table `candles` (5m/15m/30m/1h/4h per token), filled by a statement-level trigger on `trades` (rebuilds every
+  touched bucket in time order; open = previous stored close, so it survives archiving), RPC **`token_chart(p_token,
+  p_interval, p_limit<=1000)`** = last N buckets up to now with NO gaps (quiet buckets flat at the last close).
+  `token_candles` dropped. Tested on PGlite (real Postgres in WASM) with a scratch harness: out-of-order batches,
+  archiving, duplicate retries, gap-fill, 20k trades (~3 ms per 100-trade batch, 300-candle read ~4 ms). The app chart
+  is candlesticks with 5m/15m/30m/1H/4H buttons (default 15m), refreshes every 10 s.
+- **Chart = TradingView Lightweight Charts v5** (`app/src/components/CandleChart.tsx`; Apache-2.0, attribution logo
+  kept): market cap in USD (price x 1B x HYPE/USD frozen per token view; tiny prices make unreadable axes), candles +
+  volume, zoom/pan on both axes (wheel/pinch, drag, drag an axis, double-click resets), Log + Reset buttons. Axiom uses
+  TradingView's proprietary Advanced Charts (indicators, drawing tools; free for companies with a public product via
+  application, TradingView logo): apply later if wanted, our candle data fits either.
+- **Live trades (user: "charts must update in milliseconds"):** `keeper/watcher.mjs` (+ `src/watch/trades.mjs`, 5 tests)
+  follows Elysium and broadcasts each curve/pool trade (price after, side, size, trader) on PRIVATE Supabase Realtime
+  channels `trades:<token>` + `trades:all` as soon as its block appears; the indexer still stores trades (~1 min later).
+  Run: `./script/run-watcher.sh` (fetches the legacy service_role key via the Supabase CLI into the process env only).
+  - Elysium's official RPC has **no websocket**; the hypedexer node does (`wss://elysium-testnet-rpc.hypedexer.com/`)
+    but allows **one websocket per IP** (a second connection is dropped with 1006): run ONE watcher. Fallback: HTTP
+    getLogs polling every 500 ms while the websocket is down (and a slow gap-filler while it's up).
+  - Realtime auth (verified live 2026-09-28): viewers join the private channels with the **legacy anon JWT**
+    (`SUPABASE_ANON_JWT` in `app/src/lib/config.ts`; the new publishable key failed with "MissingPartition"); only the
+    **legacy service_role key** can send (new `sb_secret` key got 403). Anon sends (REST or websocket) were NOT
+    delivered. Policy: migration `20260928020000_live_trades.sql` (select-only). Supabase is phasing legacy keys out
+    eventually: re-test when they do.
+  - App: `app/src/lib/live.ts` (`subscribeTrades`, `?demo` fakes trades), CandleChart `applyTrade` moves the current
+    candle; a stored candle only replaces a live-touched one once it has >= as many trades (no flicker back).
+    Header price + market cap tile update live.
+  - **Not yet verified end to end with a real on-chain trade** (no trades on the current launchpad; needs the redeploy
+    + `launchpad-test.sh`, which needs a burner top-up). The watcher started cleanly against testnet (websocket up, no
+    errors) and the node was confirmed to push logs (70 logs / 15 s).
+  - Needs an always-on host for mainnet (like the other bots).
+- **Layout (user, 2026-09-28):** 3 columns, chart dead-center (equal 300px sides; 260px under 1240px wide): left =
+  **Top 25 by TOTAL volume**, order re-ranked every 30 min by pg_cron (`top_tokens` snapshot + `top_tokens_live` view,
+  migration `20260928030000_top_tokens.sql`, job `neuriio-top-tokens`; numbers stay live); search **@handle (FTF
+  names later)** centered above the chart with a dropdown; right = order card (`OrderCard.tsx` + `lib/trade.ts`, WIRED
+  2026-09-28): Neuriio (Privy) wallet buys/sells on the curve (Launchpad.buy/sell) or the pool (SwapRouter.buy/sell);
+  exact on-chain quotes as you type (previewBuy/previewSell, quoteBuy/quoteSell), 1% slippage minimum, price impact,
+  fee, refund line when a buy sells out the curve; sells approve the exact amount first; balances (HYPE + token,
+  15 s), 25/50/75/100% sell buttons; states Log in / Enter an amount / Not enough / Approving… / Confirming… / done /
+  friendly errors. Verified in `?demo` (simulated wallet); **real-chain trading not tested yet** (no tokens on the
+  current launchpad). Card glows face the page center
+  (left card right, chart center, order card left: `CardBg side`).
+- **PFPs:** real X pictures (Privy, saved at 200x200 by launch-pass/register). If a creator changes their X picture
+  the old URL dies until `register` refreshes it, and **the app doesn't call `register` after login yet**. Avatars fall
+  back to the initial on a broken image.
+- **Storage plan (user, 2026-09-28):** free plan = 500 MB DB (~1–1.5M trade rows). Before mainnet: Supabase Pro ($25/mo,
+  8 GB, no pausing, backups). Old raw trades can be archived/deleted later: charts come from `candles`, points from
+  `points_ledger`. Not built: the archive job itself.
+- Links into Explore (2026-09-28): launch success screen "Open in Explore" (`/explore?t=<handle>`), ≡ menu has
+  Explore + Launch as real links (Dashboard/Spot/Perps/Outcome still inert). Launch share text now "I just tokenized
+  my account" (headline rename).
+- **Placement (user, 2026-09-28):** Explore is pinned under the top bar (cards' top at 176px, search 26px under the
+  marquee) and flows in the page, so it scrolls when Positions makes it taller than the screen. `/launch` cards pinned
+  at the same 176px top.
+- **Profile (user, 2026-09-28):** lavender "Profile" button next to the category badge -> `ProfileModal.tsx`: small
+  modal over the center of the chart card, card blurred behind; name, @handle linking to x.com, badge, About (bio),
+  links; Escape / × / click outside closes. Data: `tokens.profile_hash` -> `creator_profiles.body` (two REST reads;
+  there's no FK between them for an embed).
+- **Positions (user, 2026-09-28):** `PositionsCard.tsx` under the chart, exactly the chart's width: Token, Amount,
+  Avg entry (MC), Current (MC), Value, P/L ($ and %). Computed in the app from the wallet's curve/pool trades
+  (`positions()` in lib/explore.ts, average-cost; transfers in/out aren't counted). Rows open that token. `?demo`
+  shows 3 example positions (one up, one down, one flat).
+- Not built yet (waiting on the user's review): creator earnings in the profile (FeeVault.creatorEarned), creator profile (about/links) + creator earnings, trades feed, buy/sell,
+  other rankings (newest / near graduation / gainers), Explore in the ≡ menu, candles vs line.
+
+### Original plan for the Explore page (user's plan, 2026-09-28)
 After a successful launch the app goes to **Explore** (route e.g. `/explore`, same shell: header, marquee, Account/Points,
 footer; content in the center "modals", as many per page as needed — user designs the look together, one element at a time,
 per memory "UI pacing"). Contents the user described:
@@ -599,12 +756,12 @@ Data to build for it (Supabase, public-read):
   - Our factories: `0x37fb…418f`, `0x1e9b…e45a`, `0x9ea7…a056`, current `0xa6ec…b08a`; `0xfa45…b3f9` (1 pair, fee setter 0) unknown.
 - **Answer to the user:** routing our tokens to their pools earns us/creators nothing from the pool (their hook pays its own
   recipients); only a router-level fee on trades placed from our app or an integrator share if one exists. **Keep our pool.**
-- **Ask Kinetiq (one message):** mainnet date; who runs the V4 launchpad (`0xf889…`); builder incentive program terms + how to
+- **Ask Kinetiq (one message):** mainnet date; how the 25% sequencer-fee share for apps is allocated + how to apply; who runs the V4 launchpad (`0xf889…`); builder incentive program terms + how to
   apply; whether any Elysium AMM offers an integrator/referral fee share.
 - Idea (user): fund each token's later HyperCore spot deployment from its pool fees (per-token "HyperCore fund" in FeeVault,
   released at a milestone). Open: which share funds it (creator 80 / protocol 20 / new split) and who holds the ticker key.
 
-### PROPOSED (user, 2026-09-28): graduate into Uniswap V4 with OUR hook — decide first thing tomorrow
+### SUPERSEDED (2026-09-28 late: we forked Uniswap V2 instead, see top of §10): graduate into Uniswap V4 with OUR hook
 - User wants the V4-launchpad architecture. Honest status told to the user: our SwapPair is a from-scratch Solidity 0.8 port of
   Uniswap V2 semantics (not a code fork) + our fee routing; Launchpad is custom (pump.fun parameters); tested, NOT audited.
   Copying the other team's unverified hook bytecode = NO (no source/license/audit).
@@ -628,10 +785,12 @@ Data to build for it (Supabase, public-read):
   So: using an existing PoolManager + our own hook = fine; deploying our own V4 core on MAINNET before the change date = needs a
   grant. Fallback: launch on our V2-style pool (Uniswap v2 is GPL, no restriction) and switch graduations to V4 when available.
   **To check tomorrow:** the two ENS records (earlier MIT date? existing grants covering new chains?).
-- **Decide tomorrow: V4 hook first, or Explore first** (Explore's volume/price data comes from the indexer, which changes with
+- *(Superseded)* ~~Decide tomorrow: V4 hook first, or Explore first~~ (Explore's volume/price data comes from the indexer, which changes with
   the pool). Add to the Kinetiq questions: who owns the V4 PoolManager; V4 on Elysium mainnet?
 
 ### Also open (not tomorrow unless asked)
+- **Promo video "Tokenize Accounts" (Higgsfield): AFTER the Explore page.** Script, style block and shot prompts saved in
+  `notes/promo-video-higgsfield.md`.
 - User to send **community + buyback wallet addresses** → `FeeVault.setWallets` (owner = burner).
 - Creator **claim** button in the UI (FeeVault `claim`), `register` call after login (points for non-launchers),
   builder fee wired into the future buy UI (`HL_BUILDER`), holding-points math (TBD by user).

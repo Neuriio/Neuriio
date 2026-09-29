@@ -1,0 +1,156 @@
+// Live trade watcher: follows Elysium block by block and broadcasts every launched-token trade (bonding curve and
+// graduated pools) on Supabase Realtime the moment its block appears, so charts update without waiting for the
+// once-a-minute indexer. Stateless: storing trades stays the indexer's job (supabase/functions/indexer).
+//
+//   Primary: websocket log subscription (WS_URL; Elysium's official RPC has no websocket, the hypedexer node does).
+//   Fallback: HTTP polling of eth_getLogs every POLL_MS (RPC_URL) whenever the websocket is down.
+//   Output:   private Realtime channels "trades:<token>" and "trades:all", event "trade" (see src/watch/trades.mjs).
+//             Only the service key can send there (migration 20260928020000_live_trades.sql).
+//
+// env: SUPABASE_URL, SUPABASE_SERVICE_KEY (legacy service_role key; script/run-watcher.sh fetches it via the CLI),
+//      WS_URL, RPC_URL ("primary,fallback"), POLL_MS (default 500), DEPLOYMENTS (default ../deployments/elysium-testnet.json)
+import { readFileSync } from "node:fs";
+import { createPublicClient, parseAbi, webSocket } from "viem";
+import { makeTransport } from "./src/rpc.mjs";
+import { liveTrades, watchEvents } from "./src/watch/trades.mjs";
+
+const env = (k, d) => process.env[k] ?? d;
+const dep = JSON.parse(readFileSync(new URL(env("DEPLOYMENTS", "../deployments/elysium-testnet.json"), import.meta.url)));
+const SUPABASE_URL = env("SUPABASE_URL", "https://yviymgfgaepmtijgyyyo.supabase.co");
+const SERVICE_KEY = env("SUPABASE_SERVICE_KEY");
+if (!SERVICE_KEY) throw new Error("SUPABASE_SERVICE_KEY is required (use ./script/run-watcher.sh)");
+const WS_URL = env("WS_URL", "wss://elysium-testnet-rpc.hypedexer.com/");
+const RPC_URL = env("RPC_URL", "https://testnet-rpc.elysium.kinetiq.xyz,https://elysium-testnet-rpc.hypedexer.com/");
+const POLL_MS = Number(env("POLL_MS", 500));
+
+const lc = (a) => a.toLowerCase();
+const ctx = {
+  launchpad: lc(dep.launchpad),
+  router: lc(dep.swapRouter),
+  whype: lc(dep.whype),
+  pairToken: new Map(), // pair -> token, filled from the factory, then from Graduated events
+};
+const log = (ev, o = {}) => console.log(JSON.stringify({ t: new Date().toISOString(), ev, ...o }));
+
+const http = createPublicClient({ transport: makeTransport(RPC_URL, { name: "watcher" }) });
+
+// ------------------------------------------------------------------ pairs
+
+const factoryAbi = parseAbi([
+  "function allPairsLength() view returns (uint256)",
+  "function allPairs(uint256) view returns (address)",
+]);
+const pairAbi = parseAbi(["function token0() view returns (address)", "function token1() view returns (address)"]);
+
+async function loadPairs() {
+  const n = Number(await http.readContract({ address: dep.swapFactory, abi: factoryAbi, functionName: "allPairsLength" }));
+  for (let i = 0; i < n; i++) {
+    const pair = lc(await http.readContract({ address: dep.swapFactory, abi: factoryAbi, functionName: "allPairs", args: [BigInt(i)] }));
+    const [t0, t1] = await Promise.all(["token0", "token1"].map((f) => http.readContract({ address: pair, abi: pairAbi, functionName: f })));
+    ctx.pairToken.set(pair, lc(lc(t0) === ctx.whype ? t1 : t0));
+  }
+}
+const addresses = () => [dep.launchpad, dep.swapRouter, ...ctx.pairToken.keys()];
+
+// ------------------------------------------------------------------ broadcast
+
+async function broadcast(trades) {
+  if (!trades.length) return;
+  const messages = trades.flatMap((t) => [
+    { topic: `trades:${t.token}`, event: "trade", payload: t, private: true },
+    { topic: "trades:all", event: "trade", payload: t, private: true },
+  ]);
+  const res = await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
+    method: "POST",
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messages }),
+  });
+  if (!res.ok) log("broadcast_error", { status: res.status, body: (await res.text()).slice(0, 200) });
+}
+
+// ------------------------------------------------------------------ handling a batch of logs
+
+const seen = new Set(); // tx:logIndex, so a block seen by both paths is sent once
+const blockTs = new Map();
+let polled = 0n; // the polling path's cursor (independent of the websocket; `seen` dedupes the overlap)
+
+async function timestampOf(n) {
+  if (!blockTs.has(n)) {
+    blockTs.set(n, http.getBlock({ blockNumber: n }).then((b) => Number(b.timestamp) * 1000));
+    if (blockTs.size > 500) blockTs.delete(blockTs.keys().next().value);
+  }
+  return blockTs.get(n);
+}
+
+async function handle(logs, source) {
+  const fresh = logs.filter((l) => !seen.has(`${l.transactionHash}:${l.logIndex}`));
+  if (!fresh.length) return;
+  for (const l of fresh) seen.add(`${l.transactionHash}:${l.logIndex}`);
+  if (seen.size > 20_000) seen.clear();
+  const byBlock = Map.groupBy(fresh, (l) => l.blockNumber);
+  for (const [n, group] of [...byBlock].sort((a, b) => Number(a[0] - b[0]))) {
+    const received = Date.now();
+    const { trades, graduated } = liveTrades(group, ctx, await timestampOf(n));
+    await broadcast(trades);
+    if (trades.length) log("trades", { block: Number(n), n: trades.length, source, ms: Date.now() - received });
+    for (const g of graduated) {
+      ctx.pairToken.set(g.pair, g.token);
+      log("graduated", g);
+      resubscribe(); // watch the new pool too
+    }
+  }
+}
+
+// ------------------------------------------------------------------ websocket (primary)
+
+let unwatch = null;
+let wsHealthy = false;
+let ws = null;
+
+function subscribe() {
+  ws ??= createPublicClient({ transport: webSocket(WS_URL, { keepAlive: { interval: 15_000 }, reconnect: { attempts: Infinity, delay: 2_000 } }) });
+  unwatch = ws.watchEvent({
+    address: addresses(),
+    events: watchEvents,
+    onLogs: (logs) => {
+      wsHealthy = true;
+      handle(logs, "ws").catch((e) => log("handle_error", { error: e.message }));
+    },
+    onError: (e) => {
+      if (wsHealthy) log("ws_down", { error: e.shortMessage ?? e.message });
+      wsHealthy = false;
+    },
+  });
+  wsHealthy = true;
+}
+function resubscribe() {
+  unwatch?.();
+  subscribe();
+}
+
+// ------------------------------------------------------------------ polling (fallback + gap filler)
+
+// Polls quickly while the websocket is down, and slowly otherwise to fill any block the subscription missed.
+async function poll() {
+  try {
+    const head = await http.getBlockNumber({ cacheTime: 0 });
+    if (polled === 0n) polled = head;
+    const quiet = wsHealthy ? 2n : 0n; // leave the newest blocks to the websocket when it's up
+    if (head - quiet > polled) {
+      const to = head - quiet > polled + 500n ? polled + 500n : head - quiet;
+      const logs = await http.getLogs({ address: addresses(), events: watchEvents, fromBlock: polled + 1n, toBlock: to });
+      await handle(logs, "poll");
+      polled = to;
+    }
+  } catch (e) {
+    log("poll_error", { error: e.shortMessage ?? e.message });
+  }
+  setTimeout(poll, wsHealthy ? POLL_MS * 6 : POLL_MS);
+}
+
+// ------------------------------------------------------------------ start
+
+await loadPairs();
+log("start", { launchpad: ctx.launchpad, router: ctx.router, pairs: ctx.pairToken.size, ws: WS_URL });
+subscribe();
+poll();

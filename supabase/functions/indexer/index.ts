@@ -16,6 +16,7 @@ import {
   launchpadEvents,
   pairEvents,
   pairSwapToRow,
+  poolPrice,
   routerEvents,
   routerSwapToRow,
   type TradeRow,
@@ -88,10 +89,24 @@ async function indexElysium(usd: number | null) {
   // graduations in this range add pairs to watch
   const pairToken = new Map<string, string>((pairsData ?? []).map((p) => [p.pair!, p.address]));
   for (const l of padLogs) if (l.eventName === "Graduated") pairToken.set(l.args.pair!.toLowerCase(), l.args.token!.toLowerCase());
-  const pairLogs = pairToken.size
-    ? (await chain.getLogs({ address: [...pairToken.keys()] as `0x${string}`[], events: pairEvents, fromBlock: from, toBlock: to }))
-        .filter((l) => l.args.sender!.toLowerCase() !== ROUTER.toLowerCase())
+  const allPairLogs = pairToken.size
+    ? await chain.getLogs({ address: [...pairToken.keys()] as `0x${string}`[], events: pairEvents, fromBlock: from, toBlock: to })
     : [];
+  // swaps not made via our router (those are indexed from the router's Swapped event, which knows the trader)
+  const pairLogs = allPairLogs.filter((l) => l.eventName === "Swap" && l.args.sender!.toLowerCase() !== ROUTER.toLowerCase());
+  // pool price after a swap = the last Sync of that pair before the given log in the same tx
+  const syncs = allPairLogs.filter((l) => l.eventName === "Sync");
+  const tokenPair = new Map([...pairToken].map(([pair, token]) => [token, pair]));
+  const priceBefore = (pair: string | undefined, tx: string, logIndex: number) => {
+    let best: (typeof syncs)[number] | undefined;
+    for (const l of syncs) {
+      if (l.transactionHash === tx && l.address.toLowerCase() === pair && l.logIndex! < logIndex && (!best || l.logIndex! > best.logIndex!)) best = l;
+    }
+    if (!best || !pair) return null;
+    // deno-lint-ignore no-explicit-any
+    const a = best.args as any;
+    return poolPrice(a.reserve0, a.reserve1, pairToken.get(pair)!, WHYPE);
+  };
 
   // block timestamps (few distinct blocks per run)
   const blocks = new Set([...padLogs, ...routerLogs, ...pairLogs].map((l) => l.blockNumber!));
@@ -125,10 +140,21 @@ async function indexElysium(usd: number | null) {
     // deno-lint-ignore no-explicit-any
     ...padLogs.filter((l) => l.eventName === "Trade").map((l) => curveTradeToRow(l as any, ts(l), usd)),
     // deno-lint-ignore no-explicit-any
-    ...routerLogs.map((l) => routerSwapToRow(l as any, ts(l), usd)),
-    ...pairLogs.map((l) =>
+    ...routerLogs.map((l) =>
       // deno-lint-ignore no-explicit-any
-      pairSwapToRow(l as any, pairToken.get(l.address.toLowerCase())!, WHYPE, txFrom.get(l.transactionHash!)!, ts(l), usd)
+      routerSwapToRow(l as any, ts(l), usd, priceBefore(tokenPair.get(l.args.token!.toLowerCase()), l.transactionHash!, l.logIndex!))
+    ),
+    ...pairLogs.map((l) =>
+      pairSwapToRow(
+        // deno-lint-ignore no-explicit-any
+        l as any,
+        pairToken.get(l.address.toLowerCase())!,
+        WHYPE,
+        txFrom.get(l.transactionHash!)!,
+        ts(l),
+        usd,
+        priceBefore(l.address.toLowerCase(), l.transactionHash!, l.logIndex!),
+      )
     ),
   ];
   await insertTrades(rows, "tx_hash,log_index");

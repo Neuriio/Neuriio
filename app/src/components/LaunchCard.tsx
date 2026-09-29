@@ -463,9 +463,12 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                       className="lock-login lp-cta"
                       target="_blank"
                       rel="noreferrer"
-                      href={`https://x.com/intent/post?text=${encodeURIComponent(`I just tokenized myself: $${ticker} is live on @Neuriio`)}`}
+                      href={`https://x.com/intent/post?text=${encodeURIComponent(`I just tokenized my account: $${ticker} is live on @Neuriio`)}`}
                     >
                       Share on X
+                    </a>
+                    <a className="link-btn" href={`/explore?t=${handle}${DEMO ? "&demo" : ""}`}>
+                      Open in Explore
                     </a>
                     {phase.token && (
                       <a className="link-btn" target="_blank" rel="noreferrer" href={`${elysiumTestnet.blockExplorers.default.url}/address/${phase.token}`}>

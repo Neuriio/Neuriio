@@ -8,7 +8,7 @@ interface IWHYPE is IERC20 {
     function withdraw(uint256 amount) external;
 }
 
-/// Uniswap-V2-shaped, so existing V2 aggregator adapters work (fee = 25 bps).
+/// The pair: our Uniswap V2 fork (src/swap/v2), so existing V2 aggregator adapters work (fee = 25 bps).
 interface ISwapPair {
     function token0() external view returns (address);
     function token1() external view returns (address);
@@ -32,7 +32,10 @@ interface IFeeVault {
     function notifyPoolFee(address token) external;
 }
 
-/// Flash-swap callback (called on `to` when `swap` gets non-empty `data`).
-interface ISwapCallee {
-    function swapCall(address sender, uint256 amount0, uint256 amount1, bytes calldata data) external;
+/// Owner side of our V2 factory (src/swap/v2/UniswapV2Factory.sol); `feeToSetter` is the owner.
+interface ISwapFactoryAdmin is ISwapFactory {
+    function feeToSetter() external view returns (address);
+    function launchpad() external view returns (address);
+    function setLaunchpad(address launchpad) external;
+    function setFeeVault(address feeVault) external;
 }

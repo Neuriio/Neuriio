@@ -30,7 +30,7 @@ check() { if [ "$2" = "true" ]; then echo "  ✓ $1"; else echo "  ✗ $1" >&2; 
 FAIL=0
 
 PAD=$(jq -r .launchpad $D); ROUTER=$(jq -r .swapRouter $D); FACTORY=$(jq -r .swapFactory $D); WHYPE=$(jq -r .whype $D)
-echo "  Launchpad $PAD · SwapRouter $ROUTER · SwapFactory $FACTORY · WHYPE $WHYPE"
+echo "  Launchpad $PAD · SwapRouter $ROUTER · SwapFactory (UniswapV2 fork) $FACTORY · WHYPE $WHYPE"
 
 TRADER_KEY=$(cast wallet new --json | jq -r '.[0].private_key')
 TRADER=$(cast wallet address --private-key "$TRADER_KEY")
@@ -86,7 +86,9 @@ check "graduated" "$GRAD"
 PAIR=$(call $FACTORY "getPair(address,address)(address)" $TOKEN $WHYPE)
 echo "  pool $PAIR"
 LP_DEAD=$(call $PAIR "balanceOf(address)(uint256)" $DEAD); LP_TOTAL=$(call $PAIR "totalSupply()(uint256)")
-check "all LP burned ($(eth $LP_DEAD) of $(eth $LP_TOTAL) at 0x…dEaD)" "$( [ "$LP_DEAD" = "$LP_TOTAL" ] && echo true )"
+LP_ZERO=$(call $PAIR "balanceOf(address)(uint256)" 0x0000000000000000000000000000000000000000) # V2 locks 1,000 units there
+check "all LP burned ($(eth $LP_DEAD) of $(eth $LP_TOTAL) at 0x…dEaD, $LP_ZERO wei at 0x0)" \
+  "$( [ "$(echo "$LP_DEAD + $LP_ZERO" | bc)" = "$LP_TOTAL" ] && echo true )"
 check "launchpad holds no tokens" "$( [ "$(call $TOKEN "balanceOf(address)(uint256)" $PAD)" = "0" ] && echo true )"
 RES=$(cast call $PAIR "getReserves()(uint112,uint112,uint32)" --rpc-url $RPC | awk '{print $1}' | head -2 | tr '\n' ' ')
 echo "  pool reserves: $RES"

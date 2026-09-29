@@ -8,7 +8,7 @@ import {ISwapFactory, ISwapPair, IWHYPE} from "./interfaces.sol";
 contract SwapRouter {
     using SafeERC20 for IERC20;
 
-    uint256 internal constant FEE_BPS = 25; // SwapPair.FEE_BPS
+    uint256 internal constant FEE_BPS = 25; // the pair's fee (src/swap/v2/UniswapV2Pair.sol)
 
     ISwapFactory public immutable factory;
     IWHYPE public immutable whype;

@@ -184,6 +184,7 @@ body {
   background: none;
   border: none;
   cursor: pointer;
+  text-decoration: none; /* Explore / Launch are links */
   transition: color 0.15s ease;
 }
 .menu-item:hover,
@@ -1136,8 +1137,10 @@ body {
   text-decoration: none;
 }
 
-/* bigger launch card (no tabs bar on this page) */
+/* bigger launch card (no tabs bar on this page); pinned at the same top as Explore's cards (user, 2026-09-28) */
 .stage-launch {
+  top: 176px;
+  transform: translateX(-50%);
   width: min(1000px, calc(100vw - 32px));
 }
 .stage-launch .launch-grid {
@@ -1577,4 +1580,807 @@ body {
   .top-marquee {
     display: none; /* no room between logo and buttons on phones */
   }
+}
+
+/* ---- /explore: search + Top 25 (left) beside the picked token (right). First pass, 2026-09-28 ---- */
+/* pinned under the top bar (not vertically centered): search right below the marquee, cards under it, free space
+   left below the chart for more data */
+.stage-explore {
+  position: relative; /* in the page flow, so the page grows (and scrolls) with Positions below the chart */
+  top: auto;
+  left: auto;
+  transform: none;
+  width: min(1480px, calc(100vw - 32px));
+  margin: 176px auto 0; /* search bar sits 16px + 40px above the cards */
+  padding-bottom: 110px; /* room for the footer links */
+}
+/* equal side columns keep the chart exactly in the middle of the page */
+.ex-grid {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 300px;
+  grid-template-rows: min(560px, calc(100vh - 300px)) auto;
+  grid-template-areas:
+    "list chart order"
+    ". positions .";
+  gap: var(--gap);
+  row-gap: 16px;
+}
+.ex-card {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #1b1428;
+  border-color: rgba(236, 221, 255, 0.1);
+  backdrop-filter: none;
+  box-shadow: 0 30px 80px rgba(7, 2, 12, 0.5);
+}
+.ex-card > :not(.li-bg) {
+  position: relative; /* above the shared background */
+}
+.ex-empty {
+  margin: 0;
+  padding: 18px;
+  font-size: 12px;
+  color: var(--muted);
+  list-style: none;
+}
+
+/* left: search + list */
+.ex-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 16px 10px;
+  padding: 0 12px;
+  height: 38px;
+  color: var(--muted);
+  background: rgba(10, 6, 18, 0.45);
+  border: 1px solid rgba(236, 221, 255, 0.14);
+  border-radius: var(--radius);
+}
+.ex-search:focus-within {
+  border-color: rgba(216, 255, 254, 0.5);
+}
+.ex-search input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: none;
+  border: 0;
+  outline: none;
+}
+.ex-list-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 18px 8px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ex-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 8px 10px;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(236, 221, 255, 0.18) transparent;
+}
+.ex-row {
+  display: grid;
+  grid-template-columns: 22px auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ex-row:hover {
+  background: rgba(236, 221, 255, 0.05);
+}
+.ex-row.is-picked {
+  background: rgba(216, 255, 254, 0.06);
+  border-color: rgba(216, 255, 254, 0.28);
+}
+.ex-rank {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ex-row-names {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ex-row-handle {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-row-mcap {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ex-change {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ex-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cyan-2);
+  background: var(--surface);
+  border: 1px solid rgba(232, 224, 255, 0.5);
+  border-radius: 6px;
+}
+.ex-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* right: the picked token */
+.ex-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  padding: 22px 26px;
+}
+.ex-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.ex-head-names {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ex-handle {
+  font-size: 18px;
+  font-weight: 700;
+}
+.ex-ticker {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ex-head .lp-chip {
+  align-self: center;
+}
+.ex-price {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  margin-left: auto;
+}
+.ex-price-usd {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ex-price .ex-change {
+  font-size: 12px;
+}
+.ex-chart-bar {
+  display: flex;
+  gap: 6px;
+}
+.ex-range {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid rgba(236, 221, 255, 0.12);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ex-range.is-on {
+  color: var(--cyan-2);
+  border-color: rgba(216, 255, 254, 0.45);
+  background: rgba(216, 255, 254, 0.06);
+}
+.ex-chart {
+  flex: 1;
+  min-height: 160px;
+  display: grid;
+  place-items: center;
+}
+.ex-chart {
+  position: relative;
+  display: block;
+}
+/* Lightweight Charts canvas fills the chart area (autoSize) */
+.ex-lwc {
+  position: absolute;
+  inset: 0;
+}
+.ex-chart-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.ex-chart-label {
+  margin-left: auto;
+  align-self: center;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ex-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin: 0;
+}
+.ex-stats div {
+  padding: 10px 12px;
+  background: rgba(10, 6, 18, 0.35);
+  border: 1px solid rgba(236, 221, 255, 0.08);
+  border-radius: 6px;
+}
+.ex-stats dt {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ex-stats dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ex-progress-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ex-progress-track {
+  height: 6px;
+  overflow: hidden;
+  background: rgba(236, 221, 255, 0.08);
+  border-radius: 3px;
+}
+.ex-progress-track span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #817298, #d8fffe);
+  border-radius: 3px;
+}
+
+@media (max-width: 860px) {
+  /* stacked cards are taller than the screen: flow below the header and scroll instead of centering */
+  .stage-explore {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    margin: 120px auto 110px;
+  }
+  .ex-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-template-areas: "chart" "order" "positions" "list";
+    height: auto;
+  }
+  .ex-positions-card {
+    overflow-x: auto;
+  }
+  .ex-head {
+    flex-wrap: wrap;
+  }
+  .ex-center {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .ex-search-top {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    transform: none;
+    width: 100%;
+  }
+  .ex-detail {
+    padding: 18px 16px;
+  }
+  .ex-list-card {
+    height: 320px;
+  }
+  .ex-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.ex-list-card {
+  grid-area: list;
+}
+/* center column: the chart card, with the search floating above it (cards stay top-aligned) */
+.ex-center {
+  grid-area: chart;
+  position: relative;
+  display: flex;
+  min-height: 0;
+}
+.ex-detail-card {
+  flex: 1;
+  min-width: 0;
+}
+.ex-search-top {
+  position: absolute;
+  bottom: calc(100% + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(460px, 100%);
+  z-index: 2;
+}
+.ex-search-top .ex-search {
+  margin: 0;
+  background: #1b1428;
+  box-shadow: 0 12px 32px rgba(7, 2, 12, 0.45);
+}
+.ex-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 340px;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+  background: #1b1428;
+  border: 1px solid rgba(236, 221, 255, 0.14);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 60px rgba(7, 2, 12, 0.6);
+}
+.ex-list-foot {
+  margin: 0;
+  padding: 8px 18px 12px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.ex-order-card {
+  grid-area: order;
+}
+/* 3 columns get tight on laptops: slimmer sides, 3 stat tiles per row */
+@media (max-width: 1240px) and (min-width: 861px) {
+  .ex-grid {
+    grid-template-columns: 260px minmax(0, 1fr) 260px;
+  }
+  .ex-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* right: order card */
+.ex-order {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  padding: 18px 16px;
+}
+.ex-order-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  background: rgba(10, 6, 18, 0.45);
+  border: 1px solid rgba(236, 221, 255, 0.1);
+  border-radius: var(--radius);
+}
+.ex-order-tab {
+  height: 32px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.ex-order-tab.is-buy.is-on {
+  color: #0f1a14;
+  background: #6ee7a0;
+}
+.ex-order-tab.is-sell.is-on {
+  color: #1f0f12;
+  background: #ff8a8a;
+}
+.ex-order-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ex-order-label,
+.ex-order-est dt {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ex-order-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px;
+  background: rgba(10, 6, 18, 0.45);
+  border: 1px solid rgba(236, 221, 255, 0.14);
+  border-radius: var(--radius);
+}
+.ex-order-input:focus-within {
+  border-color: rgba(216, 255, 254, 0.5);
+}
+.ex-order-input input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: 0;
+  outline: none;
+}
+.ex-order-unit {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ex-order-sub {
+  min-height: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ex-order-quick {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.ex-order-quick .ex-range:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ex-order-est {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  background: rgba(10, 6, 18, 0.35);
+  border: 1px solid rgba(236, 221, 255, 0.08);
+  border-radius: 6px;
+}
+.ex-order-est div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ex-order-est dd {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ex-order-cta {
+  height: 44px;
+  margin-top: auto;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.ex-order-cta.is-buy {
+  color: #0f1a14;
+  background: #6ee7a0;
+}
+.ex-order-cta.is-sell {
+  color: #1f0f12;
+  background: #ff8a8a;
+}
+.ex-order-cta:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.ex-order-note {
+  margin: -6px 0 0;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Explore card backgrounds face the page center: list = right (the /launch default), chart = center, order = left */
+.ex-bg-center .li-tint {
+  background:
+    radial-gradient(ellipse 45% 80% at 50% 55%, rgba(150, 132, 200, 0.24), transparent 72%),
+    radial-gradient(ellipse 70% 60% at 50% 50%, rgba(129, 114, 152, 0.1), transparent 80%);
+}
+.ex-bg-center .li-dots {
+  -webkit-mask-image: radial-gradient(ellipse 42% 62% at 50% 55%, #000 25%, transparent 78%), linear-gradient(to bottom, transparent, #000 22%);
+  mask-image: radial-gradient(ellipse 42% 62% at 50% 55%, #000 25%, transparent 78%), linear-gradient(to bottom, transparent, #000 22%);
+}
+.ex-bg-left .li-tint {
+  background:
+    radial-gradient(ellipse 55% 85% at 0% 55%, rgba(150, 132, 200, 0.26), transparent 72%),
+    linear-gradient(to right, rgba(129, 114, 152, 0.16), transparent 58%);
+}
+.ex-bg-left .li-dots {
+  -webkit-mask-image: linear-gradient(to right, #000 25%, transparent 72%), linear-gradient(to bottom, transparent, #000 22%);
+  mask-image: linear-gradient(to right, #000 25%, transparent 72%), linear-gradient(to bottom, transparent, #000 22%);
+}
+.ex-order-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.ex-order-bal {
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.ex-order-msg {
+  margin: 0;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Profile button next to the category badge (lavender, vs the cyan badge) */
+.ex-profile-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #f3e8ff;
+  background: rgba(196, 150, 255, 0.16);
+  border: 1px solid rgba(206, 170, 255, 0.5);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ex-profile-btn:hover {
+  background: rgba(196, 150, 255, 0.26);
+}
+
+/* profile modal: over the chart card's center, the card blurred behind it */
+.ex-detail {
+  position: relative;
+}
+.ex-modal-backdrop {
+  position: absolute;
+  inset: -22px -26px; /* the whole card (cancels .ex-detail's padding) */
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 10, 24, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.ex-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(420px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 22px;
+  background: #1b1428;
+  border: 1px solid rgba(236, 221, 255, 0.16);
+  border-radius: var(--radius);
+  box-shadow: 0 30px 80px rgba(7, 2, 12, 0.6);
+}
+.ex-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid rgba(236, 221, 255, 0.12);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.ex-modal-close:hover {
+  color: var(--text);
+}
+.ex-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 34px;
+}
+.ex-modal-head .lp-chip {
+  align-self: center;
+  margin-left: auto;
+}
+.ex-modal-avatar {
+  width: 52px;
+  height: 52px;
+  font-size: 18px;
+}
+.ex-modal-x {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--cyan-2);
+  text-decoration: none;
+}
+.ex-modal-x:hover {
+  text-decoration: underline;
+}
+.ex-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ex-modal-label {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ex-modal-about {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+  white-space: pre-wrap;
+}
+.ex-modal-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ex-modal-links a {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+  background: rgba(10, 6, 18, 0.35);
+  border: 1px solid rgba(236, 221, 255, 0.08);
+  border-radius: 6px;
+}
+.ex-modal-links a:hover {
+  border-color: rgba(216, 255, 254, 0.35);
+}
+.ex-modal-host {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* positions: under the chart, same width */
+.ex-positions-card {
+  grid-area: positions;
+}
+.ex-positions {
+  position: relative;
+  padding: 14px 18px 12px;
+}
+.ex-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ex-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+.ex-tab.is-on {
+  color: var(--cyan-2);
+  background: rgba(216, 255, 254, 0.06);
+  border-color: rgba(216, 255, 254, 0.35);
+}
+.ex-tab-count {
+  font-size: 10px;
+  color: var(--muted);
+}
+.ex-pos-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ex-pos-table th {
+  padding: 8px 10px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: right;
+  color: var(--muted);
+  border-bottom: 1px solid rgba(236, 221, 255, 0.08);
+}
+.ex-pos-table td {
+  padding: 10px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(236, 221, 255, 0.05);
+}
+.ex-pos-table th:first-child,
+.ex-pos-table td:first-child {
+  text-align: left;
+}
+.ex-pos-table tbody tr {
+  cursor: pointer;
+}
+.ex-pos-table tbody tr:hover td {
+  background: rgba(236, 221, 255, 0.04);
+}
+.ex-pos-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.ex-pos-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+/* positions card: glow from the top center, toward the chart above it */
+.ex-bg-top .li-tint {
+  background:
+    radial-gradient(ellipse 45% 110% at 50% 0%, rgba(150, 132, 200, 0.26), transparent 72%),
+    linear-gradient(to bottom, rgba(129, 114, 152, 0.12), transparent 60%);
+}
+.ex-bg-top .li-dots {
+  -webkit-mask-image: radial-gradient(ellipse 45% 120% at 50% 0%, #000 20%, transparent 75%);
+  mask-image: radial-gradient(ellipse 45% 120% at 50% 0%, #000 20%, transparent 75%);
 }
