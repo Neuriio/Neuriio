@@ -65,6 +65,8 @@ export function liveTrades(logs, { launchpad, router, whype, pairToken }, ts) {
         : undefined;
       trades.push({
         ...base(l),
+        // same id the indexer stores: a router trade is stored from the router's Swapped log, others from the pair Swap
+        ...(viaRouter ? { logIndex: viaRouter.logIndex } : {}),
         token,
         venue: "pool",
         side: isBuy ? "buy" : "sell",

@@ -43,11 +43,13 @@ export function CandleChart({
   candles,
   interval,
   hypeUsd,
+  basePriceHype,
   onControls,
 }: {
   candles: Candle[] | null;
   interval: number; // seconds per candle
   hypeUsd: number; // frozen by the parent per token, so bars don't shift as HYPE's price moves
+  basePriceHype: number; // price before any live trade (a brand-new token's first candle opens here)
   onControls?: (c: ChartControls) => void;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -56,8 +58,8 @@ export function CandleChart({
   const chart = useRef<IChartApi | null>(null);
   const drawn = useRef<Map<number, Drawn>>(new Map()); // what's on screen, by bar time
   const liveMin = useRef<Map<number, number>>(new Map()); // bar time -> trades a stored bar must have to replace it
-  const cfg = useRef({ interval, hypeUsd });
-  cfg.current = { interval, hypeUsd };
+  const cfg = useRef({ interval, hypeUsd, basePriceHype });
+  cfg.current = { interval, hypeUsd, basePriceHype };
 
   const draw = (d: Drawn, historical = false) => {
     drawn.current.set(d.time, d);
@@ -106,10 +108,18 @@ export function CandleChart({
       },
       setLog: (on) => c.priceScale("right").applyOptions({ mode: on ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal }),
       applyTrade: (t) => {
-        const { interval: s, hypeUsd: usd } = cfg.current;
-        if (t.priceHype == null || !usd || drawn.current.size === 0) return; // no base to build on yet
+        const { interval: s, hypeUsd: usd, basePriceHype: base } = cfg.current;
+        if (t.priceHype == null || !usd) return;
         const mcap = t.priceHype * SUPPLY * usd;
         const time = (Math.floor(t.ts / 1000 / s) * s) as UTCTimestamp;
+        if (drawn.current.size === 0) {
+          // no stored candles yet (brand-new token): the first live trade draws the first candle
+          const open = base * SUPPLY * usd;
+          const first: Drawn = { time, open, high: Math.max(open, mcap), low: Math.min(open, mcap), close: mcap, volume: t.hype * usd, trades: 1 };
+          liveMin.current.set(time, 1);
+          draw(first);
+          return;
+        }
         const lastTime = Math.max(...drawn.current.keys());
         if (time < lastTime) return; // late for an older bar: the stored data will carry it
         const last = drawn.current.get(lastTime)!;
@@ -151,6 +161,7 @@ export function CandleChart({
       trades: c.trades,
     }));
     const map = drawn.current;
+    if (next.length === 0 && map.size > 0) return; // nothing stored yet (new token): keep the live candles
     if (map.size === 0 || next.length === 0) {
       b.setData(next.map(({ time, open, high, low, close }) => ({ time, open, high, low, close })));
       v.setData(next.map((d) => ({ time: d.time, value: d.volume, color: d.close >= d.open ? VOL_UP : VOL_DOWN })));

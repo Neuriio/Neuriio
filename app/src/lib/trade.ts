@@ -5,17 +5,11 @@
 import { createWalletClient, custom, erc20Abi, parseAbi, type Address, type EIP1193Provider } from "viem";
 import { elysiumTestnet } from "../chain";
 import { deployment } from "./config";
-import { LAUNCHPAD, pub } from "./launch";
+import { LAUNCHPAD, launchpadAbi as padAbi, pub } from "./launch";
 
 export const ROUTER = deployment.swapRouter as Address;
 export const SLIPPAGE_BPS = 100n; // 1%
 
-const padAbi = parseAbi([
-  "function buy(address token, uint256 minTokensOut, uint256 deadline) payable returns (uint256)",
-  "function sell(address token, uint256 tokensIn, uint256 minHypeOut, uint256 deadline) returns (uint256)",
-  "function previewBuy(address token, uint256 value) view returns (uint256 tokensOut, uint256 hypeIn, uint256 fee, uint256 refund)",
-  "function previewSell(address token, uint256 tokensIn) view returns (uint256 hypeOut, uint256 fee)",
-]);
 const routerAbi = parseAbi([
   "function buy(address token, uint256 minTokensOut, address to, uint256 deadline) payable returns (uint256)",
   "function sell(address token, uint256 tokensIn, uint256 minHypeOut, address to, uint256 deadline) returns (uint256)",

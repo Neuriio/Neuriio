@@ -5,11 +5,14 @@
 //   Primary: websocket log subscription (WS_URL; Elysium's official RPC has no websocket, the hypedexer node does).
 //   Fallback: HTTP polling of eth_getLogs every POLL_MS (RPC_URL) whenever the websocket is down.
 //   Output:   private Realtime channels "trades:<token>" and "trades:all", event "trade" (see src/watch/trades.mjs).
-//             Only the service key can send there (migration 20260928020000_live_trades.sql).
+//             Only the service key can send there (migration 20260928020000_live_trades.sql). Sent over a
+//             persistent Realtime websocket (~75-135 ms to a viewer, measured 2026-09-29) instead of the REST
+//             broadcast endpoint (~300-490 ms); REST only while a token's channel is still joining.
 //
 // env: SUPABASE_URL, SUPABASE_SERVICE_KEY (legacy service_role key; script/run-watcher.sh fetches it via the CLI),
 //      WS_URL, RPC_URL ("primary,fallback"), POLL_MS (default 500), DEPLOYMENTS (default ../deployments/elysium-testnet.json)
 import { readFileSync } from "node:fs";
+import { RealtimeClient } from "@supabase/realtime-js";
 import { createPublicClient, parseAbi, webSocket } from "viem";
 import { makeTransport } from "./src/rpc.mjs";
 import { liveTrades, watchEvents } from "./src/watch/trades.mjs";
@@ -54,16 +57,57 @@ const addresses = () => [dep.launchpad, dep.swapRouter, ...ctx.pairToken.keys()]
 
 // ------------------------------------------------------------------ broadcast
 
+// One persistent Realtime connection; a joined private channel per active topic (LRU, left after 10 quiet minutes).
+const realtime = new RealtimeClient(`${SUPABASE_URL}/realtime/v1`, { params: { apikey: SERVICE_KEY } });
+realtime.setAuth(SERVICE_KEY);
+const channels = new Map(); // topic -> { ch, ready, lastUsed }
+const MAX_CHANNELS = 80;
+const IDLE_MS = 10 * 60_000;
+
+function channelFor(topic) {
+  let c = channels.get(topic);
+  if (!c) {
+    if (channels.size >= MAX_CHANNELS) {
+      const [oldest] = [...channels].sort((a, b) => a[1].lastUsed - b[1].lastUsed)[0];
+      realtime.removeChannel(channels.get(oldest).ch);
+      channels.delete(oldest);
+    }
+    const ch = realtime.channel(topic, { config: { private: true, broadcast: { ack: false } } });
+    c = { ch, ready: false, lastUsed: Date.now() };
+    channels.set(topic, c);
+    ch.subscribe((status, err) => {
+      c.ready = status === "SUBSCRIBED";
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") log("realtime_channel", { topic, status, error: err?.message });
+    });
+  }
+  c.lastUsed = Date.now();
+  return c;
+}
+setInterval(() => {
+  for (const [topic, c] of channels) {
+    if (topic !== "trades:all" && Date.now() - c.lastUsed > IDLE_MS) {
+      realtime.removeChannel(c.ch);
+      channels.delete(topic);
+    }
+  }
+}, 60_000).unref();
+channelFor("trades:all"); // always joined
+
 async function broadcast(trades) {
   if (!trades.length) return;
-  const messages = trades.flatMap((t) => [
-    { topic: `trades:${t.token}`, event: "trade", payload: t, private: true },
-    { topic: "trades:all", event: "trade", payload: t, private: true },
-  ]);
+  const viaRest = [];
+  for (const t of trades) {
+    for (const topic of [`trades:${t.token}`, "trades:all"]) {
+      const c = channelFor(topic);
+      if (c.ready) c.ch.send({ type: "broadcast", event: "trade", payload: t }).catch(() => {});
+      else viaRest.push({ topic, event: "trade", payload: t, private: true }); // channel still joining
+    }
+  }
+  if (!viaRest.length) return;
   const res = await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
     method: "POST",
     headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ messages }),
+    body: JSON.stringify({ messages: viaRest }),
   });
   if (!res.ok) log("broadcast_error", { status: res.status, body: (await res.text()).slice(0, 200) });
 }
@@ -74,12 +118,20 @@ const seen = new Set(); // tx:logIndex, so a block seen by both paths is sent on
 const blockTs = new Map();
 let polled = 0n; // the polling path's cursor (independent of the websocket; `seen` dedupes the overlap)
 
-async function timestampOf(n) {
-  if (!blockTs.has(n)) {
-    blockTs.set(n, http.getBlock({ blockNumber: n }).then((b) => Number(b.timestamp) * 1000));
+// Block time without an extra RPC round trip (that cost ~1 s per block): use the log's own blockTimestamp when the
+// node includes it, else the time we received the block (Elysium's clock trails real time by ~1-2 s anyway, and the
+// stored candles from the indexer use the exact block time).
+function timestampOf(group) {
+  const bt = group.find((l) => l.blockTimestamp != null)?.blockTimestamp;
+  if (bt != null) {
+    const ms = Number(typeof bt === "string" ? BigInt(bt) : bt) * 1000;
+    if (ms > 0) return ms;
+  }
+  if (!blockTs.has(group[0].blockNumber)) {
+    blockTs.set(group[0].blockNumber, Date.now());
     if (blockTs.size > 500) blockTs.delete(blockTs.keys().next().value);
   }
-  return blockTs.get(n);
+  return blockTs.get(group[0].blockNumber);
 }
 
 async function handle(logs, source) {
@@ -90,7 +142,7 @@ async function handle(logs, source) {
   const byBlock = Map.groupBy(fresh, (l) => l.blockNumber);
   for (const [n, group] of [...byBlock].sort((a, b) => Number(a[0] - b[0]))) {
     const received = Date.now();
-    const { trades, graduated } = liveTrades(group, ctx, await timestampOf(n));
+    const { trades, graduated } = liveTrades(group, ctx, timestampOf(group));
     await broadcast(trades);
     if (trades.length) log("trades", { block: Number(n), n: trades.length, source, ms: Date.now() - received });
     for (const g of graduated) {
@@ -151,6 +203,12 @@ async function poll() {
 // ------------------------------------------------------------------ start
 
 await loadPairs();
-log("start", { launchpad: ctx.launchpad, router: ctx.router, pairs: ctx.pairToken.size, ws: WS_URL });
+// join the newest tokens' channels now, so their next trade already goes out over the websocket
+const padAbi = parseAbi(["function allTokensLength() view returns (uint256)", "function allTokens(uint256) view returns (address)"]);
+const nTokens = Number(await http.readContract({ address: dep.launchpad, abi: padAbi, functionName: "allTokensLength" }));
+for (let i = nTokens - 1; i >= Math.max(0, nTokens - (MAX_CHANNELS - 1)); i--) {
+  channelFor(`trades:${lc(await http.readContract({ address: dep.launchpad, abi: padAbi, functionName: "allTokens", args: [BigInt(i)] }))}`);
+}
+log("start", { launchpad: ctx.launchpad, router: ctx.router, pairs: ctx.pairToken.size, tokens: nTokens, ws: WS_URL });
 subscribe();
 poll();

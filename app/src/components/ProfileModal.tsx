@@ -7,6 +7,7 @@ import { ExternalLink, X } from "lucide-react";
 import { type CreatorProfile, getProfile, type TokenStat } from "../lib/explore";
 import { CATEGORIES } from "../lib/launch";
 import { EASE_OUT } from "../lib/motion";
+import { Avatar } from "./Avatar";
 
 export function ProfileModal({ t, onClose }: { t: TokenStat; onClose: () => void }) {
   const [profile, setProfile] = useState<CreatorProfile | null | undefined>(undefined);
@@ -44,9 +45,7 @@ export function ProfileModal({ t, onClose }: { t: TokenStat; onClose: () => void
           <X size={16} />
         </button>
         <header className="ex-modal-head">
-          <span className="ex-avatar ex-modal-avatar">
-            {t.x_pfp_url ? <img src={t.x_pfp_url} alt="" referrerPolicy="no-referrer" /> : <span>{t.handle[0]?.toUpperCase()}</span>}
-          </span>
+          <Avatar handle={t.handle} pfp={t.x_pfp_url} size={52} className="ex-modal-avatar" />
           <div className="ex-head-names">
             <span className="ex-handle">{t.x_name || `@${t.handle}`}</span>
             <a className="ex-modal-x" href={`https://x.com/${t.handle}`} target="_blank" rel="noreferrer">

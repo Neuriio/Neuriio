@@ -9,10 +9,10 @@
   "tKNTQ": "0x04338abe7d8da8a173bcf5a7e15ba704b1beaad2",
   "propAMMKntq": "0x4150763bd4c1de8b380d301e5aa4e04b2116639c",
   "whype": "0x517f12d5d17c4755fbdf988fe9cc24334c3314c7",
-  "swapFactory": "0xa6ec29c9756a90f902264dd68c65d863a3ccb08a",
-  "launchpad": "0x88d474bbff6434b12d4d1cdd80d9dc6908e6a502",
-  "swapRouter": "0x8553c72aba22f3969220ffbac1fa296190b0da0d",
+  "swapFactory": "0xabef87d6c9b502d8062faea07c05d2b807f5c26b",
+  "launchpad": "0x6ef011b34d8c08e20a35f4d25cdcc84070e4cb53",
+  "swapRouter": "0x92a1452f58e27b45bc6bd964b40a779dd3ed167e",
   "launchSigner": "0x25626586434fb2003d12957a1fC4B0fA5EA52886",
   "hlBuilder": "0xef584b1098e12c34d1d85de76285c408ab6917a8",
-  "feeVault": "0x49a8fb439ef9565665e9f326b5372d71e5ce1cc1"
+  "feeVault": "0xf6e6c291447cc72938a458639b3eccf72b4f3b43"
 }

@@ -21,12 +21,8 @@ import {
   PASS_TTL_SECONDS,
 } from "../_shared/launchPass.ts";
 import { CORS, HttpError, json, privyAuth, userRow, type XUser } from "../_shared/privy.ts";
+import { env } from "../_shared/env.ts";
 
-const env = (k: string) => {
-  const v = Deno.env.get(k);
-  if (!v) throw new Error(`missing secret ${k}`);
-  return v;
-};
 
 const PRIVY_APP_ID = env("PRIVY_APP_ID");
 const PRIVY_APP_SECRET = env("PRIVY_APP_SECRET");
@@ -37,11 +33,19 @@ const chain = createPublicClient({ transport: http(env("RPC_URL")) });
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 const xUserFromRequest = privyAuth(PRIVY_APP_ID, PRIVY_APP_SECRET);
 
+const PASSES_PER_10_MIN = 5;
+
 const launchpadAbi = parseAbi([
   "function tokenOfXUser(uint64) view returns (address)",
   "function tokenOfCreator(address) view returns (address)",
   "function launchSigner() view returns (address)",
 ]);
+
+/** Logs the database error server-side; the caller only gets a generic message. */
+function serverError(what: string, detail: string) {
+  console.error(`launch-pass: ${what}: ${detail}`);
+  return json(500, { error: "Could not save your profile, try again" });
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -55,6 +59,14 @@ Deno.serve(async (req) => {
     return json(e instanceof HttpError ? e.status : 500, { error: (e as Error).message });
   }
   const { did, xUserId, handle, wallet: creator } = who;
+
+  // rate limit: a few passes per X account per 10 minutes (each stores a profile of up to 5,000 characters)
+  const { count: recent } = await db
+    .from("launch_passes")
+    .select("id", { count: "exact", head: true })
+    .eq("x_user_id", xUserId)
+    .gte("created_at", new Date(Date.now() - 10 * 60_000).toISOString());
+  if ((recent ?? 0) >= PASSES_PER_10_MIN) return json(429, { error: "Too many attempts, try again in a few minutes" });
 
   // 3. what they're launching
   let body: { category?: string; profile?: { about: string; links?: { label: string; url: string }[] } };
@@ -89,12 +101,12 @@ Deno.serve(async (req) => {
   // 5. record the user + profile, sign
   const now = new Date();
   const { error: userErr } = await db.from("users").upsert(userRow(who), { onConflict: "privy_id" });
-  if (userErr) return json(500, { error: "Could not save your profile", detail: userErr.message });
+  if (userErr) return serverError("users upsert", userErr.message);
   const { error: profileErr } = await db.from("creator_profiles").upsert(
     { hash: profile.hash, x_user_id: xUserId, content: profile.content },
     { onConflict: "hash", ignoreDuplicates: true },
   );
-  if (profileErr) return json(500, { error: "Could not save your profile", detail: profileErr.message });
+  if (profileErr) return serverError("creator_profiles upsert", profileErr.message);
 
   const deadline = BigInt(Math.floor(now.getTime() / 1000) + PASS_TTL_SECONDS);
   const pass = {

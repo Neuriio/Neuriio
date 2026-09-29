@@ -5,15 +5,16 @@
 //   right card: order card (buy/sell)
 //   under the chart (same width): your positions
 // `/explore?t=<handle|address>` opens a token (e.g. right after its launch). `?demo` (dev) = sample data.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { Search, UserRound } from "lucide-react";
 import { CATEGORIES } from "../lib/launch";
 import { CandleChart, type ChartControls } from "./CandleChart";
-import { subscribeTrades } from "../lib/live";
+import { subscribeTrades, useLivePrices } from "../lib/live";
 import { OrderCard } from "./OrderCard";
 import { PositionsCard } from "./PositionsCard";
 import { ProfileModal } from "./ProfileModal";
+import { Avatar } from "./Avatar";
 import { compactUsd, tinyPrice } from "../lib/format";
 import { useHypeUsd } from "../lib/tickers";
 import {
@@ -34,6 +35,7 @@ export function ExploreCard() {
   const hypeUsd = useHypeUsd();
   const [top, setTop] = useState<TokenStat[] | null>(null);
   const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
+  const live = useLivePrices(); // every token's latest price from the live feed
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TokenStat[] | null>(null);
   const [picked, setPicked] = useState<TokenStat | null>(null);
@@ -65,6 +67,17 @@ export function ExploreCard() {
     if (START) getToken(START).then((t) => t && setPicked(t), () => {});
   }, []);
 
+  // keep the picked token's stats fresh: every 4 s while it's a brand-new token shown from the chain (swap in its
+  // Supabase record as soon as the indexer stores it), then every 15 s (volume, trades, curve progress)
+  useEffect(() => {
+    if (!picked) return;
+    const address = picked.address;
+    const id = setInterval(() => {
+      getToken(address, { chainFallback: false }).then((t) => t && setPicked((p) => (p?.address === address ? t : p)), () => {});
+    }, picked.fromChain ? 4_000 : 15_000);
+    return () => clearInterval(id);
+  }, [picked?.address, picked?.fromChain]);
+
   // search as you type (debounced)
   useEffect(() => {
     if (!query.trim()) return setResults(null);
@@ -89,12 +102,12 @@ export function ExploreCard() {
             <li key={t.address}>
               <button className={`ex-row${picked?.address === t.address ? " is-picked" : ""}`} onClick={() => setPicked(t)}>
                 <span className="ex-rank">{i + 1}</span>
-                <Avatar t={t} size={28} />
+                <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
                 <span className="ex-row-names">
                   <span className="ex-row-handle">@{t.handle}</span>
-                  <Change t={t} />
+                  <Change t={t} price={live[t.address]} />
                 </span>
-                <span className="ex-row-mcap">{hypeUsd ? compactUsd(t.mcap_hype * hypeUsd) : "…"}</span>
+                <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
               </button>
             </li>
           ))}
@@ -129,12 +142,12 @@ export function ExploreCard() {
                     }}
                   >
                     <span className="ex-rank" />
-                    <Avatar t={t} size={28} />
+                    <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
                     <span className="ex-row-names">
                       <span className="ex-row-handle">@{t.handle}</span>
-                      <Change t={t} />
+                      <Change t={t} price={live[t.address]} />
                     </span>
-                    <span className="ex-row-mcap">{hypeUsd ? compactUsd(t.mcap_hype * hypeUsd) : "…"}</span>
+                    <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
                   </button>
                 </li>
               ))}
@@ -183,17 +196,20 @@ function TokenDetail({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
 
   // live trades (watcher -> Realtime): move the chart's current candle and the header price as blocks land
   const [livePrice, setLivePrice] = useState<number | null>(null);
+  const [liveTrades, setLiveTrades] = useState(0);
+  const startPrice = useRef(t.price_hype); // demo feed's starting point; refreshed stats mustn't restart the feed
   useEffect(() => {
     if (!controls) return;
     return subscribeTrades(
       t.address,
       (trade) => {
         if (trade.priceHype != null) setLivePrice(trade.priceHype);
+        setLiveTrades((n) => n + 1);
         controls.applyTrade(trade);
       },
-      t.price_hype,
+      startPrice.current,
     );
-  }, [controls, t.address, t.price_hype]);
+  }, [controls, t.address]);
   const price = livePrice ?? t.price_hype;
 
   // stored candles: tiny reads, so refresh often; keep showing the last data while a refresh loads
@@ -214,7 +230,7 @@ function TokenDetail({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
   return (
     <div className="ex-detail">
       <header className="ex-head">
-        <Avatar t={t} size={44} />
+        <Avatar handle={t.handle} pfp={t.x_pfp_url} size={44} />
         <div className="ex-head-names">
           <span className="ex-handle">@{t.handle}</span>
           <span className="ex-ticker">${t.symbol}</span>
@@ -225,7 +241,7 @@ function TokenDetail({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
         </button>
         <div className="ex-price">
           <span className="ex-price-usd">{hypeUsd ? tinyPrice(price * hypeUsd) : "…"}</span>
-          <Change t={t} />
+          <Change t={t} price={price} />
         </div>
       </header>
 
@@ -250,8 +266,8 @@ function TokenDetail({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
         </button>
       </div>
       <div className="ex-chart">
-        <CandleChart candles={data} interval={interval} hypeUsd={chartUsd} onControls={setControls} />
-        {data && data.length === 0 && <p className="ex-empty ex-chart-empty">No trades yet.</p>}
+        <CandleChart candles={data} interval={interval} hypeUsd={chartUsd} basePriceHype={t.price_hype} onControls={setControls} />
+        {data && data.length === 0 && liveTrades === 0 && <p className="ex-empty ex-chart-empty">No trades yet.</p>}
       </div>
 
       <dl className="ex-stats">
@@ -276,24 +292,11 @@ function TokenDetail({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
   );
 }
 
-function Change({ t }: { t: TokenStat }) {
-  const c = change24h(t);
+/** 24h change; `price` = a newer (live) price than the stats'. */
+function Change({ t, price }: { t: TokenStat; price?: number }) {
+  const c = price != null && t.price_hype_24h_ago > 0 ? (price / t.price_hype_24h_ago - 1) * 100 : change24h(t);
   if (c == null) return <span className="ex-change">—</span>;
   return <span className={`ex-change ${c >= 0 ? "price-up" : "price-down"}`}>{`${c >= 0 ? "+" : ""}${c.toFixed(1)}%`}</span>;
-}
-
-/** The creator's X profile picture (saved at launch / login), or their initial if there's none or it fails to load. */
-function Avatar({ t, size }: { t: TokenStat; size: number }) {
-  const [broken, setBroken] = useState(false);
-  return (
-    <span className="ex-avatar" style={{ width: size, height: size }}>
-      {t.x_pfp_url && !broken ? (
-        <img src={t.x_pfp_url} alt="" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
-      ) : (
-        <span>{t.handle[0]?.toUpperCase()}</span>
-      )}
-    </span>
-  );
 }
 
 /** The /launch cards' background: lavender tint + dot grid. `side` = where it glows (each card faces the page center). */

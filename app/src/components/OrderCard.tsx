@@ -7,6 +7,7 @@ import { formatEther, parseEther, type Address, type EIP1193Provider } from "vie
 import { elysiumTestnet } from "../chain";
 import { DEMO, type TokenStat } from "../lib/explore";
 import { compactUsd } from "../lib/format";
+import { SUPABASE_URL } from "../lib/config";
 import { balances, friendlyTradeError, minOut, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
 
 const QUICK_BUY = ["0.1", "0.5", "1", "5"];
@@ -104,6 +105,8 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
           (s) => setStatus({ kind: "busy", label: s === "approving" ? "Approving…" : "Confirming…" }),
         );
       }
+      // ask the indexer to store it now (stats, Top 25 volume); the live feed already shows it everywhere
+      if (!DEMO) fetch(`${SUPABASE_URL}/functions/v1/indexer`, { method: "POST" }).catch(() => {});
       setStatus({ kind: "done", text: `${side === "buy" ? "Bought" : "Sold"} ${fmt(side === "buy" ? q.out : amountIn)} $${t.symbol}` });
       setAmount("");
       setNonce((x) => x + 1);

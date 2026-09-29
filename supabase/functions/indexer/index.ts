@@ -22,12 +22,8 @@ import {
   type TradeRow,
 } from "../_shared/indexer.ts";
 import { json } from "../_shared/privy.ts";
+import { env } from "../_shared/env.ts";
 
-const env = (k: string) => {
-  const v = Deno.env.get(k);
-  if (!v) throw new Error(`missing secret ${k}`);
-  return v;
-};
 
 const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS"));
 const ROUTER = getAddress(env("ROUTER_ADDRESS"));

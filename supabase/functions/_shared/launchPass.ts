@@ -39,7 +39,10 @@ export function canonicalProfile(
   const about = typeof input?.about === "string" ? input.about.trim() : "";
   if (about.length < 50) throw new Error("About must be at least 50 characters");
   if (about.length > 5000) throw new Error("About must be at most 5,000 characters");
-  const links = (input.links ?? []).map((p) => {
+  const rawLinks = input.links ?? [];
+  if (!Array.isArray(rawLinks)) throw new Error("Links must be a list");
+  if (rawLinks.length > 10) throw new Error("At most 10 links"); // checked before doing any work per link
+  const links = rawLinks.map((p) => {
     const label = typeof p?.label === "string" ? p.label.trim() : "";
     const url = typeof p?.url === "string" ? p.url.trim() : "";
     if (!label || label.length > 80) throw new Error("Each link needs a label (max 80 characters)");
@@ -52,7 +55,6 @@ export function canonicalProfile(
     if (u.protocol !== "https:" || url.length > 500) throw new Error(`Links must be https (max 500 chars): ${url}`);
     return { label, url: u.toString() };
   });
-  if (links.length > 10) throw new Error("At most 10 links");
   const content = JSON.stringify({
     v: 1,
     xUserId: who.xUserId,

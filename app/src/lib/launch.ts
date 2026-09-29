@@ -25,12 +25,20 @@ const TOTAL = 1_000_000_000;
 const CURVE_SUPPLY = 793_100_000;
 const VIRTUAL_TOKENS = 1_073_000_000;
 
+/** Everything the app calls on the Launchpad (src/launch/Launchpad.sol): launching, curve trades, views. */
 export const launchpadAbi = parseAbi([
   "struct LaunchPass { address creator; uint64 xUserId; string handle; uint8 category; bytes32 profileHash; uint256 deadline; }",
   "function launch(LaunchPass pass, bytes signature, uint256 minTokensOut) payable returns (address)",
+  "function buy(address token, uint256 minTokensOut, uint256 deadline) payable returns (uint256)",
+  "function sell(address token, uint256 tokensIn, uint256 minHypeOut, uint256 deadline) returns (uint256)",
+  "function previewBuy(address token, uint256 value) view returns (uint256 tokensOut, uint256 hypeIn, uint256 fee, uint256 refund)",
+  "function previewSell(address token, uint256 tokensIn) view returns (uint256 hypeOut, uint256 fee)",
   "function virtualHype() view returns (uint256)",
   "function feeBps() view returns (uint16)",
   "function tokenOfCreator(address) view returns (address)",
+  "function tokenOfHandle(bytes32) view returns (address)",
+  "function curves(address) view returns (address creator, bool graduated, uint128 virtualHype, uint128 virtualToken, uint128 realHype, uint128 realToken)",
+  "function profile(address) view returns ((uint64 xUserId, uint8 category, bytes32 profileHash, string handle))",
 ]);
 
 export const pub = createPublicClient({ chain: elysiumTestnet, transport: fallback(ELYSIUM_RPCS.map((u) => http(u))) });

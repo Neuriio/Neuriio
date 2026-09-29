@@ -44,6 +44,7 @@ import {
   requestLaunchPass,
 } from "../lib/launch";
 import { EASE_OUT } from "../lib/motion";
+import { SUPABASE_URL } from "../lib/config";
 
 // Dev-only previews with a sample profile and a simulated launch:
 //   localhost:5173/launch?demo      logged in (intro shows "Launch")
@@ -255,6 +256,9 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
       const { args, value } = launchArgs(pass, buy, params);
       const hash = await walletClient.writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launch", args, value });
       await pub.waitForTransactionReceipt({ hash });
+      // ask the indexer to run now (it's idempotent + run-locked) so Supabase has the token within seconds;
+      // Explore shows it straight from the chain meanwhile
+      fetch(`${SUPABASE_URL}/functions/v1/indexer`, { method: "POST" }).catch(() => {});
       setPhase({ kind: "live", token: await launchedTokenOf(address!) });
     } catch (e) {
       setPhase({ kind: "error", message: friendly((e as Error).message) });
@@ -467,7 +471,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                     >
                       Share on X
                     </a>
-                    <a className="link-btn" href={`/explore?t=${handle}${DEMO ? "&demo" : ""}`}>
+                    <a className="link-btn" href={`/explore?t=${phase.token ?? handle}${DEMO ? "&demo" : ""}`}>
                       Open in Explore
                     </a>
                     {phase.token && (

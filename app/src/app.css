@@ -1137,10 +1137,10 @@ body {
   text-decoration: none;
 }
 
-/* bigger launch card (no tabs bar on this page); pinned at the same top as Explore's cards (user, 2026-09-28) */
+/* bigger launch card (no tabs bar on this page); sits a little above the page's center (user, 2026-09-29) */
 .stage-launch {
-  top: 176px;
-  transform: translateX(-50%);
+  top: 50%;
+  transform: translate(-50%, calc(-50% - 40px));
   width: min(1000px, calc(100vw - 32px));
 }
 .stage-launch .launch-grid {

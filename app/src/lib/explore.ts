@@ -2,8 +2,9 @@
 // `token_stats` (migration 20260928000000_explore.sql) and function `token_chart`: stored, gap-free candles
 // (migration 20260928010000_candles.sql). Prices are in HYPE;
 // multiply by the live HYPE price for USD. `?demo` (dev only) serves generated sample data instead.
+import { keccak256, toBytes, zeroAddress, type Address } from "viem";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
-import type { CategoryId } from "./launch";
+import { CATEGORIES, type CategoryId, LAUNCHPAD, launchpadAbi as padViews, pub } from "./launch";
 
 export type TokenStat = {
   address: string;
@@ -28,6 +29,7 @@ export type TokenStat = {
   volume_usd_24h: number;
   volume_hype: number;
   last_trade_at: string | null;
+  fromChain?: true; // read straight from the Launchpad because the indexer hasn't stored it yet (brand-new token)
 };
 
 export type Candle = {
@@ -103,15 +105,65 @@ export async function searchTokens(query: string, limit = 10): Promise<TokenStat
   return rows.map(toStat);
 }
 
-/** One token by address or handle (e.g. right after its launch). */
-export async function getToken(addressOrHandle: string): Promise<TokenStat | null> {
+/**
+ * One token by address or handle. Supabase first; a token launched moments ago isn't indexed yet (the indexer runs
+ * every minute), so then it's read straight from the Launchpad: it shows, and trades, from the block it launched in.
+ */
+export async function getToken(addressOrHandle: string, opts: { chainFallback?: boolean } = {}): Promise<TokenStat | null> {
   const v = addressOrHandle.trim().replace(/^@/, "");
   const byAddress = /^0x[0-9a-fA-F]{40}$/.test(v);
   if (DEMO) return demoTokens().find((t) => (byAddress ? t.address === v.toLowerCase() : t.handle.toLowerCase() === v.toLowerCase())) ?? null;
   if (!byAddress && !/^[A-Za-z0-9_]{1,15}$/.test(v)) return null;
   const filter = byAddress ? `address=eq.${v.toLowerCase()}` : `handle=ilike.${v}`;
-  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&${filter}&limit=1`);
-  return rows[0] ? toStat(rows[0]) : null;
+  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&${filter}&limit=1`).catch(() => []);
+  if (rows[0]) return toStat(rows[0]);
+  return opts.chainFallback === false ? null : tokenFromChain(v, byAddress);
+}
+
+const CURVE_TOKENS = 793_100_000;
+
+async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat | null> {
+  const address = byAddress
+    ? (v as Address)
+    : await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "tokenOfHandle", args: [keccak256(toBytes(v.toLowerCase()))] });
+  if (!address || address === zeroAddress) return null;
+  const [curve, prof] = await Promise.all([
+    pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "curves", args: [address] }),
+    pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "profile", args: [address] }),
+  ]);
+  const [creator, graduated, vHype, vToken, , realToken] = curve;
+  if (creator === zeroAddress) return null;
+  const price = Number(vHype) / Number(vToken);
+  const xUserId = prof.xUserId.toString();
+  // the creator's X card was stored when their launch pass was signed, before the launch itself
+  const [card] = await rest<{ x_name: string | null; x_pfp_url: string | null }[]>(
+    `user_cards?select=x_name,x_pfp_url&x_user_id=eq.${xUserId}`,
+  ).catch(() => []);
+  return {
+    address: address.toLowerCase(),
+    handle: prof.handle,
+    symbol: prof.handle.toUpperCase(),
+    category: CATEGORIES[prof.category]?.id ?? "creator",
+    creator: creator.toLowerCase(),
+    x_user_id: xUserId,
+    x_name: card?.x_name ?? null,
+    x_pfp_url: card?.x_pfp_url ?? null,
+    launched_at: new Date().toISOString(),
+    graduated,
+    pair: null,
+    graduated_at: null,
+    price_hype: price,
+    mcap_hype: price * 1e9,
+    price_hype_24h_ago: price,
+    curve_progress: graduated ? 1 : 1 - Number(realToken) / 1e18 / CURVE_TOKENS,
+    trades: 0,
+    trades_24h: 0,
+    volume_usd: 0,
+    volume_usd_24h: 0,
+    volume_hype: 0,
+    last_trade_at: null,
+    fromChain: true,
+  };
 }
 
 /** Candle sizes stored in the database (seconds). */
@@ -149,9 +201,13 @@ export type CreatorProfile = { about: string; links: { label: string; url: strin
 export async function getProfile(address: string): Promise<CreatorProfile | null> {
   if (DEMO) return demoProfile(address);
   const [tok] = await rest<{ profile_hash: string }[]>(`tokens?select=profile_hash&address=eq.${address.toLowerCase()}`);
-  if (!tok) return null;
+  // not indexed yet: the profile hash is on-chain (the profile itself was stored when the launch pass was signed)
+  const hash =
+    tok?.profile_hash ??
+    (await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "profile", args: [address as Address] })).profileHash;
+  if (!hash || /^0x0+$/.test(hash)) return null;
   const [row] = await rest<{ body: { about?: string; links?: { label: string; url: string }[] } }[]>(
-    `creator_profiles?select=body&hash=eq.${tok.profile_hash}`,
+    `creator_profiles?select=body&hash=eq.${hash}`,
   );
   return row ? { about: row.body.about ?? "", links: row.body.links ?? [] } : null;
 }
@@ -163,39 +219,61 @@ export type Position = {
   realizedUsd: number; // P/L already taken by selling
 };
 
-/**
- * Open positions of a wallet in launched tokens, from its curve/pool trades (average-cost method). USD values are
- * each trade's value at its time; the current value uses the live price.
- */
-export async function positions(wallet: string): Promise<Position[]> {
-  if (DEMO) return demoPositions();
-  const rows = await rest<{ market: string; side: "buy" | "sell"; size: string; usd_value: string | null; ts: string }[]>(
-    `trades?select=market,side,size,usd_value,ts&trader=eq.${wallet.toLowerCase()}&venue=in.(curve,pool)&order=ts.asc,log_index.asc`,
+/** One curve/pool trade of a wallet, for positions. `id` = tx hash + log index (same for live and stored trades). */
+export type WalletTrade = { id: string; market: string; side: "buy" | "sell"; size: number; usd: number; ts: number };
+
+/** The wallet's stored curve/pool trades (the indexer's copy; the newest ones may still be arriving live). */
+export async function walletTrades(wallet: string): Promise<WalletTrade[]> {
+  const rows = await rest<{ market: string; side: "buy" | "sell"; size: string; usd_value: string | null; ts: string; tx_hash: string; log_index: number }[]>(
+    `trades?select=market,side,size,usd_value,ts,tx_hash,log_index&trader=eq.${wallet.toLowerCase()}&venue=in.(curve,pool)&order=ts.asc,log_index.asc`,
   );
-  const acc = new Map<string, { amount: number; cost: number; realized: number }>();
-  for (const r of rows) {
-    const a = acc.get(r.market) ?? { amount: 0, cost: 0, realized: 0 };
-    const size = Number(r.size);
-    const usd = Number(r.usd_value ?? 0);
+  return rows.map((r) => ({
+    id: `${r.tx_hash.toLowerCase()}:${r.log_index}`,
+    market: r.market,
+    side: r.side,
+    size: Number(r.size),
+    usd: Number(r.usd_value ?? 0),
+    ts: Date.parse(r.ts),
+  }));
+}
+
+/** Average-cost positions from trades (oldest first). Transfers in/out aren't counted. */
+export function aggregatePositions(trades: WalletTrade[]) {
+  const acc = new Map<string, { amount: number; costUsd: number; realizedUsd: number }>();
+  for (const r of [...trades].sort((a, b) => a.ts - b.ts)) {
+    const a = acc.get(r.market) ?? { amount: 0, costUsd: 0, realizedUsd: 0 };
     if (r.side === "buy") {
-      a.amount += size;
-      a.cost += usd;
+      a.amount += r.size;
+      a.costUsd += r.usd;
     } else if (a.amount > 0) {
-      const sold = Math.min(size, a.amount);
-      const costOut = (a.cost * sold) / a.amount;
-      a.realized += usd - costOut;
-      a.cost -= costOut;
+      const sold = Math.min(r.size, a.amount);
+      const costOut = (a.costUsd * sold) / a.amount;
+      a.realizedUsd += r.usd - costOut;
+      a.costUsd -= costOut;
       a.amount -= sold;
     }
     acc.set(r.market, a);
   }
-  const open = [...acc].filter(([, a]) => a.amount > 1e-9);
-  if (!open.length) return [];
-  const stats = await rest<Record<string, unknown>[]>(`token_stats?select=*&address=in.(${open.map(([m]) => m).join(",")})`);
-  const byAddr = new Map(stats.map((r) => [String(r.address), toStat(r)]));
-  return open
-    .filter(([m]) => byAddr.has(m))
-    .map(([m, a]) => ({ token: byAddr.get(m)!, amount: a.amount, costUsd: a.cost, realizedUsd: a.realized }));
+  return new Map([...acc].filter(([, a]) => a.amount > 1e-6));
+}
+
+/** Stats for several tokens (Supabase, or from the chain for ones not indexed yet). */
+export async function tokensByAddress(addresses: string[]): Promise<Map<string, TokenStat>> {
+  if (!addresses.length) return new Map();
+  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&address=in.(${addresses.join(",")})`).catch(() => []);
+  const out = new Map(rows.map((r) => [String(r.address), toStat(r)]));
+  await Promise.all(
+    addresses.filter((a) => !out.has(a)).map(async (a) => {
+      const t = await getToken(a).catch(() => null);
+      if (t) out.set(a, t);
+    }),
+  );
+  return out;
+}
+
+/** ?demo only: three example positions. */
+export async function positions(): Promise<Position[]> {
+  return demoPositions();
 }
 
 /** 24h change in percent (null when there's no earlier price). */

@@ -6,12 +6,8 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { CORS, HttpError, json, privyAuth, userRow } from "../_shared/privy.ts";
+import { env } from "../_shared/env.ts";
 
-const env = (k: string) => {
-  const v = Deno.env.get(k);
-  if (!v) throw new Error(`missing secret ${k}`);
-  return v;
-};
 
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
 const xUserFromRequest = privyAuth(env("PRIVY_APP_ID"), env("PRIVY_APP_SECRET"));
@@ -22,7 +18,10 @@ Deno.serve(async (req) => {
   try {
     const who = await xUserFromRequest(req);
     const { error } = await db.from("users").upsert(userRow(who), { onConflict: "privy_id" });
-    if (error) return json(500, { error: "Could not save your profile", detail: error.message });
+    if (error) {
+      console.error(`register: users upsert: ${error.message}`); // details stay server-side
+      return json(500, { error: "Could not save your profile, try again" });
+    }
 
     const [{ data: token }, { data: points }] = await Promise.all([
       db.from("tokens").select("*").eq("x_user_id", who.xUserId).maybeSingle(),

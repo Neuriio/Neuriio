@@ -89,3 +89,10 @@ test("profile validation + stable hash", () => {
   const b = canonicalProfile({ about: "y".repeat(60), links: [{ label: "P", url: "https://x.com/a" }] }, who);
   assert.equal(a.hash, b.hash);
 });
+
+test("profile: link list is capped before any per-link work", () => {
+  const who = { xUserId: "1", handle: "a", category: "trader" as const };
+  const many = Array.from({ length: 100_000 }, () => ({ label: "x", url: "https://x.com" }));
+  assert.throws(() => canonicalProfile({ about: "y".repeat(60), links: many }, who), /At most 10 links/);
+  assert.throws(() => canonicalProfile({ about: "y".repeat(60), links: "nope" as never }, who), /must be a list/);
+});

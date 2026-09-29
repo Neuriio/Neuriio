@@ -33,6 +33,7 @@ test("router buy: price from Sync, trader from Swapped, logs out of order", () =
   assert.equal(trades.length, 1, "one trade (router Swapped isn't double counted)");
   const t = trades[0];
   assert.deepEqual([t.venue, t.side, t.trader, t.hype, t.tokens], ["pool", "buy", "0xcafe", 2, 500]);
+  assert.equal(t.logIndex, 9, "id matches the indexer's row (the router's Swapped log)");
   close(t.priceHype, 172 / 200_000_000);
 });
 

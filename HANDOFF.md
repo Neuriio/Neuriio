@@ -665,6 +665,22 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
     + `launchpad-test.sh`, which needs a burner top-up). The watcher started cleanly against testnet (websocket up, no
     errors) and the node was confirmed to push logs (70 logs / 15 s).
   - Needs an always-on host for mainnet (like the other bots).
+  - **Latency (measured 2026-09-29):** the watcher used to fetch each block's timestamp (~1-2 s): removed (log
+    blockTimestamp or receive time). Supabase's REST broadcast endpoint takes ~300-490 ms to reach a viewer; a
+    persistent Realtime websocket ~75-135 ms, so the watcher now sends over joined private channels (one per active
+    token, LRU 80, left after 10 idle min; newest tokens pre-joined at start; REST only while a channel joins).
+  - **REDEPLOYED 2026-09-29 (V2 fork), CURRENT testnet set:** Launchpad `0x6ef011b34d8c08e20a35f4d25cdcc84070e4cb53`,
+    SwapFactory (UniswapV2 fork) `0xabef87d6c9b502d8062faea07c05d2b807f5c26b`, SwapRouter
+    `0x92a1452f58e27b45bc6bd964b40a779dd3ed167e`, FeeVault `0xf6e6c291447cc72938a458639b3eccf72b4f3b43` (wallets not
+    set), WHYPE reused. Wiring verified on-chain; `launchpad-test.sh` ALL CHECKS PASSED (@test_2727525035 graduated,
+    LP burned, router trades, creator fees + claim). **@von_hl launched by the user with a real X login**, bought and
+    sold from Explore's order card: shown instantly from chain, then from Supabase; chart + live trades worked.
+    Burner topped up via HyperEVM `Inbox.depositEth` (`0x11178Df40CBf87a4343f4B3F8B09B366ceFA8Ec0`, arrives in ~30 s).
+    Testnet curve stays 0.1 HYPE virtual (market caps ~$8 -> ~$75 at graduation; mainnet 60 HYPE ~ $5K -> ~$75K).
+  - **Fixed 2026-09-29:** `refresh_top_tokens()` failed on Supabase ("DELETE requires a WHERE clause", pg-safeupdate;
+    PGlite doesn't have it) so the Top 25 stayed empty: migration `20260929000000_top_tokens_fix.sql`.
+  - Privy only allows `http://localhost:5173` (open the app there, not 127.0.0.1; or add 127.0.0.1 in the Privy
+    dashboard). The dev server binds 127.0.0.1 but localhost reaches it.
 - **Layout (user, 2026-09-28):** 3 columns, chart dead-center (equal 300px sides; 260px under 1240px wide): left =
   **Top 25 by TOTAL volume**, order re-ranked every 30 min by pg_cron (`top_tokens` snapshot + `top_tokens_live` view,
   migration `20260928030000_top_tokens.sql`, job `neuriio-top-tokens`; numbers stay live); search **@handle (FTF
@@ -685,9 +701,23 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
 - Links into Explore (2026-09-28): launch success screen "Open in Explore" (`/explore?t=<handle>`), ≡ menu has
   Explore + Launch as real links (Dashboard/Spot/Perps/Outcome still inert). Launch share text now "I just tokenized
   my account" (headline rename).
+- **New tokens show + trade instantly (user, 2026-09-29: "can't wait a minute"):** `getToken()` falls back to the
+  Launchpad on-chain (`tokenOfHandle` keccak(lowercase handle), `curves`, `profile`; X card from `user_cards`, stored
+  at launch-pass time) when Supabase doesn't have the token yet, flagged `fromChain`; ExploreCard swaps in the Supabase
+  record as soon as it lands (4 s poll). Profile modal reads the on-chain profile hash too. The chart draws a new
+  token's first candle from its first live trade (opens at the launch price) and an empty stored refresh no longer
+  wipes live candles. The launch screen POSTs the indexer right after the launch confirms and links Explore by the
+  token address. Trading never depended on Supabase (order card -> contracts). Verified the chain reads against the
+  old launchpad (@von_hl, @test_62922022).
+- **Everything live, not just the chart (user, 2026-09-29):** `lib/live.ts` page-wide feed = one subscription to
+  `trades:all` (`useLivePrices`, `useLiveTrades`): Top 25 + search rows show live market cap and 24h change; the header
+  change too. Positions = stored trades (Supabase, 15 s) + this wallet's live trades not stored yet (deduped by
+  tx hash + log index; the watcher now uses the router's Swapped log index for router trades, same as the indexer),
+  live prices for value/P&L. Picked token's stats refresh every 15 s (4 s while chain-only). The order card POSTs the
+  indexer after each trade. `?demo` fakes trades across the sample Top 25.
 - **Placement (user, 2026-09-28):** Explore is pinned under the top bar (cards' top at 176px, search 26px under the
-  marquee) and flows in the page, so it scrolls when Positions makes it taller than the screen. `/launch` cards pinned
-  at the same 176px top.
+  marquee) and flows in the page, so it scrolls when Positions makes it taller than the screen. `/launch` cards: centered
+  40px above the page's middle (user, 2026-09-29; the 176px pin left too much space below).
 - **Profile (user, 2026-09-28):** lavender "Profile" button next to the category badge -> `ProfileModal.tsx`: small
   modal over the center of the chart card, card blurred behind; name, @handle linking to x.com, badge, About (bio),
   links; Escape / × / click outside closes. Data: `tokens.profile_hash` -> `creator_profiles.body` (two REST reads;
@@ -737,6 +767,29 @@ Data to build for it (Supabase, public-read):
   our pool** as the graduation target for every token (fees enforced on-chain); add an optional later "graduate to HyperCore"
   tier for big tokens (costly per-token ceremony; fees there only via builder code). To verify before designing it: whether
   HL lets a spot deployer take a share of trading fees, current ticker-auction prices, and who pays/owns the deployer key.
+
+### Security review of the launch backend (2026-09-29, a quick pass; NOT the formal Fable audit, TODO 6)
+- **Contracts (Launchpad, FeeVault, SwapRouter, V2 fork): no issues found.** Passes are EIP-712 bound to chain +
+  contract, single-use per X user / wallet / handle, expire, and must be used by the named wallet; every entry point is
+  nonReentrant with state written before HYPE leaves; rounding favors the contract; sells capped at raised HYPE;
+  donations to the future pair are skimmed to 0x…dEaD; FeeVault only credits the token's real pair / the Launchpad;
+  router holds no funds; V2 fork diff 67 lines (`./script/v2-diff.sh`), k-never-drops fuzzed.
+- **FIXED (was exploitable): `rebuild_candle` was callable by anyone** (Postgres grants EXECUTE to PUBLIC; verified
+  HTTP 204 as anon) -> anyone could write misaligned candles and break a token's chart. Migration
+  `20260929010000_security.sql`: EXECUTE revoked (+ trigger fn), and misaligned buckets rejected inside the function.
+  Verified live (401 for anon) + PGlite (trigger still builds all 5 candles for the indexer's inserts).
+- **FIXED (privacy): X account <-> wallet link was public** for every registered user via `user_cards.wallet`,
+  `trades.x_user_id`, `points_ledger.ref`. Column-level grants hide those three; Explore, positions, charts,
+  leaderboard unaffected (verified live). Launchers stay linked on-chain regardless (Launched event).
+- **Edge functions:** identity always from Privy's API, never the request (good). Added: rate limit on `launch-pass`
+  (5 passes per X account per 10 min), link list capped BEFORE per-link work (100k links used to be processed first),
+  raw DB errors logged server-side instead of returned, one shared `_shared/env.ts`. Redeployed; 401s verified.
+- **App consolidation:** one Launchpad ABI (`lib/launch.ts`), one `Avatar` component (all avatars now fall back to the
+  initial on a broken X picture).
+- **For the user to decide (not changed):** (1) `pause()` also blocks SELLS on the curve (holders can't exit while
+  paused; safer for a sell-math bug, worse for trust); (2) **every contract is owned by the single hot `burner` key**
+  (Launchpad pause/fee<=2%/signer, FeeVault wallets, factory feeToSetter): move to a multisig before mainnet;
+  (3) `indexer` stays public (idempotent + run-locked; the app pings it after launches/trades).
 
 ### "Their pool": Elysium AMMs + fees (researched 2026-09-28)
 - **Docs:** Kinetiq runs NO pool/DEX; AMMs are left to builders ("launch on an Elysium AMM", "prop-AMM markets", market-making
