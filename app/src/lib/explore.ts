@@ -2,7 +2,7 @@
 // `token_stats` (migration 20260928000000_explore.sql) and function `token_chart`: stored, gap-free candles
 // (migration 20260928010000_candles.sql). Prices are in HYPE;
 // multiply by the live HYPE price for USD. `?demo` (dev only) serves generated sample data instead.
-import { keccak256, toBytes, zeroAddress, type Address } from "viem";
+import { erc20Abi, keccak256, toBytes, zeroAddress, type Address } from "viem";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 import { CATEGORIES, type CategoryId, LAUNCHPAD, launchpadAbi as padViews, pub } from "./launch";
 
@@ -29,6 +29,9 @@ export type TokenStat = {
   volume_usd_24h: number;
   volume_hype: number;
   last_trade_at: string | null;
+  kind: "individual" | "ftf"; // ftf: "Friends Turned Fam", 4 members sharing one token
+  name: string | null; // FTF display name
+  member_x_user_ids: string[] | null; // FTF: its 4 members, founder first
   fromChain?: true; // read straight from the Launchpad because the indexer hasn't stored it yet (brand-new token)
 };
 
@@ -66,8 +69,12 @@ async function rest<T>(path: string, init?: RequestInit): Promise<T> {
 function toStat(r: Record<string, unknown>): TokenStat {
   const out = { ...r } as Record<string, unknown>;
   for (const k of NUMERIC) out[k] = Number(r[k] ?? 0);
+  out.kind = r.kind === "ftf" ? "ftf" : "individual";
   return out as TokenStat;
 }
+
+/** How a token is shown: an FTF by its name, a person by "@handle". */
+export const displayName = (t: TokenStat) => (t.kind === "ftf" ? t.name ?? t.symbol : `@${t.handle}`);
 
 /** Top `limit` tokens by a ranking (default: 24h volume), live order. */
 export async function topTokens(by: Ranking = "volume_usd_24h", limit = 25): Promise<TokenStat[]> {
@@ -89,18 +96,18 @@ export async function topByTotalVolume(): Promise<{ tokens: TokenStat[]; snapsho
   return { tokens: rows.map(toStat), snapshotAt: rows[0] ? String(rows[0].snapshot_at) : null };
 }
 
-/** Handle search (case-insensitive, "@" optional), best volume first. */
+/** Search by handle, or by an FTF's name or ticker (case-insensitive, "@" optional), best volume first. */
 export async function searchTokens(query: string, limit = 10): Promise<TokenStat[]> {
-  const q = query.trim().replace(/^@/, "").replace(/[^A-Za-z0-9_]/g, "");
+  const q = query.trim().replace(/^@/, "").replace(/[^A-Za-z0-9_ ]/g, "").trim();
   if (!q) return [];
   if (DEMO) {
     return demoTokens()
-      .filter((t) => t.handle.toLowerCase().includes(q.toLowerCase()))
+      .filter((t) => `${t.handle} ${t.name ?? ""}`.toLowerCase().includes(q.toLowerCase()))
       .sort((a, b) => b.volume_usd_24h - a.volume_usd_24h)
       .slice(0, limit);
   }
   const rows = await rest<Record<string, unknown>[]>(
-    `token_stats?select=*&handle=ilike.*${q}*&order=volume_usd_24h.desc&limit=${limit}`,
+    `token_stats?select=*&or=(handle.ilike.*${encodeURIComponent(q)}*,name.ilike.*${encodeURIComponent(q)}*)&order=volume_usd_24h.desc&limit=${limit}`,
   );
   return rows.map(toStat);
 }
@@ -127,27 +134,17 @@ async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat 
     ? (v as Address)
     : await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "tokenOfHandle", args: [keccak256(toBytes(v.toLowerCase()))] });
   if (!address || address === zeroAddress) return null;
-  const [curve, prof] = await Promise.all([
+  const [curve, prof, isFtf] = await Promise.all([
     pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "curves", args: [address] }),
     pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "profile", args: [address] }),
+    pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "isFtf", args: [address] }).catch(() => false),
   ]);
   const [creator, graduated, vHype, vToken, , realToken] = curve;
   if (creator === zeroAddress) return null;
   const price = Number(vHype) / Number(vToken);
-  const xUserId = prof.xUserId.toString();
-  // the creator's X card was stored when their launch pass was signed, before the launch itself
-  const [card] = await rest<{ x_name: string | null; x_pfp_url: string | null }[]>(
-    `user_cards?select=x_name,x_pfp_url&x_user_id=eq.${xUserId}`,
-  ).catch(() => []);
-  return {
+  const common = {
     address: address.toLowerCase(),
-    handle: prof.handle,
-    symbol: prof.handle.toUpperCase(),
-    category: CATEGORIES[prof.category]?.id ?? "creator",
     creator: creator.toLowerCase(),
-    x_user_id: xUserId,
-    x_name: card?.x_name ?? null,
-    x_pfp_url: card?.x_pfp_url ?? null,
     launched_at: new Date().toISOString(),
     graduated,
     pair: null,
@@ -162,7 +159,42 @@ async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat 
     volume_usd_24h: 0,
     volume_hype: 0,
     last_trade_at: null,
-    fromChain: true,
+    fromChain: true as const,
+  };
+  if (isFtf) {
+    const [f, symbol] = await Promise.all([
+      pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "ftf", args: [address] }),
+      pub.readContract({ address, abi: erc20Abi, functionName: "symbol" }),
+    ]);
+    return {
+      ...common,
+      kind: "ftf",
+      name: f.name,
+      handle: symbol.toLowerCase(),
+      symbol,
+      category: "creator",
+      x_user_id: "",
+      x_name: null,
+      x_pfp_url: null,
+      member_x_user_ids: f.memberXIds.map(String),
+    };
+  }
+  const xUserId = prof.xUserId.toString();
+  // the creator's X card was stored when their launch pass was signed, before the launch itself
+  const [card] = await rest<{ x_name: string | null; x_pfp_url: string | null }[]>(
+    `user_cards?select=x_name,x_pfp_url&x_user_id=eq.${xUserId}`,
+  ).catch(() => []);
+  return {
+    ...common,
+    kind: "individual",
+    name: null,
+    member_x_user_ids: null,
+    handle: prof.handle,
+    symbol: prof.handle.toUpperCase(),
+    category: CATEGORIES[prof.category]?.id ?? "creator",
+    x_user_id: xUserId,
+    x_name: card?.x_name ?? null,
+    x_pfp_url: card?.x_pfp_url ?? null,
   };
 }
 
@@ -196,6 +228,16 @@ export async function candles(address: string, interval: IntervalSeconds = 900, 
 }
 
 export type CreatorProfile = { about: string; links: { label: string; url: string }[] };
+export type MemberCard = { x_user_id: string; x_handle: string; x_name: string | null; x_pfp_url: string | null };
+
+/** An FTF's 4 members (X handle, name, picture), in pass order (founder first). */
+export async function ftfMembers(xUserIds: string[]): Promise<MemberCard[]> {
+  if (DEMO) return xUserIds.map((id, i) => ({ x_user_id: id, x_handle: ["von_hl", "degenharbor", "chartwizard", "hypeanalyst"][i % 4], x_name: null, x_pfp_url: null }));
+  if (!xUserIds.length) return [];
+  const rows = await rest<MemberCard[]>(`user_cards?select=x_user_id,x_handle,x_name,x_pfp_url&x_user_id=in.(${xUserIds.join(",")})`);
+  const by = new Map(rows.map((r) => [r.x_user_id, r]));
+  return xUserIds.map((id) => by.get(id) ?? { x_user_id: id, x_handle: "unknown", x_name: null, x_pfp_url: null });
+}
 
 /** The creator's profile (about + links) as launched: stored in Supabase, its hash fixed on-chain at launch. */
 export async function getProfile(address: string): Promise<CreatorProfile | null> {
@@ -204,7 +246,9 @@ export async function getProfile(address: string): Promise<CreatorProfile | null
   // not indexed yet: the profile hash is on-chain (the profile itself was stored when the launch pass was signed)
   const hash =
     tok?.profile_hash ??
-    (await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "profile", args: [address as Address] })).profileHash;
+    ((await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "isFtf", args: [address as Address] }).catch(() => false))
+      ? (await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "ftf", args: [address as Address] })).profileHash
+      : (await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "profile", args: [address as Address] })).profileHash);
   if (!hash || /^0x0+$/.test(hash)) return null;
   const [row] = await rest<{ body: { about?: string; links?: { label: string; url: string }[] } }[]>(
     `creator_profiles?select=body&hash=eq.${hash}`,
@@ -340,8 +384,14 @@ function demoTokens(): TokenStat[] {
       volume_usd_24h: vol24,
       volume_hype: Math.round((vol24 * 3) / 90),
       last_trade_at: new Date(now - r() * 600_000).toISOString(),
+      kind: "individual" as const,
+      name: null,
+      member_x_user_ids: null,
     };
   });
+  // one demo FTF: "Degen Den" ($DEN)
+  const den = demoCache[5];
+  Object.assign(den, { kind: "ftf", name: "Degen Den", handle: "den", symbol: "DEN", x_name: null, x_pfp_url: null, member_x_user_ids: ["1001", "1002", "1003", "1004"] });
   return demoCache;
 }
 

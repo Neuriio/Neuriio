@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Launchpad, ICurveFeeVault} from "../src/launch/Launchpad.sol";
@@ -540,6 +541,158 @@ contract LaunchpadTest is Test {
             assertEq(IERC20(address(whype)).balanceOf(address(pair)), pair.token0() == address(whype) ? r0 : r1);
         }
         vm.stopPrank();
+    }
+
+    // ------------------------------------------------------------------ FTF (Friends Turned Fam)
+
+    address[4] ftfWallets;
+
+    function _ftfPass(string memory name, string memory ticker) internal returns (Launchpad.FtfPass memory p) {
+        uint64[4] memory ids = [uint64(7_001), 7_002, 7_003, 7_004];
+        for (uint256 i; i < 4; i++) {
+            ftfWallets[i] = makeAddr(string.concat("member", vm.toString(i)));
+            vm.deal(ftfWallets[i], 100 ether);
+        }
+        p = Launchpad.FtfPass({
+            founder: ftfWallets[0],
+            name: name,
+            ticker: ticker,
+            memberXIds: ids,
+            members: ftfWallets,
+            profileHash: keccak256("ftf profile"),
+            deadline: block.timestamp + 1 hours
+        });
+    }
+
+    function _signFtf(Launchpad.FtfPass memory p, uint256 pk) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 sg) = vm.sign(pk, pad.hashFtfPass(p));
+        return abi.encodePacked(r, sg, v);
+    }
+
+    function _launchFtf(Launchpad.FtfPass memory p, uint256 value) internal returns (address) {
+        bytes memory sig = _signFtf(p, signerPk);
+        vm.prank(p.founder);
+        return pad.launchFtf{value: value}(p, sig, 0);
+    }
+
+    function test_ftfLaunchOnTheCurve() public {
+        Launchpad.FtfPass memory p = _ftfPass("Degen Den", "DEN");
+        address token = _launchFtf(p, 0.5 ether);
+        assertEq(IERC20Metadata(token).name(), "Degen Den");
+        assertEq(IERC20Metadata(token).symbol(), "DEN");
+        assertTrue(pad.isFtf(token));
+        assertEq(pad.tokenOfFtfTicker(keccak256("DEN")), token);
+        address[] memory cs = pad.creatorsOf(token);
+        assertEq(cs.length, 4);
+        for (uint256 i; i < 4; i++) assertEq(cs[i], ftfWallets[i]);
+        Launchpad.Ftf memory f = pad.ftf(token);
+        assertEq(f.memberXIds[3], 7_004);
+        assertGt(IERC20(token).balanceOf(ftfWallets[0]), 0, "founder's first buy");
+        // same curve as individuals
+        Launchpad.Curve memory c = _curve(token);
+        assertEq(c.creator, ftfWallets[0]);
+        assertEq(c.realToken, 793_100_000e18 - IERC20(token).balanceOf(ftfWallets[0]));
+        // members didn't use up their individual launches
+        assertEq(pad.tokenOfXUser(7_001), address(0));
+        assertEq(pad.tokenOfCreator(ftfWallets[0]), address(0));
+        address solo = _launchAs(ftfWallets[1], 7_002, "membertwo", 0);
+        assertFalse(pad.isFtf(solo));
+        assertEq(pad.creatorsOf(solo).length, 1);
+    }
+
+    function test_ftfFeesSplitEquallyAndGraduates() public {
+        address token = _launchFtf(_ftfPass("Degen Den", "DEN"), 0);
+        _buy(alice, token, 10 ether);
+        // 0.75% of 10 HYPE sent = fee on the gross; 80% of it split 4 ways
+        uint256 each = vault.creatorBalance(ftfWallets[1]);
+        assertGt(each, 0);
+        for (uint256 i = 1; i < 4; i++) assertEq(vault.creatorBalance(ftfWallets[i]), each);
+        assertApproxEqAbs(vault.creatorBalance(ftfWallets[0]), each, 3, "founder gets the rounding wei");
+        assertEq(vault.creatorEarned(token), vault.creatorBalance(ftfWallets[0]) + 3 * each);
+        // graduates into the V2 pool like any token; pool fees split too
+        _buy(bob, token, 200 ether);
+        assertTrue(_curve(token).graduated);
+        uint256 before = vault.creatorBalance(ftfWallets[2]);
+        uint256 q = router.quoteBuy(token, 1 ether);
+        vm.prank(alice);
+        router.buy{value: 1 ether}(token, q, alice, block.timestamp);
+        assertGt(vault.creatorBalance(ftfWallets[2]), before);
+        // every member claims their own share
+        for (uint256 i; i < 4; i++) {
+            uint256 bal = ftfWallets[i].balance;
+            vm.prank(ftfWallets[i]);
+            uint256 got = vault.claim(ftfWallets[i]);
+            assertEq(ftfWallets[i].balance - bal, got);
+        }
+    }
+
+    function test_revert_ftfPassRules() public {
+        Launchpad.FtfPass memory p = _ftfPass("Degen Den", "DEN");
+        bytes memory sig = _signFtf(p, signerPk);
+        // only the founder can send it
+        vm.prank(ftfWallets[1]);
+        vm.expectRevert(Launchpad.NotPassHolder.selector);
+        pad.launchFtf(p, sig, 0);
+        // wrong signer
+        bytes memory bad = _signFtf(p, 0xBAD);
+        vm.prank(p.founder);
+        vm.expectRevert(Launchpad.InvalidPass.selector);
+        pad.launchFtf(p, bad, 0);
+        // tampered after signing (members swapped)
+        Launchpad.FtfPass memory t = _ftfPass("Degen Den", "DEN");
+        t.members[3] = alice;
+        vm.prank(t.founder);
+        vm.expectRevert(Launchpad.InvalidPass.selector);
+        pad.launchFtf(t, sig, 0);
+        // expired
+        vm.warp(p.deadline + 1);
+        vm.prank(p.founder);
+        vm.expectRevert(Launchpad.Expired.selector);
+        pad.launchFtf(p, sig, 0);
+    }
+
+    function test_revert_ftfMembersNamesTickers() public {
+        Launchpad.FtfPass memory p;
+        // duplicate member (same X account twice)
+        p = _ftfPass("Degen Den", "DEN");
+        p.memberXIds[2] = p.memberXIds[1];
+        _expectFtfRevert(p, Launchpad.InvalidMembers.selector);
+        // duplicate wallet
+        p = _ftfPass("Degen Den", "DEN");
+        p.members[3] = p.members[1];
+        _expectFtfRevert(p, Launchpad.InvalidMembers.selector);
+        // missing member
+        p = _ftfPass("Degen Den", "DEN");
+        p.members[2] = address(0);
+        _expectFtfRevert(p, Launchpad.InvalidMembers.selector);
+        // founder must be member #1
+        p = _ftfPass("Degen Den", "DEN");
+        p.founder = p.members[1];
+        _expectFtfRevert(p, Launchpad.NotPassHolder.selector);
+        // bad names
+        string[5] memory badNames = [" Den", "Den ", "De  n", "Den<script>", "This name is far too long for an FTF"];
+        for (uint256 i; i < 5; i++) {
+            p = _ftfPass(badNames[i], "DEN");
+            _expectFtfRevert(p, Launchpad.InvalidMetadata.selector);
+        }
+        // bad tickers
+        string[4] memory badTickers = ["D", "den", "DEN!", "ABCDEFGHIJK"];
+        for (uint256 i; i < 4; i++) {
+            p = _ftfPass("Degen Den", badTickers[i]);
+            _expectFtfRevert(p, Launchpad.InvalidMetadata.selector);
+        }
+        // ticker unique among FTFs
+        _launchFtf(_ftfPass("Degen Den", "DEN"), 0);
+        p = _ftfPass("Another Den", "DEN");
+        p.memberXIds = [uint64(8_001), 8_002, 8_003, 8_004];
+        _expectFtfRevert(p, Launchpad.TickerTaken.selector);
+    }
+
+    function _expectFtfRevert(Launchpad.FtfPass memory p, bytes4 sel) internal {
+        bytes memory sig = _signFtf(p, signerPk);
+        vm.prank(p.founder);
+        vm.expectRevert(sel);
+        pad.launchFtf(p, sig, 0);
     }
 
     /// Pause stops launches and buys, but holders can still sell (always able to exit).

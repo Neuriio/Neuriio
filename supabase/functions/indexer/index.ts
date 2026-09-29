@@ -12,6 +12,7 @@ import {
   curveTradeToRow,
   type HlFill,
   hlFillToRow,
+  ftfLaunchedToToken,
   launchedToToken,
   launchpadEvents,
   pairEvents,
@@ -114,12 +115,22 @@ async function indexElysium(usd: number | null) {
   const ts = (l: { blockNumber: bigint | null }) => tsOf.get(l.blockNumber!)!;
 
   // tokens first (trades reference them by address only, but graduation updates need the row)
-  const launched = padLogs.filter((l) => l.eventName === "Launched")
+  const launched = [
     // deno-lint-ignore no-explicit-any
-    .map((l) => launchedToToken(l as any, ts(l)));
+    ...padLogs.filter((l) => l.eventName === "Launched").map((l) => launchedToToken(l as any, ts(l))),
+    // deno-lint-ignore no-explicit-any
+    ...padLogs.filter((l) => l.eventName === "FtfLaunched").map((l) => ftfLaunchedToToken(l as any, ts(l))),
+  ];
   if (launched.length) {
     const { error } = await db.from("tokens").upsert(launched, { onConflict: "address", ignoreDuplicates: true });
     if (error) throw new Error(`tokens: ${error.message}`);
+  }
+  // an FTF that launched: close its draft (matched by ticker; only one open draft per ticker)
+  for (const t of launched.filter((x) => x.kind === "ftf")) {
+    const { error } = await db.from("ftf_drafts")
+      .update({ status: "launched", token: t.address, updated_at: new Date().toISOString() })
+      .eq("status", "open").ilike("ticker", t.symbol);
+    if (error) throw new Error(`ftf draft: ${error.message}`);
   }
   for (const l of padLogs.filter((l) => l.eventName === "Graduated")) {
     const { error } = await db.from("tokens")

@@ -7,6 +7,7 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import {
   aggregatePositions,
   DEMO,
+  displayName,
   type Position,
   positions as demoPositionsList,
   type TokenStat,
@@ -125,7 +126,7 @@ export function PositionsCard({ hypeUsd, onPick }: { hypeUsd: number; onPick: (a
                   <td>
                     <span className="ex-pos-token">
                       <Avatar handle={t.handle} pfp={t.x_pfp_url} size={24} />
-                      @{t.handle}
+                      {displayName(t)}
                     </span>
                   </td>
                   <td>{p.amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>

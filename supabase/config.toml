@@ -10,3 +10,6 @@ verify_jwt = false # Privy access token, verified inside
 
 [functions.indexer]
 verify_jwt = false # called by pg_cron; idempotent + run-locked
+
+[functions.ftf]
+verify_jwt = false # Privy access token, verified inside

@@ -11,6 +11,8 @@ import { Search, UserRound } from "lucide-react";
 import { CATEGORIES } from "../lib/launch";
 import { CandleChart, type ChartControls } from "./CandleChart";
 import { subscribeTrades, useLivePrices } from "../lib/live";
+import { tokenCreatorEarned } from "../lib/fees";
+import { formatEther, type Address } from "viem";
 import { OrderCard } from "./OrderCard";
 import { PositionsCard } from "./PositionsCard";
 import { ProfileModal } from "./ProfileModal";
@@ -21,6 +23,8 @@ import {
   type Candle,
   candles,
   change24h,
+  DEMO,
+  displayName,
   getToken,
   INTERVALS,
   type IntervalSeconds,
@@ -104,7 +108,7 @@ export function ExploreCard() {
                 <span className="ex-rank">{i + 1}</span>
                 <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
                 <span className="ex-row-names">
-                  <span className="ex-row-handle">@{t.handle}</span>
+                  <span className="ex-row-handle">{displayName(t)}</span>
                   <Change t={t} price={live[t.address]} />
                 </span>
                 <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
@@ -144,7 +148,7 @@ export function ExploreCard() {
                     <span className="ex-rank" />
                     <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
                     <span className="ex-row-names">
-                      <span className="ex-row-handle">@{t.handle}</span>
+                      <span className="ex-row-handle">{displayName(t)}</span>
                       <Change t={t} price={live[t.address]} />
                     </span>
                     <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
@@ -187,6 +191,20 @@ function TokenDetail({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
   const [controls, setControls] = useState<ChartControls | null>(null);
   const [log, setLog] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+
+  // lifetime creator fees this token has earned (FeeVault.creatorEarned), shown next to the Profile button
+  const [earned, setEarned] = useState<number | null>(null);
+  useEffect(() => {
+    if (DEMO) return setEarned(t.volume_usd / 90 * 0.0075 * 0.8); // demo: ~80% of 0.75% of its volume, in HYPE
+    let alive = true;
+    const load = () => tokenCreatorEarned(t.address as Address).then((w) => alive && setEarned(Number(formatEther(w))), () => {});
+    load();
+    const id = setInterval(load, 15_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [t.address, t.volume_usd]);
   const closeProfile = useCallback(() => setShowProfile(false), []);
   // HYPE/USD frozen for this token's chart (the live rate still drives the header price)
   const [chartUsd, setChartUsd] = useState(0);
@@ -232,13 +250,20 @@ function TokenDetail({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
       <header className="ex-head">
         <Avatar handle={t.handle} pfp={t.x_pfp_url} size={44} />
         <div className="ex-head-names">
-          <span className="ex-handle">@{t.handle}</span>
+          <span className="ex-handle">{displayName(t)}</span>
           <span className="ex-ticker">${t.symbol}</span>
         </div>
-        <span className="lp-chip">{cat}</span>
+        <span className={`lp-chip${t.kind === "ftf" ? " ex-ftf-chip" : ""}`}>{t.kind === "ftf" ? "FTF" : cat}</span>
         <button className="ex-profile-btn" onClick={() => setShowProfile(true)}>
           <UserRound size={13} aria-hidden /> Profile
         </button>
+        <span className="ex-earned" title="Lifetime creator fees: 80% of this token's trading fees, paid in HYPE">
+          <span className="ex-earned-label">Creator fees earned</span>
+          <span className="ex-earned-value">
+            {earned === null ? "…" : hypeUsd ? compactUsd(earned * hypeUsd) : `${earned.toFixed(4)} HYPE`}
+            {earned !== null && hypeUsd ? <span className="ex-earned-hype"> · {earned.toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE</span> : null}
+          </span>
+        </span>
         <div className="ex-price">
           <span className="ex-price-usd">{hypeUsd ? tinyPrice(price * hypeUsd) : "…"}</span>
           <Change t={t} price={price} />

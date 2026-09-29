@@ -4,7 +4,12 @@ out = "out"
 libs = ["lib"]
 # No global solc pin: src/swap/v2 (Uniswap V2 fork) builds with its original 0.5.16, everything else with 0.8.28.
 auto_detect_solc = true
-compilation_restrictions = [{ paths = "src/swap/v2/**", version = "=0.5.16" }]
+# Launchpad is compiled for size (200 runs): at 10,000 runs it's over the 24,576-byte contract limit (EIP-170).
+additional_compiler_profiles = [{ name = "size", optimizer_runs = 200 }]
+compilation_restrictions = [
+  { paths = "src/swap/v2/**", version = "=0.5.16" },
+  { paths = "src/launch/Launchpad.sol", max_optimizer_runs = 200 },
+]
 evm_version = "prague" # ArbOS 40+ (Elysium runs 51): needed for EIP-7702
 optimizer = true
 optimizer_runs = 10_000

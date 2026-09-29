@@ -39,6 +39,8 @@ export const launchpadAbi = parseAbi([
   "function tokenOfHandle(bytes32) view returns (address)",
   "function curves(address) view returns (address creator, bool graduated, uint128 virtualHype, uint128 virtualToken, uint128 realHype, uint128 realToken)",
   "function profile(address) view returns ((uint64 xUserId, uint8 category, bytes32 profileHash, string handle))",
+  "function isFtf(address) view returns (bool)",
+  "function ftf(address) view returns ((string name, bytes32 profileHash, uint64[4] memberXIds, address[4] members))",
 ]);
 
 export const pub = createPublicClient({ chain: elysiumTestnet, transport: fallback(ELYSIUM_RPCS.map((u) => http(u))) });

@@ -7,6 +7,7 @@ export const launchpadEvents = parseAbi([
   "event Launched(address indexed token, address indexed creator, uint64 indexed xUserId, string handle, uint8 category, bytes32 profileHash, uint256 virtualHype)",
   "event Trade(address indexed token, address indexed trader, bool isBuy, uint256 hypeAmount, uint256 tokenAmount, uint256 fee, uint256 virtualHype, uint256 virtualToken)",
   "event Graduated(address indexed token, address indexed pair, uint256 hype, uint256 tokens, uint256 liquidityBurned)",
+  "event FtfLaunched(address indexed token, address indexed founder, string name, string ticker, uint64[4] memberXIds, address[4] members, bytes32 profileHash, uint256 virtualHype)",
 ]);
 export const routerEvents = parseAbi([
   "event Swapped(address indexed token, address indexed trader, address to, bool isBuy, uint256 hypeAmount, uint256 tokenAmount)",
@@ -59,6 +60,9 @@ export function launchedToToken(
   const a = log.args;
   return {
     address: lc(a.token),
+    kind: "individual",
+    name: null,
+    member_x_user_ids: null,
     x_user_id: a.xUserId.toString(),
     creator: lc(a.creator),
     handle: a.handle,
@@ -69,6 +73,38 @@ export function launchedToToken(
     launch_block: Number(log.blockNumber),
     launched_at: ts,
     virtual_hype: formatEther(a.virtualHype), // opening price = virtual_hype / 1.073B
+  };
+}
+
+/** An FTF launch (4 members, one token) -> tokens row. `handle` holds the lower-case ticker (search matches it). */
+export function ftfLaunchedToToken(
+  log: Log<{
+    token: string;
+    founder: string;
+    name: string;
+    ticker: string;
+    memberXIds: readonly bigint[];
+    profileHash: string;
+    virtualHype: bigint;
+  }>,
+  ts: string,
+) {
+  const a = log.args;
+  return {
+    address: lc(a.token),
+    kind: "ftf",
+    name: a.name,
+    x_user_id: null,
+    member_x_user_ids: a.memberXIds.map((x) => x.toString()),
+    creator: lc(a.founder),
+    handle: a.ticker.toLowerCase(),
+    symbol: a.ticker,
+    category: null,
+    profile_hash: a.profileHash,
+    launch_tx: log.transactionHash,
+    launch_block: Number(log.blockNumber),
+    launched_at: ts,
+    virtual_hype: formatEther(a.virtualHype),
   };
 }
 

@@ -2,8 +2,8 @@
 // Deno's npm: specifiers to plain package names by the script.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { curveTradeToRow, hlFillToRow, hlVenue, launchedToToken, pairSwapToRow, poolPrice } from "./indexer.ts";
-import { canonicalProfile } from "./launchPass.ts";
+import { curveTradeToRow, ftfLaunchedToToken, hlFillToRow, hlVenue, launchedToToken, pairSwapToRow, poolPrice } from "./indexer.ts";
+import { canonicalFtfProfile, canonicalProfile, validFtfIdentity } from "./launchPass.ts";
 
 const log = <A>(args: A) => ({ args, transactionHash: "0xabc" as const, logIndex: 3, blockNumber: 42n });
 const T = "0x2000000000000000000000000000000000000002";
@@ -95,4 +95,21 @@ test("profile: link list is capped before any per-link work", () => {
   const many = Array.from({ length: 100_000 }, () => ({ label: "x", url: "https://x.com" }));
   assert.throws(() => canonicalProfile({ about: "y".repeat(60), links: many }, who), /At most 10 links/);
   assert.throws(() => canonicalProfile({ about: "y".repeat(60), links: "nope" as never }, who), /must be a list/);
+});
+
+test("FTF launched -> token row (4 members, ticker as handle)", () => {
+  const r = ftfLaunchedToToken(
+    log({ token: T, founder: "0xF0", name: "Degen Den", ticker: "DEN", memberXIds: [1n, 2n, 3n, 4n], profileHash: "0x22", virtualHype: 60n * 10n ** 18n }),
+    "t",
+  );
+  assert.deepEqual([r.kind, r.name, r.symbol, r.handle, r.x_user_id, r.category, r.creator], ["ftf", "Degen Den", "DEN", "den", null, null, "0xf0"]);
+  assert.deepEqual(r.member_x_user_ids, ["1", "2", "3", "4"]);
+});
+
+test("FTF name + ticker rules match the contract", () => {
+  assert.deepEqual(validFtfIdentity(" Degen Den ", "den"), { name: "Degen Den", ticker: "DEN" });
+  for (const bad of ["", "De  n", "Den<script>", "x".repeat(33)]) assert.throws(() => validFtfIdentity(bad, "DEN"), /Name/);
+  for (const bad of ["D", "DEN!", "ABCDEFGHIJK"]) assert.throws(() => validFtfIdentity("Degen Den", bad), /Ticker/);
+  const a = canonicalFtfProfile({ about: "z".repeat(60) }, { name: "Degen Den", ticker: "DEN", founderXUserId: "1" });
+  assert.match(a.content, /"kind":"ftf"/);
 });

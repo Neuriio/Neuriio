@@ -9,12 +9,14 @@ import { LogoMarquee } from "./components/LogoMarquee";
 import { useTickerLogos } from "./lib/tickers";
 import { LaunchCard } from "./components/LaunchCard";
 import { ExploreCard } from "./components/ExploreCard";
+import { useRegisterOnLogin } from "./lib/register";
 
 // One layout for every page; the center card changes by path (app.neuriio.xyz/launch, ...).
 const PAGE = location.pathname.replace(/\/+$/, "") || "/";
 
 export function App() {
   const tickers = useTickerLogos();
+  useRegisterOnLogin();
   return (
     <div className="app">
       <header className="top">

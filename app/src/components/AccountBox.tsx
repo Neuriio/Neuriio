@@ -3,12 +3,16 @@
 //   Logged out: the button says "Account"; the panel shows a blurred placeholder with a small centered
 //   card whose Login button opens Privy (X, Google, Telegram). Every user gets a Neuriio wallet.
 //   Logged in: the button shows picture + handle; the panel has the deposit address (copy), balances
-//   on Elysium + HyperCore by token, private key export (Privy's own secure modal) and log out.
-import { useState } from "react";
+//   on Elysium + HyperCore by token, creator fees with a Claim button (for creators / FTF members), private key
+//   export (Privy's own secure modal) and log out.
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { Check, Copy } from "lucide-react";
 import { useExportWallet, usePrivy, useWallets } from "@privy-io/react-auth";
-import type { Address } from "viem";
+import { formatEther, type Address, type EIP1193Provider } from "viem";
+import { elysiumTestnet } from "../chain";
+import { claimCreatorFees, creatorFees } from "../lib/fees";
+import { useHypeUsd } from "../lib/tickers";
 import { useBalances } from "../lib/useBalances";
 import type { Balances, VenueBalance } from "../lib/balances";
 import { profileOf, type Profile } from "../lib/profile";
@@ -31,21 +35,33 @@ function AccountMorph() {
   const { exportWallet } = useExportWallet();
   const wallet = wallets.find((w) => w.walletClientType === "privy");
   const { balances } = useBalances(wallet?.address as Address | undefined);
+  const fees = useCreatorFees(wallet?.address as Address | undefined, async () => {
+    await wallet!.switchChain(elysiumTestnet.id);
+    return (await wallet!.getEthereumProvider()) as EIP1193Provider;
+  });
   return (
     <MorphView
       me={profileOf(user)}
       address={wallet?.address}
       balances={balances}
+      fees={fees}
       onExport={wallet ? () => exportWallet({ address: wallet.address }) : undefined}
       onLogout={logout}
     />
   );
 }
 
+type Fees = {
+  claimable: number; // HYPE
+  status: "idle" | "claiming" | "claimed" | { error: string };
+  onClaim: () => void;
+};
+
 type MorphViewProps = {
   me: Profile;
   address?: string;
   balances: Balances | null;
+  fees?: Fees | null; // null/undefined: not a creator and nothing to claim (box hidden)
   onExport?: () => void;
   onLogout: () => void;
   /** logged out: blurred placeholder + centered Login card */
@@ -54,7 +70,7 @@ type MorphViewProps = {
   onLogin?: () => void;
 };
 
-function MorphView({ me, address, balances, onExport, onLogout, locked = false, loginReady = true, onLogin }: MorphViewProps) {
+function MorphView({ me, address, balances, fees, onExport, onLogout, locked = false, loginReady = true, onLogin }: MorphViewProps) {
   const reduce = useReducedMotion();
   return (
     <Morph
@@ -112,6 +128,7 @@ function MorphView({ me, address, balances, onExport, onLogout, locked = false, 
       {address ? <DepositAddress address={address} /> : <p className="empty">Creating your wallet…</p>}
       <Venue name="Elysium" v={balances?.elysium} />
       <Venue name="HyperCore" v={balances?.hypercore} />
+      {!locked && fees && <CreatorFees fees={fees} />}
       {!locked && (
         <div className="dropdown-actions">
           {onExport && (
@@ -158,6 +175,76 @@ function DepositAddress({ address }: { address: string }) {
   );
 }
 
+/** Creator fees waiting in the FeeVault (HYPE on Elysium) + Claim. Refreshes every 15 s. */
+function useCreatorFees(wallet: Address | undefined, getProvider: () => Promise<EIP1193Provider>): Fees | null {
+  const [claimable, setClaimable] = useState<bigint | null>(null);
+  const [launched, setLaunched] = useState(false);
+  const [status, setStatus] = useState<Fees["status"]>("idle");
+  const [nonce, setNonce] = useState(0);
+  useEffect(() => {
+    if (!wallet) return;
+    let alive = true;
+    const load = () =>
+      creatorFees(wallet).then((f) => {
+        if (!alive) return;
+        setClaimable(f.claimable);
+        setLaunched(f.launched);
+      }, () => {});
+    load();
+    const id = setInterval(load, 15_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [wallet, nonce]);
+  // shown to creators (even at 0) and to anyone with fees waiting (e.g. FTF members), and right after a claim
+  if (!wallet || claimable === null || (!launched && claimable === 0n && status !== "claimed")) return null;
+  return {
+    claimable: Number(formatEther(claimable)),
+    status,
+    onClaim: async () => {
+      setStatus("claiming");
+      try {
+        await claimCreatorFees(await getProvider(), wallet);
+        setStatus("claimed");
+        setNonce((n) => n + 1);
+      } catch (e) {
+        const m = (e as Error).message;
+        setStatus({ error: /rejected|denied/i.test(m) ? "Cancelled" : /insufficient funds/i.test(m) ? "Need a little HYPE for gas" : "Claim failed, try again" });
+      }
+    },
+  };
+}
+
+function CreatorFees({ fees }: { fees: Fees }) {
+  const hypeUsd = useHypeUsd();
+  const { claimable, status } = fees;
+  const busy = status === "claiming";
+  return (
+    <section className="venue venue-box fees-box">
+      <header>
+        <span>Creator fees</span>
+        <span>{hypeUsd ? usd(claimable * hypeUsd) : "…"}</span>
+      </header>
+      <div className="fees-row">
+        <span className="fees-amount">
+          {amount(claimable)} <span className="fees-unit">HYPE</span>
+        </span>
+        <button className="fees-claim" disabled={busy || claimable === 0} onClick={fees.onClaim}>
+          {busy ? "Claiming…" : "Claim"}
+        </button>
+      </div>
+      <p className="fees-note">
+        {status === "claimed"
+          ? "Claimed to your Neuriio wallet"
+          : typeof status === "object"
+            ? status.error
+            : "80% of your token's trading fees, paid in HYPE on Elysium"}
+      </p>
+    </section>
+  );
+}
+
 function Venue({ name, v }: { name: string; v?: VenueBalance }) {
   return (
     <section className="venue venue-box">
@@ -200,6 +287,7 @@ const DEMO_PROPS: MorphViewProps = {
       ],
     },
   },
+  fees: { claimable: 0.0845, status: "idle", onClaim: () => alert("demo: claims 0.0845 HYPE to your Neuriio wallet") },
   onExport: () => alert("demo: Privy export modal opens here"),
   onLogout: () => alert("demo: logs out"),
 };

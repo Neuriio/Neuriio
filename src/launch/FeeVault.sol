@@ -7,10 +7,12 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ISwapFactory, IWHYPE} from "../swap/interfaces.sol";
 
 interface ILaunchpadCreators {
-    function creatorOf(address token) external view returns (address);
+    /// The token's creator, or an FTF's 4 members (equal shares). Empty if unknown.
+    function creatorsOf(address token) external view returns (address[] memory);
 }
 
-/// @notice Every fee a launched token generates lands here, in HYPE:
+/// @notice Every fee a launched token generates lands here, in HYPE (an FTF's creator share is split equally between
+/// its 4 members):
 ///   - curve trades: the Launchpad's fee (0.75%), sent with each trade
 ///   - graduated pool swaps: the pair's 0.25%, taken out as WHYPE and unwrapped here
 /// 80% is credited to the token's creator (claim any time); 20% goes to the protocol, split between the
@@ -123,16 +125,19 @@ contract FeeVault is Ownable2Step, ReentrancyGuard {
 
     function _credit(address token, uint256 amount, bool fromPool) internal {
         if (amount == 0) return;
-        address creator = launchpad.creatorOf(token);
-        if (creator == address(0)) revert UnknownToken(token);
+        address[] memory creators = launchpad.creatorsOf(token);
+        if (creators.length == 0) revert UnknownToken(token);
         uint256 toCreator = amount * CREATOR_BPS / 10_000;
         uint256 protocol = amount - toCreator;
         uint256 toCommunity = protocol * communityBps / 10_000;
-        creatorBalance[creator] += toCreator;
+        // equal shares; the rounding remainder (a few wei) goes to the first (the creator / an FTF's founder)
+        uint256 share = toCreator / creators.length;
+        for (uint256 i; i < creators.length; ++i) creatorBalance[creators[i]] += share;
+        creatorBalance[creators[0]] += toCreator - share * creators.length;
         creatorEarned[token] += toCreator;
         communityBalance += toCommunity;
         buybackBalance += protocol - toCommunity;
-        emit FeeCredited(token, creator, amount, toCreator, fromPool);
+        emit FeeCredited(token, creators[0], amount, toCreator, fromPool);
     }
 
     function _send(address to, uint256 amount) internal {

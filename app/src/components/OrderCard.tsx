@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { formatEther, parseEther, type Address, type EIP1193Provider } from "viem";
 import { elysiumTestnet } from "../chain";
-import { DEMO, type TokenStat } from "../lib/explore";
+import { DEMO, displayName, type TokenStat } from "../lib/explore";
 import { compactUsd } from "../lib/format";
 import { SUPABASE_URL } from "../lib/config";
 import { balances, friendlyTradeError, minOut, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
@@ -115,7 +115,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
     }
   }
 
-  let cta = `${side === "buy" ? "Buy" : "Sell"} @${t.handle}`;
+  let cta = `${side === "buy" ? "Buy" : "Sell"} ${displayName(t)}`;
   let disabled = busy;
   if (!loggedIn) cta = "Log in to trade";
   else if (busy) cta = status.label;

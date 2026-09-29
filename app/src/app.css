@@ -2384,3 +2384,117 @@ body {
   -webkit-mask-image: radial-gradient(ellipse 45% 120% at 50% 0%, #000 20%, transparent 75%);
   mask-image: radial-gradient(ellipse 45% 120% at 50% 0%, #000 20%, transparent 75%);
 }
+
+/* FTF: the badge (instead of a category) and the members list in the profile window */
+.ex-ftf-chip {
+  color: #ffe3a3;
+  background: rgba(255, 210, 120, 0.1);
+  border-color: rgba(255, 210, 120, 0.45);
+}
+.ex-modal-members {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ex-modal-members a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  color: var(--text);
+  text-decoration: none;
+  background: rgba(10, 6, 18, 0.35);
+  border: 1px solid rgba(236, 221, 255, 0.08);
+  border-radius: 6px;
+}
+.ex-modal-members a:hover {
+  border-color: rgba(216, 255, 254, 0.35);
+}
+.ex-modal-member-names {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Account panel: creator fees + Claim */
+.fees-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0 2px;
+}
+.fees-amount {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.fees-unit {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.fees-claim {
+  height: 30px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f1a14;
+  background: #6ee7a0;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.fees-claim:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.fees-note {
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* chart header: lifetime creator fees next to the Profile button */
+.ex-earned {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 10px;
+  white-space: nowrap;
+  border-left: 1px solid rgba(236, 221, 255, 0.12);
+}
+/* the header wraps only when it runs out of room (the price then moves to its own line, right-aligned);
+   on narrower screens the HYPE amount (also in the tooltip) is dropped */
+.ex-head {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+@media (max-width: 1440px) {
+  .ex-earned-hype {
+    display: none;
+  }
+}
+.ex-earned-label {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ex-earned-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #6ee7a0;
+  font-variant-numeric: tabular-nums;
+}
+.ex-earned-hype {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+}

@@ -54,35 +54,35 @@ with **our own swap** (like pump.fun's PumpSwap). Decided by the user:
   ~0.33 HYPE; the live test funds 0.35 → top up first.** Anvil dry run passed. Not indexed yet: FeeVault events (creator
   earnings UI), no app claim button yet.
 
-### FTF: "Friends Turned Fam" — DESIGN DECIDED (user, 2026-09-28), not built. Build AFTER Explore.
-Why not "combine liquidity / market cap": graduated LP is burned (nobody can move it) and curve HYPE must stay in the
-Launchpad; market cap is price x supply, not movable money. So an FTF is a NEW token made from its members' tokens:
-- **Exactly 4 members**, all 4 must accept (sign), every member token must be **graduated** (no curve tokens). A person
-  can be in several FTFs. Name/ticker chosen by the team.
-- **Burn-to-mint, one way (no redeem):** the only way to create FTF tokens is to burn X of each member's token
-  (X per member set by the team) -> 1 FTF. Minting is free. Every mint shrinks the members' supplies.
-- **Launch:** the team funds the FTF's own FTF/HYPE pool together (the user's figure: **$40K of liquidity**; open:
-  total both sides vs HYPE side, enforced as an owner-updated HYPE minimum since contracts can't read USD). The
-  starting FTF tokens come from the members burning their tokens. **LP burned** (locked forever), like graduation.
-- **Opening price: deliberately ABOVE the ingredient cost** (market value of X of each member token) -> a big
-  arbitrage at launch: people buy the single tokens, burn them to mint FTF and sell FTF until it balances. Intended:
-  it pumps all 4 singles and burns their supply. (Dumping singles to buy FTF self-corrects: cheaper ingredients make
-  minting profitable, which brings buyers back to the singles. Caveat: if FTF trades BELOW ingredient cost nobody
-  mints and FTF moves on its own; with no redeem nothing pulls it back.)
-- **Fees:** FTF pool trades pay the pool fee to FeeVault, creator share split between the 4 members.
-- **"Apply for FTF" = a QUEUE (user):** teams apply; the app works out exactly what's needed for THAT FTF (it changes
-  with each member's market cap: no set price) and shows it; it should feel like anyone can spawn one and it's
-  something to work for. Suggested flow: application -> all 4 accept -> each member deposits their HYPE share into an
-  escrow (auto-launch when all 4 signed + funded; refund after a deadline).
-  **UI TO DESIGN (with the user, one element at a time): the "Apply for FTF" application form, and a place to check
-  applications / queue status / what each FTF still needs.**
-- Contracts: **FTFFactory** (applications/queue, signatures, escrow + refunds, pool creation with burned LP) +
-  **FTFToken** (burn-to-mint only) + small changes: our V2 factory must also let the FTFFactory create pairs (~3 marked
-  lines), FeeVault must split one token's creator share across 4 members. Existing SwapRouter trades FTF/HYPE as-is.
-  A one-click "buy FTF with HYPE" zap is optional (buyers can use the FTF pool). Plus indexer + Explore support (the
-  search placeholder already says "@handle or FTF").
-- Still open: $40K total vs HYPE side; the HYPE minimum's value; max FTF supply or unlimited minting; how far above
-  ingredient cost the opening price is set (who picks it: the team within limits, or a fixed premium).
+### FTF: "Friends Turned Fam" — REDESIGNED + BACKEND BUILT (user, 2026-09-29). NOT deployed on-chain yet.
+Supersedes the 2026-09-28 burn-to-mint / $40K-funded-pool design. An FTF is a second KIND of token on the SAME
+bonding curve: at /launch users choose "Launch yourself" (individual, unchanged) or "Launch an FTF".
+- **Decided (user):** exactly **4 members**, all fixed before launch (**no adding later**); creator fees split
+  **equally** (80% / 4 each; rounding wei to the founder); **no** link to members' own tokens; members **don't need**
+  an individual token (and being in an FTF doesn't use up their individual launch; one person can be in several);
+  **free** to launch (gas only). FTFs get no "launch" points (tokens.x_user_id is null) unless decided otherwise.
+- **Contracts (built, 96 forge tests incl. 4 FTF):** `Launchpad.launchFtf(FtfPass, sig, minTokensOut)`, pass =
+  {founder, name, ticker, memberXIds[4], members[4], profileHash, deadline}, EIP-712 signed by `launchSigner`; founder
+  must be msg.sender and member #1; 4 distinct nonzero X IDs + wallets; name 1-32 chars (letters/digits/space - _ . &
+  ', single inner spaces); ticker 2-10 A-Z0-9, unique among FTFs (`tokenOfFtfTicker`, own namespace vs @handles).
+  Views `isFtf`, `ftf(token)`, `creatorsOf(token)` (FeeVault uses it: 1 creator or 4 members). Shared `_newCurve`.
+  **Launchpad hit the 24,576-byte limit** (25,810 B): now compiled at 200 optimizer runs (`foundry.toml`
+  `compilation_restrictions`) -> 20,943 B; `forge build --sizes` must stay green. viem-signed FtfPass hash ==
+  contract hash (verified on anvil).
+- **Supabase (LIVE):** migration `20260929020000_ftf.sql`: tokens.kind/name/member_x_user_ids (x_user_id and
+  category nullable for FTFs; one individual token per X user via a partial unique index); token_stats exposes them;
+  `ftf_drafts` + `ftf_members` (public read, writes only via the function; one open draft per ticker). Edge Function
+  **`ftf`** (Privy auth; 30 actions/min): create / invite (by handle; invitee must have logged in once) / request
+  ("ask to be added") / approve / accept / decline / leave / remove / cancel / **pass** (exactly 4 accepted -> signed
+  FtfPass, founder first then join order; stores the profile in creator_profiles). Indexer handles `FtfLaunched`
+  (tokens row with kind 'ftf', handle = lower-case ticker; closes the draft). All migrations tested in order on PGlite.
+- **App (built):** `register` now called after every X login (`lib/register.ts`, once per session: fresh pfp, invitable,
+  points). Explore shows FTFs by name with an "FTF" badge, search matches FTF name/ticker, Profile modal lists the 4
+  members (links to X), chain fallback reads FTFs too. `?demo` has one FTF: "Degen Den" ($DEN).
+- **NOT built yet (design with the user, one element at a time):** the /launch choice screen and the FTF screens
+  (create draft, invite / ask to join, approve / accept, status of each FTF being formed, launch).
+- **Needs a redeploy** (new Launchpad + FeeVault + factory, like 2026-09-29) before FTFs work on-chain: the current
+  testnet Launchpad `0x6ef0…cb53` has no `launchFtf`, and redeploying orphans its tokens (@von_hl) again.
 
 ### "Tokenize Yourself" (user, 2026-09-27): who can launch
 **Public headline renamed (user, 2026-09-28): "Tokenize Accounts"** (not "Tokenize Yourself", which reads as tokenizing a person).
@@ -847,7 +847,10 @@ Data to build for it (Supabase, public-read):
 - **Promo video "Tokenize Accounts" (Higgsfield): AFTER the Explore page.** Script, style block and shot prompts saved in
   `notes/promo-video-higgsfield.md`.
 - User to send **community + buyback wallet addresses** → `FeeVault.setWallets` (owner = burner).
-- Creator **claim** button in the UI (FeeVault `claim`), `register` call after login (points for non-launchers),
+- DONE 2026-09-29: chart header shows **"Creator fees earned"** next to Profile (FeeVault.creatorEarned(token),
+  lifetime, USD + HYPE, 15 s; the header wraps when short on room). Creator **Claim** in the Account panel ("Creator fees" box: claimable HYPE + USD, Claim ->
+  FeeVault.claim(own wallet); shown to creators and anyone with fees waiting, e.g. FTF members; `lib/fees.ts`) and
+  `register` after login. Still open:
   builder fee wired into the future buy UI (`HL_BUILDER`), holding-points math (TBD by user).
 - Burner ~0.30 testnet HYPE: top up before the next full live test (`./script/launchpad-test.sh burner`, needs 0.35).
 - FTF (Friends Turned Fam) contracts: LATER (§0).

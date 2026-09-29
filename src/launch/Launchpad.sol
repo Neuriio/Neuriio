@@ -16,7 +16,9 @@ interface ICurveFeeVault {
     function depositCurveFee(address token) external payable;
 }
 
-/// @notice "Tokenize yourself": a pump.fun-style launchpad priced in native HYPE where every token is a person.
+/// @notice "Tokenize Accounts": a pump.fun-style launchpad priced in native HYPE. A token is either one person
+/// (`launch`, named at-sign + X handle) or an FTF, "Friends Turned Fam" (`launchFtf`): exactly 4 people who agreed to launch
+/// one group token together, all 4 fixed at launch, sharing its creator fees equally. Both kinds use the same curve.
 ///
 /// Launching needs a LaunchPass signed by our backend (`launchSigner`) after it verifies the creator's X login.
 /// One token per X account (keyed by the permanent X user ID) and per wallet, named after the creator (at-sign + handle) with the
@@ -40,8 +42,15 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     uint256 public constant MIN_VIRTUAL_HYPE = 1e15;
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
     uint256 public constant MAX_HANDLE_LENGTH = 15; // X's limit
+    uint256 public constant FTF_MEMBERS = 4;
+    uint256 public constant MAX_FTF_NAME_LENGTH = 32;
+    uint256 public constant MIN_FTF_TICKER_LENGTH = 2;
+    uint256 public constant MAX_FTF_TICKER_LENGTH = 10;
     bytes32 public constant LAUNCH_PASS_TYPEHASH = keccak256(
         "LaunchPass(address creator,uint64 xUserId,string handle,uint8 category,bytes32 profileHash,uint256 deadline)"
+    );
+    bytes32 public constant FTF_PASS_TYPEHASH = keccak256(
+        "FtfPass(address founder,string name,string ticker,uint64[4] memberXIds,address[4] members,bytes32 profileHash,uint256 deadline)"
     );
 
     enum Category {
@@ -61,6 +70,24 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         uint8 category; // Category
         bytes32 profileHash; // keccak256 of the creator's profile document stored off-chain
         uint256 deadline;
+    }
+
+    /// Signed by `launchSigner` once the backend has verified all 4 members' X logins and that each accepted.
+    struct FtfPass {
+        address founder; // launches it (must be msg.sender and members[0])
+        string name; // display name, e.g. "Degen Den"
+        string ticker; // A-Z 0-9, unique among FTFs
+        uint64[4] memberXIds; // permanent X user IDs, founder first
+        address[4] members; // their Neuriio wallets (fee recipients), same order
+        bytes32 profileHash; // keccak256 of the FTF's profile document stored off-chain
+        uint256 deadline;
+    }
+
+    struct Ftf {
+        string name;
+        bytes32 profileHash;
+        uint64[4] memberXIds;
+        address[4] members;
     }
 
     struct Profile {
@@ -96,6 +123,8 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     mapping(uint64 xUserId => address token) public tokenOfXUser;
     mapping(address creator => address token) public tokenOfCreator;
     mapping(bytes32 handleKey => address token) public tokenOfHandle; // keccak256(lowercased handle)
+    mapping(address token => Ftf) internal _ftfs;
+    mapping(bytes32 tickerKey => address token) public tokenOfFtfTicker; // keccak256(ticker); FTFs have their own namespace
 
     event Launched(
         address indexed token,
@@ -103,6 +132,16 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         uint64 indexed xUserId,
         string handle,
         Category category,
+        bytes32 profileHash,
+        uint256 virtualHype
+    );
+    event FtfLaunched(
+        address indexed token,
+        address indexed founder,
+        string name,
+        string ticker,
+        uint64[4] memberXIds,
+        address[4] members,
         bytes32 profileHash,
         uint256 virtualHype
     );
@@ -132,6 +171,8 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     error InvalidPass();
     error NotPassHolder();
     error AlreadyLaunched();
+    error InvalidMembers();
+    error TickerTaken();
 
     constructor(
         address owner_,
@@ -171,22 +212,40 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
                 || tokenOfHandle[handleKey] != address(0)
         ) revert AlreadyLaunched();
 
-        token = address(new LaunchToken(string.concat("@", pass.handle), symbol, TOTAL_SUPPLY));
-        uint256 vh = virtualHype;
-        curves[token] = Curve({
-            creator: msg.sender,
-            graduated: false,
-            virtualHype: vh.toUint128(),
-            virtualToken: uint128(VIRTUAL_TOKENS),
-            realHype: 0,
-            realToken: uint128(CURVE_SUPPLY)
-        });
+        uint256 vh;
+        (token, vh) = _newCurve(string.concat("@", pass.handle), symbol);
         _profiles[token] = Profile(pass.xUserId, Category(pass.category), pass.profileHash, pass.handle);
         tokenOfXUser[pass.xUserId] = token;
         tokenOfCreator[msg.sender] = token;
         tokenOfHandle[handleKey] = token;
-        allTokens.push(token);
         emit Launched(token, msg.sender, pass.xUserId, pass.handle, Category(pass.category), pass.profileHash, vh);
+
+        if (msg.value > 0) _buy(token, msg.value, minTokensOut);
+    }
+
+    /// @notice Launch an FTF: one token for 4 people, on the same bonding curve, with a pass from our backend
+    /// (after all 4 accepted). The founder sends it; any HYPE sent is the founder's initial buy. Members are fixed
+    /// forever and share the creator fees equally. Being in an FTF doesn't use up anyone's individual launch.
+    function launchFtf(FtfPass calldata pass, bytes calldata signature, uint256 minTokensOut)
+        external
+        payable
+        nonReentrant
+        whenNotPaused
+        returns (address token)
+    {
+        if (block.timestamp > pass.deadline) revert Expired();
+        if (msg.sender != pass.founder || pass.members[0] != msg.sender) revert NotPassHolder();
+        if (ECDSA.recover(hashFtfPass(pass), signature) != launchSigner) revert InvalidPass();
+        _checkMembers(pass.memberXIds, pass.members);
+        _checkFtfName(pass.name);
+        bytes32 tickerKey = _checkFtfTicker(pass.ticker);
+        if (tokenOfFtfTicker[tickerKey] != address(0)) revert TickerTaken();
+
+        uint256 vh;
+        (token, vh) = _newCurve(pass.name, pass.ticker);
+        _ftfs[token] = Ftf(pass.name, pass.profileHash, pass.memberXIds, pass.members);
+        tokenOfFtfTicker[tickerKey] = token;
+        emit FtfLaunched(token, msg.sender, pass.name, pass.ticker, pass.memberXIds, pass.members, pass.profileHash, vh);
 
         if (msg.value > 0) _buy(token, msg.value, minTokensOut);
     }
@@ -265,9 +324,30 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         return Math.mulDiv(c.virtualHype, 1e18, c.virtualToken);
     }
 
-    /// @notice Who launched `token` (receives 80% of its fees via the FeeVault); address(0) if unknown.
+    /// @notice Who launched `token` (for an FTF: its founder); address(0) if unknown.
     function creatorOf(address token) external view returns (address) {
         return curves[token].creator;
+    }
+
+    /// @notice Who shares `token`'s creator fees (80%, via the FeeVault): its creator, or an FTF's 4 members.
+    /// Empty if unknown.
+    function creatorsOf(address token) external view returns (address[] memory out) {
+        Ftf storage f = _ftfs[token];
+        if (f.members[0] != address(0)) {
+            out = new address[](FTF_MEMBERS);
+            for (uint256 i; i < FTF_MEMBERS; ++i) out[i] = f.members[i];
+        } else if (curves[token].creator != address(0)) {
+            out = new address[](1);
+            out[0] = curves[token].creator;
+        }
+    }
+
+    function isFtf(address token) external view returns (bool) {
+        return _ftfs[token].members[0] != address(0);
+    }
+
+    function ftf(address token) external view returns (Ftf memory) {
+        return _ftfs[token];
     }
 
     function allTokensLength() external view returns (uint256) {
@@ -288,6 +368,24 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
                     pass.xUserId,
                     keccak256(bytes(pass.handle)),
                     pass.category,
+                    pass.profileHash,
+                    pass.deadline
+                )
+            )
+        );
+    }
+
+    /// @notice EIP-712 digest the backend signs for an FTF pass.
+    function hashFtfPass(FtfPass calldata pass) public view returns (bytes32) {
+        return _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    FTF_PASS_TYPEHASH,
+                    pass.founder,
+                    keccak256(bytes(pass.name)),
+                    keccak256(bytes(pass.ticker)),
+                    keccak256(abi.encodePacked(pass.memberXIds)),
+                    keccak256(abi.encodePacked(pass.members)),
                     pass.profileHash,
                     pass.deadline
                 )
@@ -320,6 +418,21 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     }
 
     // ------------------------------------------------------------------ internals
+
+    /// A new token (all 1B held here) and its fresh curve at the current `virtualHype`.
+    function _newCurve(string memory name, string memory symbol) internal returns (address token, uint256 vh) {
+        token = address(new LaunchToken(name, symbol, TOTAL_SUPPLY));
+        vh = virtualHype;
+        curves[token] = Curve({
+            creator: msg.sender,
+            graduated: false,
+            virtualHype: vh.toUint128(),
+            virtualToken: uint128(VIRTUAL_TOKENS),
+            realHype: 0,
+            realToken: uint128(CURVE_SUPPLY)
+        });
+        allTokens.push(token);
+    }
 
     function _buy(address token, uint256 value, uint256 minTokensOut) internal returns (uint256 tokensOut) {
         Curve storage c = _live(token);
@@ -433,6 +546,41 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
             lower[i] = isUpper ? bytes1(uint8(c) + 32) : c;
         }
         return (string(upper), keccak256(lower));
+    }
+
+    /// 4 distinct members: nonzero X IDs and wallets, no repeats.
+    function _checkMembers(uint64[4] calldata xIds, address[4] calldata wallets) internal pure {
+        for (uint256 i; i < FTF_MEMBERS; ++i) {
+            if (xIds[i] == 0 || wallets[i] == address(0)) revert InvalidMembers();
+            for (uint256 j; j < i; ++j) {
+                if (xIds[i] == xIds[j] || wallets[i] == wallets[j]) revert InvalidMembers();
+            }
+        }
+    }
+
+    /// FTF name: 1-32 chars of letters, digits, spaces and - _ . & ', no leading/trailing/double spaces.
+    function _checkFtfName(string calldata name) internal pure {
+        bytes calldata b = bytes(name);
+        uint256 n = b.length;
+        if (n == 0 || n > MAX_FTF_NAME_LENGTH || b[0] == 0x20 || b[n - 1] == 0x20) revert InvalidMetadata();
+        for (uint256 i; i < n; ++i) {
+            bytes1 c = b[i];
+            bool ok = (c >= 0x61 && c <= 0x7a) || (c >= 0x41 && c <= 0x5a) || (c >= 0x30 && c <= 0x39) || c == 0x20
+                || c == 0x2d || c == 0x5f || c == 0x2e || c == 0x26 || c == 0x27;
+            if (!ok || (c == 0x20 && b[i - 1] == 0x20)) revert InvalidMetadata();
+        }
+    }
+
+    /// FTF ticker: 2-10 chars of A-Z 0-9 (already upper case). Returns its uniqueness key.
+    function _checkFtfTicker(string calldata ticker) internal pure returns (bytes32) {
+        bytes calldata b = bytes(ticker);
+        uint256 n = b.length;
+        if (n < MIN_FTF_TICKER_LENGTH || n > MAX_FTF_TICKER_LENGTH) revert InvalidMetadata();
+        for (uint256 i; i < n; ++i) {
+            bytes1 c = b[i];
+            if (!((c >= 0x41 && c <= 0x5a) || (c >= 0x30 && c <= 0x39))) revert InvalidMetadata();
+        }
+        return keccak256(b);
     }
 
     function _setLaunchSigner(address signer) internal {
