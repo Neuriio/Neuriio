@@ -590,7 +590,15 @@ on-chain; `token_stats.sector` reads it back (null for older tokens); `ftf_draft
 `20260929220350_sectors.sql` applied; `launch-pass` + `ftf` redeployed (both now require `sector`). Explore header shows
 chips in order sector (cyan) -> category / FTF badge -> Profile; no sector filter yet.
 
-### Fee split changed + protocol payout bot (user, 2026-09-30) — BUILT, testnet needs a fresh core to use it
+### CURRENT TESTNET SET (2026-09-30, final core with the new fee split — use this)
+LaunchRegistry `0x4e1657d77eda054cba34b0eee7e9f1f979a21238`, Launchpad v1 `0x0ab518a961c77911ba9b2635cfe56b9ea54ec73e`,
+FeeVault `0x216d466ba550d72c19112164a15eb0f776a56a59` (curve 20/80, pool 80/20; protocol wallets = `0x10E9…EEC3`),
+factory/router/WHYPE + coreBlock 1114328 in `deployments/elysium-testnet.json`. Verified on-chain: wiring (factory +
+Launchpad -> vault, registry approves v1), split in action ($VON_HL `0x92fb…d082` relaunched + graduated: creator
+0.000425 HYPE vs protocol 0.0017 HYPE = 20/80). Supabase shows only this registry's tokens. Payout bot + watcher run
+in terminal tabs. Earlier cores/launchpads in this file's history are retired testnet worlds.
+
+### Fee split changed + protocol payout bot (user, 2026-09-30) — LIVE on testnet (core above)
 - **Curve (before graduation): 20% creator / 80% protocol. Pool (after graduation): 80% creator / 20% protocol
   (unchanged).** FeeVault constants `CURVE_CREATOR_BPS = 2_000`, `POOL_CREATOR_BPS = 8_000` (constants on purpose:
   no owner knob over creators' income; to change again, deploy a new vault with `./script/replace-feevault.sh`).
