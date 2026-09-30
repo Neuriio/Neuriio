@@ -4,7 +4,17 @@ import { createPublicClient, fallback, formatEther, http, keccak256, parseAbi, p
 import { elysiumTestnet } from "../chain";
 import { deployment, ELYSIUM_RPCS, SUPABASE_URL } from "./config";
 
+/** The CURRENT Launchpad version: new launches go here. Existing tokens trade on their own version (TokenStat.launchpad). */
 export const LAUNCHPAD = deployment.launchpad as Address;
+/** The permanent LaunchRegistry: identity (one token per X account / wallet / handle, FTF tickers) and each token's
+ *  Launchpad version, across every version (src/launch/LaunchRegistry.sol). */
+export const REGISTRY = deployment.launchRegistry as Address;
+export const registryAbi = parseAbi([
+  "function tokenOfCreator(address) view returns (address)",
+  "function tokenOfHandle(bytes32) view returns (address)",
+  "function tokenOfFtfTicker(bytes32) view returns (address)",
+  "function launchpadOf(address) view returns (address)",
+]);
 
 export const CATEGORIES = [
   { id: "trader", label: "Trader", hint: "Perps, spot, PnL receipts" },
@@ -43,15 +53,12 @@ export const launchpadAbi = parseAbi([
   "function launch(LaunchPass pass, bytes signature, uint256 minTokensOut) payable returns (address)",
   "struct FtfPass { address founder; string name; string ticker; uint64[4] memberXIds; address[4] members; bytes32 profileHash; uint256 deadline; }",
   "function launchFtf(FtfPass pass, bytes signature, uint256 minTokensOut) payable returns (address)",
-  "function tokenOfFtfTicker(bytes32) view returns (address)",
   "function buy(address token, uint256 minTokensOut, uint256 deadline) payable returns (uint256)",
   "function sell(address token, uint256 tokensIn, uint256 minHypeOut, uint256 deadline) returns (uint256)",
   "function previewBuy(address token, uint256 value) view returns (uint256 tokensOut, uint256 hypeIn, uint256 fee, uint256 refund)",
   "function previewSell(address token, uint256 tokensIn) view returns (uint256 hypeOut, uint256 fee)",
   "function virtualHype() view returns (uint256)",
   "function feeBps() view returns (uint16)",
-  "function tokenOfCreator(address) view returns (address)",
-  "function tokenOfHandle(bytes32) view returns (address)",
   "function curves(address) view returns (address creator, bool graduated, uint128 virtualHype, uint128 virtualToken, uint128 realHype, uint128 realToken)",
   "function profile(address) view returns ((uint64 xUserId, uint8 category, bytes32 profileHash, string handle))",
   "function isFtf(address) view returns (bool)",
@@ -87,7 +94,7 @@ export const graduationMcapHype = (p: CurveParams) =>
   (p.virtualHype * (VIRTUAL_TOKENS / (VIRTUAL_TOKENS - CURVE_SUPPLY)) * TOTAL) / (VIRTUAL_TOKENS - CURVE_SUPPLY);
 
 export async function launchedTokenOf(wallet: Address): Promise<Address | null> {
-  const t = await pub.readContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "tokenOfCreator", args: [wallet] });
+  const t = await pub.readContract({ address: REGISTRY, abi: registryAbi, functionName: "tokenOfCreator", args: [wallet] });
   return /^0x0{40}$/i.test(t) ? null : t;
 }
 
@@ -138,6 +145,6 @@ export function launchFtfArgs(
 
 /** The launched FTF token for a ticker (or null). */
 export async function ftfTokenOf(ticker: string): Promise<Address | null> {
-  const t = await pub.readContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "tokenOfFtfTicker", args: [keccak256(toBytes(ticker))] });
+  const t = await pub.readContract({ address: REGISTRY, abi: registryAbi, functionName: "tokenOfFtfTicker", args: [keccak256(toBytes(ticker))] });
   return /^0x0{40}$/i.test(t) ? null : t;
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pushes schema changes, sets the indexer's secrets from deployments/elysium-testnet.json, and deploys every Edge
+# Pushes schema changes, sets the functions' secrets (registry, current Launchpad, routers) from deployments/elysium-testnet.json, and deploys every Edge
 # Function (launch-pass, register, indexer). Run after ./script/supabase-setup.sh (one-time). Safe to re-run.
 #   ./script/supabase-deploy.sh
 set -euo pipefail
@@ -11,14 +11,13 @@ RPC=https://testnet-rpc.elysium.kinetiq.xyz
 echo "== Applying schema"
 supabase db push
 
-# index from the block the current Launchpad was deployed in
-PAD=$(jq -r .launchpad $D)
-FROM=$(jq -r --arg p "$PAD" '[.receipts[] | select((.contractAddress // "" | ascii_downcase) == ($p | ascii_downcase))][0].blockNumber' \
-  broadcast/DeployLaunchpad.s.sol/99801/run-latest.json)
-FROM=$(cast to-dec "$FROM")
-supabase secrets set --project-ref $REF LAUNCHPAD_ADDRESS="$PAD" ROUTER_ADDRESS="$(jq -r .swapRouter $D)" \
+# the indexer follows EVERY Launchpad version in the registry (read on-chain), from the core's deploy block; passes are
+# signed for the current version
+REG=$(jq -r .launchRegistry $D); PAD=$(jq -r .launchpad $D); FROM=$(jq -r .coreBlock $D)
+supabase secrets set --project-ref $REF REGISTRY_ADDRESS="$REG" LAUNCHPAD_ADDRESS="$PAD" \
+  ROUTER_ADDRESSES="$(jq -r '(.routers // [.swapRouter]) | join(",")' $D)" \
   WHYPE_ADDRESS="$(jq -r .whype $D)" INDEX_FROM_BLOCK="$FROM" RPC_URL=$RPC HL_TESTNET=true >/dev/null
-echo "   indexing Launchpad $PAD from block $FROM"
+echo "   registry $REG (indexed from block $FROM), current Launchpad $PAD"
 
 for f in launch-pass register indexer ftf; do
   echo "== Deploying $f"

@@ -586,6 +586,69 @@ on-chain; `token_stats.sector` reads it back (null for older tokens); `ftf_draft
 `20260929220350_sectors.sql` applied; `launch-pass` + `ftf` redeployed (both now require `sector`). Explore header shows
 chips in order sector (cyan) -> category / FTF badge -> Profile; no sector filter yet.
 
+### Security sweep #4 (2026-09-30): the upgrade-safe core + everything since sweep #3
+Reviewed: LaunchRegistry, Launchpad/FeeVault/factory changes, deploy scripts, indexer, watcher, app, migrations.
+**Fund safety (checked):** no owner can withdraw curve HYPE, pool liquidity (LP burned) or creators' fee balances
+(claim is creator-only); retired Launchpads keep buys/sells/graduation for their tokens; sells stay open while paused;
+a Launchpad can only create pairs / deposit fees for tokens the registry says are its own; tokens can't be registered
+twice; only approved versions register.
+**Fixed:**
+1. (medium) FeeVault was a permanent single point of failure (factory set-once, Launchpad immutable): a vault bug
+   would freeze ALL curve + pool trading with no fix short of a new core, and a fee-split change was impossible.
+   Now: `factory.setFeeVault` (owner, any time; `0x0` = emergency switch, pools keep the fee like V2) and
+   `Launchpad.setFeeVault` (owner). `./script/replace-feevault.sh` swaps in a new vault for the factory + every
+   version; old creator balances stay claimable; app sums/claims across `feeVaults` (lib/fees.ts). Tests
+   `test_feeVault_replaceWithoutOrphaningBalances`, `test_feeVault_brokenVaultCantFreezeTrading`; anvil dry run OK.
+2. (medium) The app sent trades to the Launchpad named by Supabase data (new with multi-version): tampered data could
+   redirect buys. Now anything that sends HYPE / approves tokens reads `registry.launchpadOf(token)` on-chain
+   (lib/trade.ts `verifiedPad`); DB values are only used for display/quotes (a wrong quote just reverts).
+**Owner trust (document for auditors; move to multisig + timelock before mainnet):** approving Launchpad versions,
+redirecting FUTURE fees (new vault), pausing buys, reserved tickers, signer. None touch existing balances.
+**Accepted:** LaunchRegistry itself is permanent (small, no funds, no admin over tokens); curve side has no "0x0"
+switch (owner points it at a fresh vault instead); watcher's live "graduated" event sometimes has trader = null.
+**TESTNET NOTE:** the core deployed 2026-09-30 04:3x (registry `0x9761…8255`) has the OLD set-once factory vault and
+immutable Launchpad vault. It works, but to get fix 1 on testnet, run `./script/deploy-core.sh burner` +
+`./script/supabase-deploy.sh` once more (relaunch $VON_HL). Mainnet gets it from the start.
+
+### UPGRADE-SAFE ARCHITECTURE (2026-09-30) — BUILT + TESTED, NOT ON TESTNET YET
+Problem it solves: every Launchpad redeploy used to orphan every token (identity, pair creation, fees, indexer,
+watcher and app were all tied to one Launchpad address; the indexer even jammed on "tokens_one_per_x_user").
+**Permanent core (deploy ONCE per network, `./script/deploy-core.sh`, never for an upgrade):**
+- `src/launch/LaunchRegistry.sol` (new): identity across every version (tokenOfXUser / tokenOfCreator / tokenOfHandle
+  / tokenOfFtfTicker, reservedTicker + `setReservedTickers`), `launchpadOf(token)`, `creatorsOf(token)`, `isFtf`,
+  `allTokens`, approved versions (`setLaunchpad(addr, bool)`, `launchpads[]` = every version ever approved).
+- Swap factory (V2 fork): `createPair` only by the token's own Launchpad (`registry.launchpadOf`), TOKEN/WHYPE only;
+  `setRegistry` once (replaces `setLaunchpad`). All pools of all versions live here; one router serves them all.
+- FeeVault: `depositCurveFee` only from the token's own Launchpad; creators from the registry (no `setLaunchpad`).
+**Swappable: Launchpad versions** (`./script/deploy-launchpad.sh`): approve the new one, retire the previous for NEW
+launches only (`RETIRE`). A retired version still trades, graduates and pays fees for its own tokens.
+**Off-chain follows the registry, never one address:** indexer reads `launchpads[]` each run (one cursor per registry,
+`elysium:registry:<addr>`), tags tokens with `launchpad` + `registry`, writes `app_config.registry`; `token_stats` only
+lists the current registry (so a full core reset never collides; unique index is now (registry, x_user_id)); secrets
+REGISTRY_ADDRESS, LAUNCHPAD_ADDRESS (current: passes are signed for it), ROUTER_ADDRESSES, INDEX_FROM_BLOCK = coreBlock.
+Watcher reads the registry's versions (re-checks every minute, no restart on upgrade) + `routers[]`. App trades a curve
+token on ITS version (`TokenStat.launchpad`, lib/trade.ts `padOf`), identity reads go to the registry.
+`launch-pass` / `ftf` check identity in the registry (+ handle taken, + version approved).
+deployments json: `launchRegistry, swapFactory, feeVault, swapRouter, routers[], coreBlock, launchpad (current),
+launchpads[{address, block}]`. Migration `20260930050000_multi_launchpad.sql` (not applied yet: goes with the deploy).
+**Tests:** 100 forge (new: `test_upgrade_newVersionOrphansNothing`, `test_upgrade_versionsCantTouchEachOthersTokens`,
+`test_registryOwnerOnly`); local anvil: core + v1 -> launchpad-test ALL PASSED -> v2 (v1 retired) -> v1's token still
+trades on the shared router, launchpad-test ALL PASSED on v2. Sizes: Launchpad 20,316 B, LaunchRegistry 5,218, FeeVault 5,746.
+**Testnet rollout (one last fresh deploy; $VON_HL relaunches once more, never again after):**
+`./script/deploy-core.sh burner` -> `./script/supabase-deploy.sh` -> restart the watcher -> relaunch.
+**Future upgrades:** `./script/deploy-launchpad.sh burner` only (nothing else to redeploy or restart; update
+`LAUNCHPAD_ADDRESS` is done by the script). Other cases: new router -> deploy it, append to `routers[]`, set
+`swapRouter`, re-run supabase-deploy; fee split -> `FeeVault.setCommunityBps` / `setWallets` (no redeploy); signer ->
+`setLaunchSigner`. Token contracts and pools never change (by design).
+
+### Reserved tickers (2026-09-30) — DEPLOYED on Launchpad 0x440c…; now lives in the LaunchRegistry (above)
+`Launchpad.reservedTicker(keccak256(UPPER ticker))`: seeded at deploy with HYPE WHYPE KHYPE STHYPE USDC USDT USDH USDE
+USD DAI ETH WETH BTC WBTC UBTC SOL KNTQ PURR NEURIIO; blocks FTF tickers and personal launches whose handle-in-caps
+matches (`TickerIsReserved`); owner `setReservedTickers(string[], bool)` (existing tokens unaffected). 97 forge tests
+(new `test_reservedTickers`); Launchpad 21,566 B. `launch-pass` + `ftf` pre-check it on-chain with a clear error
+(DEPLOYED; a read on the current Launchpad fails -> treated as not reserved). Redeploy = `./script/deploy-launchpad.sh
+burner` -> `./script/supabase-deploy.sh` -> restart the watcher; orphans $VON_HL again (clear its rows like before).
+
 ### Security sweep #3 (2026-09-30)
 Contracts unchanged since sweep #2 (96 forge tests pass; Launchpad 20,943 B). Reviewed this session's app / functions /
 DB / watcher changes. **Fixed:** Supabase advisors: `candle_bucket` search_path pinned; `rls_auto_enable()` (Supabase's
@@ -594,9 +657,8 @@ Realtime: anon/authenticated can only RECEIVE on `trades:%` (no fake trade/gradu
 indexer_state have RLS on and no policies (service role only; anon reads nothing); `sector` validated server-side in
 `launch-pass` + `ftf` and hashed into the profile; creator_profiles are all JSON (token_stats casts them); post text is
 React-escaped. **Accepted / open:** `leaderboard` + `points_totals` are SECURITY DEFINER views on purpose (public X
-card + points only); pg_net in public (Supabase default). **To handle later:** (1) FTF tickers can imitate real ones
-(e.g. $USDC, $HYPE): shown with "$" in balances and as launched tokens in Send, but reserve those tickers in the
-contract at the next redeploy; (2) when posts become real, the Send recipient wallet must come from the `users` table
+card + points only); pg_net in public (Supabase default). **To handle later:** (1) FTF tickers imitating real ones: reserved in the
+contract (see "Reserved tickers"), live after the next redeploy; (2) when posts become real, the Send recipient wallet must come from the `users` table
 server-side, never from client post data; (3) FTF launch points can be farmed with extra FTFs (user informed);
 (4) balances read every launched token's balance (1 multicall, up to 1,000 tokens) per viewer every 10 s: fine now,
 index holdings server-side at scale.
@@ -789,7 +851,7 @@ Redeploy flow (only when contracts change): `./script/deploy-launchpad.sh burner
   - Privy only allows `http://localhost:5173` (open the app there, not 127.0.0.1; or add 127.0.0.1 in the Privy
     dashboard). The dev server binds 127.0.0.1 but localhost reaches it.
 - **Layout (user, 2026-09-28):** 3 columns, chart dead-center (equal 300px sides; 260px under 1240px wide): left =
-  **Top 25 by TOTAL volume**, order re-ranked every 30 min by pg_cron (`top_tokens` snapshot + `top_tokens_live` view,
+  **Top 25 by TOTAL volume**, order re-ranked every minute by pg_cron (was 30 min until 2026-09-30) (`top_tokens` snapshot + `top_tokens_live` view,
   migration `20260928030000_top_tokens.sql`, job `neuriio-top-tokens`; numbers stay live); search **@handle (FTF
   names later)** centered above the chart with a dropdown; right = order card (`OrderCard.tsx` + `lib/trade.ts`, WIRED
   2026-09-28): Neuriio (Privy) wallet buys/sells on the curve (Launchpad.buy/sell) or the pool (SwapRouter.buy/sell);

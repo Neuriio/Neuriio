@@ -9,10 +9,21 @@
   "tKNTQ": "0x04338abe7d8da8a173bcf5a7e15ba704b1beaad2",
   "propAMMKntq": "0x4150763bd4c1de8b380d301e5aa4e04b2116639c",
   "whype": "0x517f12d5d17c4755fbdf988fe9cc24334c3314c7",
-  "swapFactory": "0xd330c4fa19ed9781e3e0f2c3533719e435a14d29",
-  "launchpad": "0x3c1b64c5d4ecc1ffc7fa8ab2eb643e86aba8932f",
-  "swapRouter": "0xa96e4c0111e13b62d1d74add60187984d0d16e2f",
+  "swapFactory": "0xf403816a61d1e339c638358ed3822a55a4775c9c",
+  "swapRouter": "0x65072e8759aa26ea8ed016da6c3262d5b2402f04",
   "launchSigner": "0x25626586434fb2003d12957a1fC4B0fA5EA52886",
   "hlBuilder": "0xef584b1098e12c34d1d85de76285c408ab6917a8",
-  "feeVault": "0x24b4a7dae0177a05e9c72b3decd935bc2a418df4"
+  "feeVault": "0xea9970ebbba977138740528657dc213f77552f3a",
+  "launchRegistry": "0x97618b82d8c4e2277401944ed78b499c335a8255",
+  "routers": [
+    "0x65072e8759aa26ea8ed016da6c3262d5b2402f04"
+  ],
+  "coreBlock": 1101260,
+  "launchpads": [
+    {
+      "address": "0xc54c48e6ef90b53ef49e7bccdac2d5d0578e43a7",
+      "block": 1101345
+    }
+  ],
+  "launchpad": "0xc54c48e6ef90b53ef49e7bccdac2d5d0578e43a7"
 }

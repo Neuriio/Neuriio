@@ -40,7 +40,7 @@ export type TradeRow = {
   curve_sold?: string | null; // curve: tokens sold from the curve after the trade (progress to graduation)
 };
 
-type Log<A> = { args: A; transactionHash: `0x${string}`; logIndex: number; blockNumber: bigint };
+type Log<A> = { args: A; address: string; transactionHash: `0x${string}`; logIndex: number; blockNumber: bigint };
 
 const lc = (a: string) => a.toLowerCase();
 const usd = (hype: string, hypeUsd: number | null) => (hypeUsd == null ? null : Number(hype) * hypeUsd);
@@ -60,6 +60,7 @@ export function launchedToToken(
   const a = log.args;
   return {
     address: lc(a.token),
+    launchpad: lc(log.address), // the Launchpad version that launched it (its curve lives there)
     kind: "individual",
     name: null,
     member_x_user_ids: null,
@@ -92,6 +93,7 @@ export function ftfLaunchedToToken(
   const a = log.args;
   return {
     address: lc(a.token),
+    launchpad: lc(log.address),
     kind: "ftf",
     name: a.name,
     x_user_id: null,

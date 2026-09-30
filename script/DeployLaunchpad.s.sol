@@ -3,47 +3,36 @@ pragma solidity ^0.8.28;
 
 import {Script, console} from "forge-std/Script.sol";
 import {Launchpad, ICurveFeeVault} from "../src/launch/Launchpad.sol";
-import {FeeVault} from "../src/launch/FeeVault.sol";
-import {WHYPE} from "../src/swap/WHYPE.sol";
-import {SwapRouter} from "../src/swap/SwapRouter.sol";
-import {ISwapFactory, ISwapFactoryAdmin, IWHYPE} from "../src/swap/interfaces.sol";
+import {LaunchRegistry} from "../src/launch/LaunchRegistry.sol";
+import {ISwapFactory, IWHYPE} from "../src/swap/interfaces.sol";
 
-/// forge script script/DeployLaunchpad.s.sol --rpc-url elysium_testnet --broadcast --account <keystore>
-/// env: WHYPE        existing wrapped HYPE (default: deploy ours)
-///      VIRTUAL_HYPE starting virtual HYPE reserve in wei (default 60e18: graduates at ~170 HYPE raised, ~822 HYPE mcap)
-///      FEE_BPS      curve trade fee (default 75 = 0.75%)
-///      LAUNCH_SIGNER backend key that signs launch passes (required; the Supabase launch-pass function holds it)
-/// The swap factory is our Uniswap V2 fork (src/swap/v2, built with solc 0.5.16), deployed from its artifact.
-/// The deployer owns everything (it is the factory's feeToSetter). Fees go to the FeeVault (80% creators, 20% protocol: community 60% / buyback 40%);
-/// COMMUNITY_WALLET + BUYBACK_WALLET (optional) set where the protocol share is paid.
+/// A new Launchpad VERSION on the existing core (DeployCore.s.sol): approved in the LaunchRegistry for new launches.
+/// Nothing is orphaned: every token keeps its identity in the registry, its pool in the shared factory and its fees
+/// in the shared FeeVault. RETIRE (optional) = the previous version, revoked for NEW launches only (its tokens keep
+/// trading on its curve and graduate normally).
+///   forge script script/DeployLaunchpad.s.sol --rpc-url elysium_testnet --broadcast --account <keystore>
+/// env: REGISTRY, SWAP_FACTORY, WHYPE, FEE_VAULT (the core), LAUNCH_SIGNER (backend pass signer, required),
+///      VIRTUAL_HYPE (wei, default 60e18 -> graduates at ~170 HYPE raised), FEE_BPS (default 75), RETIRE (optional)
 contract DeployLaunchpad is Script {
-    function run() external returns (Launchpad pad, ISwapFactoryAdmin factory, SwapRouter router, address whype, FeeVault vault) {
-        uint256 virtualHype = vm.envOr("VIRTUAL_HYPE", uint256(60e18));
-        uint16 feeBps = uint16(vm.envOr("FEE_BPS", uint256(75)));
-        whype = vm.envOr("WHYPE", address(0));
-        address launchSigner = vm.envAddress("LAUNCH_SIGNER");
-
+    function run() external returns (Launchpad pad) {
+        LaunchRegistry registry = LaunchRegistry(vm.envAddress("REGISTRY"));
+        address retire = vm.envOr("RETIRE", address(0));
         vm.startBroadcast();
         (, address deployer,) = vm.readCallers();
-        if (whype == address(0)) whype = address(new WHYPE());
-        factory = ISwapFactoryAdmin(deployCode("UniswapV2Factory.sol:UniswapV2Factory", abi.encode(deployer, whype)));
-        vault = new FeeVault(deployer, IWHYPE(whype), ISwapFactory(address(factory)));
         pad = new Launchpad(
-            deployer, ISwapFactory(address(factory)), IWHYPE(whype), virtualHype, feeBps, launchSigner, ICurveFeeVault(address(vault))
+            deployer,
+            ISwapFactory(vm.envAddress("SWAP_FACTORY")),
+            IWHYPE(vm.envAddress("WHYPE")),
+            vm.envOr("VIRTUAL_HYPE", uint256(60e18)),
+            uint16(vm.envOr("FEE_BPS", uint256(75))),
+            vm.envAddress("LAUNCH_SIGNER"),
+            ICurveFeeVault(vm.envAddress("FEE_VAULT")),
+            registry
         );
-        router = new SwapRouter(ISwapFactory(address(factory)), IWHYPE(whype));
-        vault.setLaunchpad(address(pad));
-        factory.setLaunchpad(address(pad));
-        factory.setFeeVault(address(vault));
-        address community = vm.envOr("COMMUNITY_WALLET", address(0));
-        address buyback = vm.envOr("BUYBACK_WALLET", address(0));
-        if (community != address(0) && buyback != address(0)) vault.setWallets(community, buyback);
+        registry.setLaunchpad(address(pad), true);
+        if (retire != address(0)) registry.setLaunchpad(retire, false);
         vm.stopBroadcast();
-
-        console.log("WHYPE:", whype);
-        console.log("SwapFactory (UniswapV2Factory):", address(factory));
         console.log("Launchpad:", address(pad));
-        console.log("SwapRouter:", address(router));
-        console.log("FeeVault:", address(vault));
+        if (retire != address(0)) console.log("Retired (no new launches):", retire);
     }
 }

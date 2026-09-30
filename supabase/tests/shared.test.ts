@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { curveTradeToRow, ftfLaunchedToToken, hlFillToRow, hlVenue, launchedToToken, pairSwapToRow, poolPrice } from "./indexer.ts";
 import { canonicalFtfProfile, canonicalProfile, validFtfIdentity } from "./launchPass.ts";
 
-const log = <A>(args: A) => ({ args, transactionHash: "0xabc" as const, logIndex: 3, blockNumber: 42n });
+const log = <A>(args: A) => ({ args, address: "0xPAD", transactionHash: "0xabc" as const, logIndex: 3, blockNumber: 42n });
 const T = "0x2000000000000000000000000000000000000002";
 const W_HIGH = "0xf000000000000000000000000000000000000000"; // WHYPE sorts after the token -> token is token0
 const W_LOW = "0x1000000000000000000000000000000000000000"; // WHYPE sorts first -> token is token1
@@ -79,6 +79,7 @@ test("launched -> token row", () => {
     "t",
   );
   assert.deepEqual([r.x_user_id, r.symbol, r.category, r.creator, r.virtual_hype], ["1850000000000000123", "VON_BUILDS9", "researcher", "0xcc", "60"]);
+  assert.equal(r.launchpad, "0xpad", "tagged with the Launchpad version that launched it");
 });
 
 test("profile validation + stable hash", () => {

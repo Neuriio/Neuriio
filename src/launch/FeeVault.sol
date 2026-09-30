@@ -5,11 +5,7 @@ import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ISwapFactory, IWHYPE} from "../swap/interfaces.sol";
-
-interface ILaunchpadCreators {
-    /// The token's creator, or an FTF's 4 members (equal shares). Empty if unknown.
-    function creatorsOf(address token) external view returns (address[] memory);
-}
+import {LaunchRegistry} from "./LaunchRegistry.sol";
 
 /// @notice Every fee a launched token generates lands here, in HYPE (an FTF's creator share is split equally between
 /// its 4 members):
@@ -18,12 +14,14 @@ interface ILaunchpadCreators {
 /// 80% is credited to the token's creator (claim any time); 20% goes to the protocol, split between the
 /// community-rewards wallet (60%) and the KNTQ buyback wallet (40%). The creator share is fixed; the protocol
 /// split and wallets are owner-set, and the protocol share waits here until both wallets are set.
+/// Part of the permanent core: it serves every Launchpad version (a curve fee is accepted only from the token's own
+/// Launchpad, per the LaunchRegistry, which also names the creators to pay).
 contract FeeVault is Ownable2Step, ReentrancyGuard {
     uint256 public constant CREATOR_BPS = 8_000;
 
     IWHYPE public immutable whype;
     ISwapFactory public immutable factory;
-    ILaunchpadCreators public launchpad; // set once
+    LaunchRegistry public immutable registry;
 
     mapping(address creator => uint256) public creatorBalance;
     mapping(address token => uint256) public creatorEarned; // lifetime, per token (for the UI)
@@ -38,7 +36,6 @@ contract FeeVault is Ownable2Step, ReentrancyGuard {
     event ProtocolPaid(address community, uint256 communityAmount, address buyback, uint256 buybackAmount);
     event WalletsSet(address community, address buyback);
     event CommunityBpsSet(uint16 bps);
-    event LaunchpadSet(address launchpad);
 
     error NotLaunchpad();
     error NotPair();
@@ -49,9 +46,10 @@ contract FeeVault is Ownable2Step, ReentrancyGuard {
     error HypeTransferFailed();
     error UnexpectedHype();
 
-    constructor(address owner_, IWHYPE whype_, ISwapFactory factory_) Ownable(owner_) {
+    constructor(address owner_, IWHYPE whype_, ISwapFactory factory_, LaunchRegistry registry_) Ownable(owner_) {
         whype = whype_;
         factory = factory_;
+        registry = registry_;
     }
 
     /// Only WHYPE unwrapping sends plain HYPE here.
@@ -61,9 +59,9 @@ contract FeeVault is Ownable2Step, ReentrancyGuard {
 
     // ------------------------------------------------------------------ fee intake
 
-    /// @notice Curve fee from the Launchpad, in native HYPE.
+    /// @notice Curve fee from the token's own Launchpad (any version, approved or retired), in native HYPE.
     function depositCurveFee(address token) external payable {
-        if (msg.sender != address(launchpad)) revert NotLaunchpad();
+        if (msg.sender != registry.launchpadOf(token) || msg.sender == address(0)) revert NotLaunchpad();
         _credit(token, msg.value, false);
     }
 
@@ -102,12 +100,6 @@ contract FeeVault is Ownable2Step, ReentrancyGuard {
 
     // ------------------------------------------------------------------ owner
 
-    function setLaunchpad(address launchpad_) external onlyOwner {
-        if (address(launchpad) != address(0) || launchpad_ == address(0)) revert InvalidParams();
-        launchpad = ILaunchpadCreators(launchpad_);
-        emit LaunchpadSet(launchpad_);
-    }
-
     function setWallets(address community, address buyback) external onlyOwner {
         if (community == address(0) || buyback == address(0)) revert InvalidParams();
         communityWallet = community;
@@ -125,7 +117,7 @@ contract FeeVault is Ownable2Step, ReentrancyGuard {
 
     function _credit(address token, uint256 amount, bool fromPool) internal {
         if (amount == 0) return;
-        address[] memory creators = launchpad.creatorsOf(token);
+        address[] memory creators = registry.creatorsOf(token);
         if (creators.length == 0) revert UnknownToken(token);
         uint256 toCreator = amount * CREATOR_BPS / 10_000;
         uint256 protocol = amount - toCreator;

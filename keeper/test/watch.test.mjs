@@ -8,7 +8,7 @@ const ROUTER = "0x00000000000000000000000000000000000000bb";
 const TOKEN = "0x2000000000000000000000000000000000000002";
 const WHYPE = "0xf000000000000000000000000000000000000000"; // sorts after TOKEN -> token is token0
 const PAIR = "0x00000000000000000000000000000000000000cc";
-const ctx = { launchpad: PAD, router: ROUTER, whype: WHYPE, pairToken: new Map([[PAIR, TOKEN]]) };
+const ctx = { launchpads: new Set([PAD]), routers: new Set([ROUTER]), whype: WHYPE, pairToken: new Map([[PAIR, TOKEN]]) };
 const log = (address, eventName, args, logIndex, tx = "0x01") => ({ address, eventName, args, logIndex, transactionHash: tx, blockNumber: 7n });
 const close = (a, b) => assert.ok(Math.abs(a / b - 1) < 1e-12, `${a} vs ${b}`);
 

@@ -38,7 +38,8 @@ import { CORS, HttpError, internalError, json, privyAuth, userRow, type XUser } 
 import { env } from "../_shared/env.ts";
 
 const CHAIN_ID = Number(env("CHAIN_ID"));
-const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS"));
+const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS")); // the current version: passes are signed for it
+const REGISTRY = getAddress(env("REGISTRY_ADDRESS")); // FTF tickers + reserved tickers, across every version
 const signer = privateKeyToAccount(env("LAUNCH_SIGNER_KEY") as `0x${string}`);
 const chain = createPublicClient({ transport: http(env("RPC_URL")) });
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
@@ -49,8 +50,12 @@ const MAX_PENDING = 8; // invited + requested per draft
 const ACTIONS_PER_MINUTE = 30; // per X account
 
 const padAbi = parseAbi([
-  "function tokenOfFtfTicker(bytes32) view returns (address)",
   "function launchSigner() view returns (address)",
+]);
+const registryAbi = parseAbi([
+  "function tokenOfFtfTicker(bytes32) view returns (address)",
+  "function reservedTicker(bytes32) view returns (bool)",
+  "function isLaunchpad(address) view returns (bool)",
 ]);
 
 type Draft = {
@@ -112,8 +117,13 @@ async function setMember(draftId: string, xUserId: string, patch: Partial<Member
 const accepted = (ms: Member[]) => ms.filter((m) => m.status === "accepted");
 
 async function tickerTakenOnChain(ticker: string) {
-  const token = await chain.readContract({ address: LAUNCHPAD, abi: padAbi, functionName: "tokenOfFtfTicker", args: [keccak256(toBytes(ticker))] });
+  const token = await chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "tokenOfFtfTicker", args: [keccak256(toBytes(ticker))] });
   return token !== zeroAddress;
+}
+
+/** Reserved in the LaunchRegistry ($USDC, $HYPE, ...). */
+async function tickerReservedOnChain(ticker: string) {
+  return chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "reservedTicker", args: [keccak256(toBytes(ticker))] });
 }
 
 /** The draft + its members with their X cards (handle, name, picture). */
@@ -148,6 +158,7 @@ async function create(who: XUser, body: Body) {
   const { name, ticker } = validFtfIdentity(body.name, body.ticker);
   const { count } = await db.from("ftf_drafts").select("id", { count: "exact", head: true }).eq("founder", who.xUserId).eq("status", "open");
   if ((count ?? 0) >= MAX_OPEN_DRAFTS) fail(429, `You can have ${MAX_OPEN_DRAFTS} open FTFs at a time`);
+  if (await tickerReservedOnChain(ticker)) fail(422, `$${ticker} is reserved (it looks like a real asset): pick another ticker`);
   if (await tickerTakenOnChain(ticker)) fail(409, `$${ticker} is already an FTF`);
   const { data, error } = await db.from("ftf_drafts").insert({ founder: who.xUserId, name, ticker }).select("*").single();
   if (error) {
@@ -373,8 +384,11 @@ async function pass(who: XUser, body: Body) {
   if (wallets.some((w) => !w)) fail(409, "A member's Neuriio wallet isn't set up yet");
   if (new Set(wallets).size !== FTF_MEMBERS) fail(409, "Members need 4 different wallets");
   if (await tickerTakenOnChain(d.ticker)) fail(409, `$${d.ticker} is already an FTF`);
-  const onchainSigner = await chain.readContract({ address: LAUNCHPAD, abi: padAbi, functionName: "launchSigner" });
-  if (onchainSigner.toLowerCase() !== signer.address.toLowerCase()) fail(503, "Launches are paused");
+  const [onchainSigner, approved] = await Promise.all([
+    chain.readContract({ address: LAUNCHPAD, abi: padAbi, functionName: "launchSigner" }),
+    chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "isLaunchpad", args: [LAUNCHPAD] }),
+  ]);
+  if (!approved || onchainSigner.toLowerCase() !== signer.address.toLowerCase()) fail(503, "Launches are paused");
 
   // store the profile where Explore reads it (its hash is fixed on-chain by the pass)
   const { error: pErr } = await db

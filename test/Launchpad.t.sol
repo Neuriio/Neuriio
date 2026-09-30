@@ -8,6 +8,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Launchpad, ICurveFeeVault} from "../src/launch/Launchpad.sol";
 import {FeeVault} from "../src/launch/FeeVault.sol";
+import {LaunchRegistry} from "../src/launch/LaunchRegistry.sol";
 import {LaunchToken} from "../src/launch/LaunchToken.sol";
 import {WHYPE} from "../src/swap/WHYPE.sol";
 import {SwapRouter} from "../src/swap/SwapRouter.sol";
@@ -28,6 +29,7 @@ contract LaunchpadTest is Test {
     SwapRouter router;
     Launchpad pad;
     FeeVault vault;
+    LaunchRegistry registry;
 
     address owner = makeAddr("owner");
     address creator = makeAddr("creator");
@@ -40,20 +42,25 @@ contract LaunchpadTest is Test {
 
     function setUp() public {
         whype = new WHYPE();
+        registry = new LaunchRegistry(owner);
         factory = ISwapFactoryAdmin(deployCode("UniswapV2Factory.sol:UniswapV2Factory", abi.encode(owner, address(whype))));
-        vault = new FeeVault(owner, IWHYPE(address(whype)), ISwapFactory(address(factory)));
-        pad = new Launchpad(
-            owner, ISwapFactory(address(factory)), IWHYPE(address(whype)), VH, 75, signer, ICurveFeeVault(address(vault))
-        );
+        vault = new FeeVault(owner, IWHYPE(address(whype)), ISwapFactory(address(factory)), registry);
+        pad = _newLaunchpad();
         router = new SwapRouter(ISwapFactory(address(factory)), IWHYPE(address(whype)));
         vm.startPrank(owner);
-        factory.setLaunchpad(address(pad));
+        factory.setRegistry(address(registry));
         factory.setFeeVault(address(vault));
-        vault.setLaunchpad(address(pad));
+        registry.setLaunchpad(address(pad), true);
         vm.stopPrank();
         vm.deal(alice, 1_000 ether);
         vm.deal(bob, 1_000 ether);
         vm.deal(creator, 1_000 ether);
+    }
+
+    function _newLaunchpad() internal returns (Launchpad) {
+        return new Launchpad(
+            owner, ISwapFactory(address(factory)), IWHYPE(address(whype)), VH, 75, signer, ICurveFeeVault(address(vault)), registry
+        );
     }
 
     function _pass(address who, uint64 xId, string memory handle) internal view returns (Launchpad.LaunchPass memory) {
@@ -149,8 +156,8 @@ contract LaunchpadTest is Test {
         assertEq(pr.handle, "Von_Builds9");
         assertEq(uint8(pr.category), uint8(Launchpad.Category.Trader));
         assertEq(pr.profileHash, keccak256("profile"));
-        assertEq(pad.tokenOfXUser(42), token);
-        assertEq(pad.tokenOfCreator(alice), token);
+        assertEq(registry.tokenOfXUser(42), token);
+        assertEq(registry.tokenOfCreator(alice), token);
     }
 
     function test_allCategories() public {
@@ -177,7 +184,7 @@ contract LaunchpadTest is Test {
         Launchpad.LaunchPass memory p = _pass(bob, 42, "alice_v2");
         bytes memory sig = _sign(p, signerPk);
         vm.prank(bob);
-        vm.expectRevert(Launchpad.AlreadyLaunched.selector);
+        vm.expectRevert(LaunchRegistry.AlreadyLaunched.selector);
         pad.launch(p, sig, 0);
     }
 
@@ -186,7 +193,7 @@ contract LaunchpadTest is Test {
         Launchpad.LaunchPass memory p = _pass(alice, 43, "other");
         bytes memory sig = _sign(p, signerPk);
         vm.prank(alice);
-        vm.expectRevert(Launchpad.AlreadyLaunched.selector);
+        vm.expectRevert(LaunchRegistry.AlreadyLaunched.selector);
         pad.launch(p, sig, 0);
     }
 
@@ -196,7 +203,7 @@ contract LaunchpadTest is Test {
         Launchpad.LaunchPass memory p = _pass(bob, 43, "aLICE");
         bytes memory sig = _sign(p, signerPk);
         vm.prank(bob);
-        vm.expectRevert(Launchpad.AlreadyLaunched.selector);
+        vm.expectRevert(LaunchRegistry.AlreadyLaunched.selector);
         pad.launch(p, sig, 0);
     }
 
@@ -248,7 +255,7 @@ contract LaunchpadTest is Test {
         bytes memory sig2 = _sign(p, 0xC0FFEE);
         vm.prank(alice);
         pad.launch(p, sig2, 0);
-        assertEq(pad.tokenOfXUser(42) != address(0), true);
+        assertEq(registry.tokenOfXUser(42) != address(0), true);
     }
 
     // ------------------------------------------------------------------ curve trades
@@ -495,17 +502,15 @@ contract LaunchpadTest is Test {
         assertEq(pair.name(), "Neuriio LP");
         assertEq(pair.factory(), address(factory));
         assertEq(factory.feeToSetter(), owner);
-        assertEq(factory.launchpad(), address(pad));
+        assertEq(factory.registry(), address(registry));
         assertEq(factory.feeVault(), address(vault));
         assertEq(factory.whype(), address(whype));
-        // set-once, owner only
+        // owner only; the registry is set once, the fee vault is replaceable (see test_feeVault_*)
         vm.expectRevert(bytes("UniswapV2: FORBIDDEN"));
         factory.setFeeVault(alice);
         vm.startPrank(owner);
         vm.expectRevert(bytes("UniswapV2: ALREADY_SET"));
-        factory.setFeeVault(alice);
-        vm.expectRevert(bytes("UniswapV2: ALREADY_SET"));
-        factory.setLaunchpad(alice);
+        factory.setRegistry(alice);
         vm.stopPrank();
     }
 
@@ -581,8 +586,8 @@ contract LaunchpadTest is Test {
         assertEq(IERC20Metadata(token).name(), "Degen Den");
         assertEq(IERC20Metadata(token).symbol(), "DEN");
         assertTrue(pad.isFtf(token));
-        assertEq(pad.tokenOfFtfTicker(keccak256("DEN")), token);
-        address[] memory cs = pad.creatorsOf(token);
+        assertEq(registry.tokenOfFtfTicker(keccak256("DEN")), token);
+        address[] memory cs = registry.creatorsOf(token);
         assertEq(cs.length, 4);
         for (uint256 i; i < 4; i++) assertEq(cs[i], ftfWallets[i]);
         Launchpad.Ftf memory f = pad.ftf(token);
@@ -593,11 +598,11 @@ contract LaunchpadTest is Test {
         assertEq(c.creator, ftfWallets[0]);
         assertEq(c.realToken, 793_100_000e18 - IERC20(token).balanceOf(ftfWallets[0]));
         // members didn't use up their individual launches
-        assertEq(pad.tokenOfXUser(7_001), address(0));
-        assertEq(pad.tokenOfCreator(ftfWallets[0]), address(0));
+        assertEq(registry.tokenOfXUser(7_001), address(0));
+        assertEq(registry.tokenOfCreator(ftfWallets[0]), address(0));
         address solo = _launchAs(ftfWallets[1], 7_002, "membertwo", 0);
         assertFalse(pad.isFtf(solo));
-        assertEq(pad.creatorsOf(solo).length, 1);
+        assertEq(registry.creatorsOf(solo).length, 1);
     }
 
     function test_ftfFeesSplitEquallyAndGraduates() public {
@@ -685,7 +690,183 @@ contract LaunchpadTest is Test {
         _launchFtf(_ftfPass("Degen Den", "DEN"), 0);
         p = _ftfPass("Another Den", "DEN");
         p.memberXIds = [uint64(8_001), 8_002, 8_003, 8_004];
-        _expectFtfRevert(p, Launchpad.TickerTaken.selector);
+        _expectFtfRevert(p, LaunchRegistry.TickerTaken.selector);
+    }
+
+    function test_reservedTickers() public {
+        // seeded at deploy: an FTF can't be $USDC, and an X account named @usdc / @Hype can't launch itself
+        assertTrue(registry.reservedTicker(keccak256("USDC")));
+        _expectFtfRevert(_ftfPass("Fake Dollars", "USDC"), LaunchRegistry.TickerIsReserved.selector);
+        Launchpad.LaunchPass memory lp = _pass(alice, 42, "Hype");
+        bytes memory sig = _sign(lp, signerPk);
+        vm.prank(alice);
+        vm.expectRevert(LaunchRegistry.TickerIsReserved.selector);
+        pad.launch(lp, sig, 0);
+        // near-misses are fine
+        _launchAs(alice, 42, "hype_fan", 0);
+
+        // owner-only; can add and free tickers
+        string[] memory t = new string[](1);
+        t[0] = "DEN";
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        registry.setReservedTickers(t, true);
+        vm.prank(owner);
+        registry.setReservedTickers(t, true);
+        _expectFtfRevert(_ftfPass("Degen Den", "DEN"), LaunchRegistry.TickerIsReserved.selector);
+        vm.prank(owner);
+        registry.setReservedTickers(t, false);
+        _launchFtf(_ftfPass("Degen Den", "DEN"), 0);
+    }
+
+    // ------------------------------------------------------------------ upgrades: a new Launchpad version
+
+    /// The whole point of the LaunchRegistry: shipping a new Launchpad orphans nothing.
+    function test_upgrade_newVersionOrphansNothing() public {
+        Launchpad v1 = pad;
+        address curveTok = _launchAs(alice, 42, "alice", 1 ether); // still on v1's curve at upgrade time
+        address gradTok = _launchAs(creator, 43, "creator", 0);
+        _buy(bob, gradTok, 200 ether); // graduated on v1
+        address pool = factory.getPair(gradTok, address(whype));
+        assertTrue(pool != address(0));
+
+        // ship v2, retire v1 for NEW launches
+        Launchpad v2 = _newLaunchpad();
+        vm.startPrank(owner);
+        registry.setLaunchpad(address(v2), true);
+        registry.setLaunchpad(address(v1), false);
+        vm.stopPrank();
+        assertEq(registry.launchpadsLength(), 2);
+
+        // v1 can't launch anymore
+        _expectLaunchRevert(bob, 44, "bob", LaunchRegistry.NotLaunchpad.selector);
+
+        // identity is global: alice can't launch again on v2 (same X account, wallet or handle)
+        pad = v2;
+        _expectLaunchRevert(alice, 42, "alice", LaunchRegistry.AlreadyLaunched.selector);
+        _expectLaunchRevert(bob, 45, "ALICE", LaunchRegistry.AlreadyLaunched.selector);
+        address fresh = _launchAs(bob, 44, "bob", 0);
+        assertEq(registry.launchpadOf(fresh), address(v2));
+        assertEq(registry.launchpadOf(curveTok), address(v1));
+
+        // v1's curve token keeps trading, earning fees, and graduates on v1 (even though v1 is retired)
+        pad = v1;
+        uint256 feesBefore = vault.creatorBalance(alice);
+        uint256 got = _buy(bob, curveTok, 1 ether);
+        assertGt(got, 0);
+        _sell(bob, curveTok, got / 2);
+        assertGt(vault.creatorBalance(alice), feesBefore, "curve fees still credited");
+        _buy(bob, curveTok, 200 ether);
+        assertTrue(_curve(curveTok).graduated, "retired version still graduates its tokens");
+        assertTrue(factory.getPair(curveTok, address(whype)) != address(0));
+
+        // v1's graduated pool keeps trading through the shared router, fees to the creator
+        uint256 creatorBefore = vault.creatorBalance(creator);
+        vm.prank(alice);
+        router.buy{value: 1 ether}(gradTok, 0, alice, block.timestamp);
+        assertGt(vault.creatorBalance(creator), creatorBefore, "pool fees still credited");
+
+        // a version can't act for another version's tokens
+        vm.deal(address(v2), 1 ether);
+        vm.prank(address(v2));
+        vm.expectRevert(FeeVault.NotLaunchpad.selector);
+        vault.depositCurveFee{value: 1 ether}(curveTok);
+    }
+
+    function _expectLaunchRevert(address who, uint64 xId, string memory handle, bytes4 sel) internal {
+        Launchpad.LaunchPass memory p = _pass(who, xId, handle);
+        bytes memory sig = _sign(p, signerPk);
+        vm.prank(who);
+        vm.expectRevert(sel);
+        pad.launch(p, sig, 0);
+    }
+
+    function test_upgrade_versionsCantTouchEachOthersTokens() public {
+        address tok = _launchAs(alice, 42, "alice", 0); // v1
+        Launchpad v2 = _newLaunchpad();
+        vm.prank(owner);
+        registry.setLaunchpad(address(v2), true);
+        // v2 can't open v1's pool, and nobody but an approved Launchpad can register tokens
+        vm.prank(address(v2));
+        vm.expectRevert(bytes("UniswapV2: FORBIDDEN"));
+        factory.createPair(tok, address(whype));
+        vm.expectRevert(LaunchRegistry.NotLaunchpad.selector);
+        registry.registerPersonal(tok, alice, 99, "X", keccak256("x"));
+        // v2 has no curve for v1's token
+        vm.expectRevert(abi.encodeWithSelector(Launchpad.UnknownToken.selector, tok));
+        v2.previewBuy(tok, 1 ether);
+        // FTF tickers are global too
+        _launchFtf(_ftfPass("Degen Den", "DEN"), 0);
+        pad = v2;
+        Launchpad.FtfPass memory p = _ftfPass("Other Den", "DEN");
+        p.memberXIds = [uint64(8_001), 8_002, 8_003, 8_004];
+        _expectFtfRevert(p, LaunchRegistry.TickerTaken.selector);
+    }
+
+    // ------------------------------------------------------------------ fee vault: replaceable, never a single point of failure
+
+    function test_feeVault_replaceWithoutOrphaningBalances() public {
+        address tok = _launchAs(alice, 42, "alice", 0);
+        _buy(bob, tok, 1 ether);
+        uint256 oldBal = vault.creatorBalance(alice);
+        assertGt(oldBal, 0);
+
+        FeeVault v2 = new FeeVault(owner, IWHYPE(address(whype)), ISwapFactory(address(factory)), registry);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        pad.setFeeVault(ICurveFeeVault(address(v2)));
+        vm.startPrank(owner);
+        pad.setFeeVault(ICurveFeeVault(address(v2)));
+        factory.setFeeVault(address(v2));
+        vm.stopPrank();
+
+        // new fees (curve now, pool after graduation) land in the new vault; the old balance stays claimable
+        _buy(bob, tok, 1 ether);
+        assertGt(v2.creatorBalance(alice), 0, "curve fee -> new vault");
+        _buy(bob, tok, 200 ether); // graduates
+        uint256 before = v2.creatorBalance(alice);
+        vm.prank(bob);
+        router.buy{value: 1 ether}(tok, 0, bob, block.timestamp);
+        assertGt(v2.creatorBalance(alice), before, "pool fee -> new vault");
+        assertEq(vault.creatorBalance(alice), oldBal, "old vault untouched");
+        uint256 was = alice.balance;
+        vm.prank(alice);
+        vault.claim(alice);
+        assertEq(alice.balance, was + oldBal, "old balance still claimable");
+    }
+
+    function test_feeVault_brokenVaultCantFreezeTrading() public {
+        address tok = _launchAs(alice, 42, "alice", 0);
+        uint256 got = _buy(bob, tok, 200 ether); // graduated
+        BrokenVault broken = new BrokenVault();
+        vm.startPrank(owner);
+        factory.setFeeVault(address(broken));
+        pad.setFeeVault(ICurveFeeVault(address(broken)));
+        vm.stopPrank();
+        // a broken vault blocks swaps...
+        vm.startPrank(bob);
+        IERC20(tok).approve(address(router), got);
+        vm.expectRevert();
+        router.sell(tok, got / 10, 0, bob, block.timestamp);
+        vm.stopPrank();
+        // ...until the owner flips the emergency switch: fees stay in the pool (like plain V2), trading resumes
+        vm.prank(owner);
+        factory.setFeeVault(address(0));
+        vm.prank(bob);
+        uint256 out = router.sell(tok, got / 10, 0, bob, block.timestamp);
+        assertGt(out, 0, "holders can exit");
+    }
+
+    function test_registryOwnerOnly() public {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        registry.setLaunchpad(alice, true);
+        vm.prank(owner);
+        vm.expectRevert(LaunchRegistry.InvalidParams.selector);
+        registry.setLaunchpad(address(0), true);
+        // re-approving a known version doesn't list it twice
+        vm.startPrank(owner);
+        registry.setLaunchpad(address(pad), false);
+        registry.setLaunchpad(address(pad), true);
+        vm.stopPrank();
+        assertEq(registry.launchpadsLength(), 1);
     }
 
     function _expectFtfRevert(Launchpad.FtfPass memory p, bytes4 sel) internal {
@@ -766,5 +947,16 @@ contract LaunchpadTest is Test {
                 )
             )
         );
+    }
+}
+
+/// A FeeVault that rejects everything (for the "broken vault" test).
+contract BrokenVault {
+    function notifyPoolFee(address) external pure {
+        revert("broken");
+    }
+
+    function depositCurveFee(address) external payable {
+        revert("broken");
     }
 }

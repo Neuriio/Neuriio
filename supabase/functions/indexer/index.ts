@@ -1,13 +1,16 @@
 // POST /functions/v1/indexer   (run every minute by pg_cron; idempotent, so public is fine)
-// 1. Elysium: Launchpad Launched/Trade/Graduated, SwapRouter Swapped, and pair Swaps not made via our router
-//    -> tokens + trades
+// 1. Elysium: Launched/FtfLaunched/Trade/Graduated from EVERY Launchpad version in the LaunchRegistry (listed
+//    on-chain, re-read each run, one cursor per registry), Swapped from every router we deployed, and pair Swaps
+//    not made via a router -> tokens (tagged with their launchpad + registry) + trades. Writes app_config.registry,
+//    which scopes what the app lists (token_stats).
 // 2. Hyperliquid: each user's fills that carry our builder fee (= placed through Neuriio) -> trades
 // 3. award_points(): trades + launches -> points ledger (rates in points_rules)
 //
-// Secrets: LAUNCHPAD_ADDRESS, ROUTER_ADDRESS, WHYPE_ADDRESS, INDEX_FROM_BLOCK, RPC_URL, HL_TESTNET ("true"/"false")
+// Secrets: REGISTRY_ADDRESS, ROUTER_ADDRESSES (comma list; or ROUTER_ADDRESS), WHYPE_ADDRESS, INDEX_FROM_BLOCK
+// (the registry's deploy block), RPC_URL, HL_TESTNET ("true"/"false")
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { createPublicClient, getAddress, http } from "npm:viem@2";
+import { createPublicClient, getAddress, http, parseAbi } from "npm:viem@2";
 import {
   curveTradeToRow,
   type HlFill,
@@ -26,8 +29,10 @@ import { json } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
 
 
-const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS"));
-const ROUTER = getAddress(env("ROUTER_ADDRESS"));
+const REGISTRY = getAddress(env("REGISTRY_ADDRESS"));
+const ROUTERS = (Deno.env.get("ROUTER_ADDRESSES") ?? env("ROUTER_ADDRESS")).split(",").map((a) => getAddress(a.trim()));
+const IS_ROUTER = new Set(ROUTERS.map((a) => a.toLowerCase()));
+const registryAbi = parseAbi(["function launchpadsLength() view returns (uint256)", "function launchpads(uint256) view returns (address)"]);
 const WHYPE = getAddress(env("WHYPE_ADDRESS"));
 const FROM_BLOCK = BigInt(env("INDEX_FROM_BLOCK"));
 const HL_INFO = env("HL_TESTNET") === "true" ? "https://api.hyperliquid-testnet.xyz/info" : "https://api.hyperliquid.xyz/info";
@@ -70,18 +75,31 @@ async function insertTrades(rows: TradeRow[], onConflict: string) {
   if (error) throw new Error(`trades: ${error.message}`);
 }
 
+/** Every Launchpad version ever approved in the registry (retired ones still trade their own curves). */
+async function launchpads(): Promise<`0x${string}`[]> {
+  const n = await chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "launchpadsLength" });
+  return Promise.all(
+    Array.from({ length: Number(n) }, (_, i) => chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "launchpads", args: [BigInt(i)] })),
+  );
+}
+
 async function indexElysium(usd: number | null) {
-  const key = `elysium:${LAUNCHPAD.toLowerCase()}`;
+  const registry = REGISTRY.toLowerCase();
+  // the registry the app shows (token_stats reads it)
+  const { error: cfgErr } = await db.from("app_config").upsert({ key: "registry", value: registry, updated_at: new Date().toISOString() });
+  if (cfgErr) throw new Error(`app_config: ${cfgErr.message}`);
+  const key = `elysium:registry:${registry}`;
   const last = await getState(key);
   const from = last ? BigInt(last) + 1n : FROM_BLOCK;
   const head = await chain.getBlockNumber({ cacheTime: 0 });
   if (from > head) return { from: Number(from), to: Number(head), events: 0 };
   const to = head - from > MAX_BLOCKS ? from + MAX_BLOCKS : head;
 
-  const { data: pairsData } = await db.from("tokens").select("address, pair").not("pair", "is", null);
+  const pads = await launchpads();
+  const { data: pairsData } = await db.from("tokens").select("address, pair").eq("registry", registry).not("pair", "is", null);
   const [padLogs, routerLogs] = await Promise.all([
-    chain.getLogs({ address: LAUNCHPAD, events: launchpadEvents, fromBlock: from, toBlock: to }),
-    chain.getLogs({ address: ROUTER, events: routerEvents, fromBlock: from, toBlock: to }),
+    pads.length ? chain.getLogs({ address: pads, events: launchpadEvents, fromBlock: from, toBlock: to }) : Promise.resolve([]),
+    chain.getLogs({ address: ROUTERS, events: routerEvents, fromBlock: from, toBlock: to }),
   ]);
   // graduations in this range add pairs to watch
   const pairToken = new Map<string, string>((pairsData ?? []).map((p) => [p.pair!, p.address]));
@@ -90,7 +108,7 @@ async function indexElysium(usd: number | null) {
     ? await chain.getLogs({ address: [...pairToken.keys()] as `0x${string}`[], events: pairEvents, fromBlock: from, toBlock: to })
     : [];
   // swaps not made via our router (those are indexed from the router's Swapped event, which knows the trader)
-  const pairLogs = allPairLogs.filter((l) => l.eventName === "Swap" && l.args.sender!.toLowerCase() !== ROUTER.toLowerCase());
+  const pairLogs = allPairLogs.filter((l) => l.eventName === "Swap" && !IS_ROUTER.has(l.args.sender!.toLowerCase()));
   // pool price after a swap = the last Sync of that pair before the given log in the same tx
   const syncs = allPairLogs.filter((l) => l.eventName === "Sync");
   const tokenPair = new Map([...pairToken].map(([pair, token]) => [token, pair]));
@@ -120,7 +138,7 @@ async function indexElysium(usd: number | null) {
     ...padLogs.filter((l) => l.eventName === "Launched").map((l) => launchedToToken(l as any, ts(l))),
     // deno-lint-ignore no-explicit-any
     ...padLogs.filter((l) => l.eventName === "FtfLaunched").map((l) => ftfLaunchedToToken(l as any, ts(l))),
-  ];
+  ].map((t) => ({ ...t, registry }));
   if (launched.length) {
     const { error } = await db.from("tokens").upsert(launched, { onConflict: "address", ignoreDuplicates: true });
     if (error) throw new Error(`tokens: ${error.message}`);
@@ -173,7 +191,7 @@ async function indexElysium(usd: number | null) {
   ];
   await insertTrades(rows, "tx_hash,log_index");
   await setState(key, to.toString());
-  return { from: Number(from), to: Number(to), launched: launched.length, trades: rows.length };
+  return { from: Number(from), to: Number(to), launchpads: pads.length, launched: launched.length, trades: rows.length };
 }
 
 async function indexHyperliquid() {

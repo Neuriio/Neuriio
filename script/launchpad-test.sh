@@ -57,7 +57,9 @@ TOKEN=$(call $PAD "allTokens(uint256)(address)" $N0)
 echo "  token $TOKEN"
 NAME=$(cast call $TOKEN "name()(string)" --rpc-url $RPC); SYM=$(cast call $TOKEN "symbol()(string)" --rpc-url $RPC)
 check "named $NAME / $SYM" "$( [ "$NAME" = "\"@$HANDLE\"" ] && echo true )"
-check "one token per X account (tokenOfXUser set)" "$( [ "$(call $PAD "tokenOfXUser(uint64)(address)" $XID)" = "$TOKEN" ] && echo true )"
+REG=$(jq -r .launchRegistry $D)
+check "one token per X account (registry tokenOfXUser set)" "$( [ "$(call $REG "tokenOfXUser(uint64)(address)" $XID)" = "$TOKEN" ] && echo true )"
+check "registry knows its Launchpad version" "$( [ "$(call $REG "launchpadOf(address)(address)" $TOKEN | tr A-F a-f)" = "$(echo $PAD | tr A-F a-f)" ] && echo true )"
 BAL1=$(call $TOKEN "balanceOf(address)(uint256)" $TRADER)
 check "creator got $(eth $BAL1) $HANDLE" "$( [ "$BAL1" != "0" ] && echo true )"
 

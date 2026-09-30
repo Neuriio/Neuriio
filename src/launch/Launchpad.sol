@@ -10,6 +10,7 @@ import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {LaunchToken} from "./LaunchToken.sol";
+import {LaunchRegistry} from "./LaunchRegistry.sol";
 import {ISwapFactory, ISwapPair, IWHYPE} from "../swap/interfaces.sol";
 
 interface ICurveFeeVault {
@@ -30,6 +31,10 @@ interface ICurveFeeVault {
 /// graduates the token in the same tx: every HYPE raised plus the remaining 206.9M tokens go into our
 /// pool on our Uniswap V2 fork (TOKEN/WHYPE, src/swap/v2) and the LP tokens are sent to the dead address (burned), so that liquidity is
 /// locked forever. The curve's final price equals the pool's opening price.
+///
+/// Upgrades: this contract is one replaceable version. Identity (one token per X account / wallet / handle, FTF
+/// tickers, reserved tickers) and each token's Launchpad + creators live in the permanent LaunchRegistry, so a new
+/// version never orphans tokens or lets anyone launch twice; a retired version keeps serving its own curves.
 contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
@@ -108,23 +113,21 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
     ISwapFactory public immutable factory;
     IWHYPE public immutable whype;
+    LaunchRegistry public immutable registry;
 
     /// Starting virtual HYPE reserve for NEW launches. Graduation raises ~2.8335x this.
     uint256 public virtualHype;
     uint16 public feeBps;
-    /// Receives every curve fee (80% to the token's creator, 20% to the protocol).
-    ICurveFeeVault public immutable feeVault;
+    /// Receives every curve fee (80% to the token's creator, 20% to the protocol). Owner-replaceable (`setFeeVault`),
+    /// so a FeeVault fix or a new fee split never needs a new Launchpad, and a broken vault can't freeze trading.
+    ICurveFeeVault public feeVault;
 
     mapping(address token => Curve) public curves;
     address[] public allTokens;
 
     address public launchSigner;
     mapping(address token => Profile) internal _profiles;
-    mapping(uint64 xUserId => address token) public tokenOfXUser;
-    mapping(address creator => address token) public tokenOfCreator;
-    mapping(bytes32 handleKey => address token) public tokenOfHandle; // keccak256(lowercased handle)
     mapping(address token => Ftf) internal _ftfs;
-    mapping(bytes32 tickerKey => address token) public tokenOfFtfTicker; // keccak256(ticker); FTFs have their own namespace
 
     event Launched(
         address indexed token,
@@ -159,6 +162,7 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     event Graduated(address indexed token, address indexed pair, uint256 hype, uint256 tokens, uint256 liquidityBurned);
     event VirtualHypeSet(uint256 virtualHype);
     event FeeSet(uint16 feeBps);
+    event FeeVaultSet(address feeVault);
 
     error UnknownToken(address token);
     error AlreadyGraduated(address token);
@@ -170,9 +174,7 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     error HypeTransferFailed();
     error InvalidPass();
     error NotPassHolder();
-    error AlreadyLaunched();
     error InvalidMembers();
-    error TickerTaken();
 
     constructor(
         address owner_,
@@ -181,11 +183,13 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         uint256 virtualHype_,
         uint16 feeBps_,
         address launchSigner_,
-        ICurveFeeVault feeVault_
+        ICurveFeeVault feeVault_,
+        LaunchRegistry registry_
     ) Ownable(owner_) EIP712("Neuriio Launchpad", "1") {
         factory = factory_;
         whype = whype_;
         feeVault = feeVault_;
+        registry = registry_;
         _setLaunchSigner(launchSigner_);
         _setVirtualHype(virtualHype_);
         _setFee(feeBps_);
@@ -207,17 +211,12 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         if (ECDSA.recover(hashLaunchPass(pass), signature) != launchSigner) revert InvalidPass();
         if (pass.category > uint8(type(Category).max) || pass.xUserId == 0) revert InvalidPass();
         (string memory symbol, bytes32 handleKey) = _checkHandle(pass.handle);
-        if (
-            tokenOfXUser[pass.xUserId] != address(0) || tokenOfCreator[msg.sender] != address(0)
-                || tokenOfHandle[handleKey] != address(0)
-        ) revert AlreadyLaunched();
 
         uint256 vh;
         (token, vh) = _newCurve(string.concat("@", pass.handle), symbol);
         _profiles[token] = Profile(pass.xUserId, Category(pass.category), pass.profileHash, pass.handle);
-        tokenOfXUser[pass.xUserId] = token;
-        tokenOfCreator[msg.sender] = token;
-        tokenOfHandle[handleKey] = token;
+        // one per X account / wallet / handle across every Launchpad version, and no reserved tickers (reverts)
+        registry.registerPersonal(token, msg.sender, pass.xUserId, symbol, handleKey);
         emit Launched(token, msg.sender, pass.xUserId, pass.handle, Category(pass.category), pass.profileHash, vh);
 
         if (msg.value > 0) _buy(token, msg.value, minTokensOut);
@@ -238,13 +237,12 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         if (ECDSA.recover(hashFtfPass(pass), signature) != launchSigner) revert InvalidPass();
         _checkMembers(pass.memberXIds, pass.members);
         _checkFtfName(pass.name);
-        bytes32 tickerKey = _checkFtfTicker(pass.ticker);
-        if (tokenOfFtfTicker[tickerKey] != address(0)) revert TickerTaken();
+        _checkFtfTicker(pass.ticker);
 
         uint256 vh;
         (token, vh) = _newCurve(pass.name, pass.ticker);
         _ftfs[token] = Ftf(pass.name, pass.profileHash, pass.memberXIds, pass.members);
-        tokenOfFtfTicker[tickerKey] = token;
+        registry.registerFtf(token, pass.ticker, pass.members); // ticker unique among FTFs, not reserved (reverts)
         emit FtfLaunched(token, msg.sender, pass.name, pass.ticker, pass.memberXIds, pass.members, pass.profileHash, vh);
 
         if (msg.value > 0) _buy(token, msg.value, minTokensOut);
@@ -329,19 +327,6 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         return curves[token].creator;
     }
 
-    /// @notice Who shares `token`'s creator fees (80%, via the FeeVault): its creator, or an FTF's 4 members.
-    /// Empty if unknown.
-    function creatorsOf(address token) external view returns (address[] memory out) {
-        Ftf storage f = _ftfs[token];
-        if (f.members[0] != address(0)) {
-            out = new address[](FTF_MEMBERS);
-            for (uint256 i; i < FTF_MEMBERS; ++i) out[i] = f.members[i];
-        } else if (curves[token].creator != address(0)) {
-            out = new address[](1);
-            out[0] = curves[token].creator;
-        }
-    }
-
     function isFtf(address token) external view returns (bool) {
         return _ftfs[token].members[0] != address(0);
     }
@@ -397,6 +382,14 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
 
     function setVirtualHype(uint256 virtualHype_) external onlyOwner {
         _setVirtualHype(virtualHype_);
+    }
+
+    /// @notice Point curve fees at a new FeeVault (it must accept this Launchpad's tokens via the LaunchRegistry).
+    /// Creators' balances already in the old vault stay claimable there.
+    function setFeeVault(ICurveFeeVault feeVault_) external onlyOwner {
+        if (address(feeVault_) == address(0)) revert InvalidParams();
+        feeVault = feeVault_;
+        emit FeeVaultSet(address(feeVault_));
     }
 
     function setFee(uint16 feeBps_) external onlyOwner {

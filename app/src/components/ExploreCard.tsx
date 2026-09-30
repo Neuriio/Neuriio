@@ -1,5 +1,5 @@
 // /explore — launched tokens. Three columns, the chart dead-center (side cards are equal width):
-//   left card:  Top 25 by total volume (order re-ranked every 30 min by the database; numbers live)
+//   left card:  Top 25 by total volume (order re-ranked every minute by the database; numbers live)
 //   above the chart: search @handle (FTF names later)
 //   center:     the picked token (header, price + 24h change, market-cap candle chart 5m-4H, stats, curve progress)
 //   right card: order card (buy/sell)
@@ -61,7 +61,7 @@ export function ExploreCard() {
         (e) => alive && setError(String(e.message ?? e)),
       );
     load();
-    const id = setInterval(load, 30_000);
+    const id = setInterval(load, 20_000); // the database re-ranks every minute
     return () => {
       alive = false;
       clearInterval(id);
@@ -120,7 +120,7 @@ export function ExploreCard() {
           {!top && !error && <li className="ex-empty">Loading…</li>}
           {error && <li className="ex-empty">Couldn't load tokens.</li>}
         </ol>
-        {snapshotAt && <p className="ex-list-foot">Ranked {ago(snapshotAt)} · every 30 min</p>}
+        {snapshotAt && <p className="ex-list-foot">Ranked {ago(snapshotAt)} · every minute</p>}
       </section>
 
       <div className="ex-center">
@@ -198,7 +198,7 @@ export function ExploreCard() {
 
 function TokenDetail({ t, hypeUsd, onGraduated }: { t: TokenStat; hypeUsd: number; onGraduated: (pair: string) => void }) {
   const [grad, setGrad] = useState<GradStage>(null); // everyone watching sees the graduation (the buyer's own is in OrderCard)
-  const [interval, setInterval_] = useState<IntervalSeconds>(900);
+  const [interval, setInterval_] = useState<IntervalSeconds>(300); // 5m: a token's first candle, then every timeframe from there
   const [data, setData] = useState<Candle[] | null>(null);
   const [controls, setControls] = useState<ChartControls | null>(null);
   const [log, setLog] = useState(false);

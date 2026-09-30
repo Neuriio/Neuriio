@@ -19,11 +19,12 @@ const ratio = (num, den) => (den === 0n ? null : Number(formatUnits((num * 10n *
 
 /**
  * @param logs     decoded viem logs (eventName, args, address, transactionHash, logIndex, blockNumber), any order
- * @param ctx      { launchpad, router, whype, pairToken: Map<pair, token> } (lowercase addresses)
+ * @param ctx      { launchpads: Set, routers: Set, whype, pairToken: Map<pair, token> } (lowercase addresses; every
+ *                 Launchpad version in the LaunchRegistry and every router we ever deployed)
  * @param ts       block timestamp in ms
  * @returns { trades: LiveTrade[], graduated: {token, pair, trader, tx, ts}[] }  (trader = who made the graduating buy)
  */
-export function liveTrades(logs, { launchpad, router, whype, pairToken }, ts) {
+export function liveTrades(logs, { launchpads, routers, whype, pairToken }, ts) {
   const sorted = [...logs].sort((a, b) =>
     a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : Number(a.blockNumber - b.blockNumber),
   );
@@ -33,7 +34,7 @@ export function liveTrades(logs, { launchpad, router, whype, pairToken }, ts) {
 
   for (const l of sorted) {
     const at = lc(l.address);
-    if (at === launchpad && l.eventName === "Trade") {
+    if (launchpads.has(at) && l.eventName === "Trade") {
       const a = l.args;
       trades.push({
         ...base(l),
@@ -45,8 +46,8 @@ export function liveTrades(logs, { launchpad, router, whype, pairToken }, ts) {
         tokens: Number(formatEther(a.tokenAmount)),
         priceHype: ratio(a.virtualHype, a.virtualToken),
       });
-    } else if (at === launchpad && l.eventName === "Graduated") {
-      const buy = sorted.find((s) => s.eventName === "Trade" && lc(s.address) === launchpad && s.transactionHash === l.transactionHash);
+    } else if (launchpads.has(at) && l.eventName === "Graduated") {
+      const buy = sorted.find((s) => s.eventName === "Trade" && lc(s.address) === at && s.transactionHash === l.transactionHash);
       graduated.push({ token: lc(l.args.token), pair: lc(l.args.pair), trader: buy ? lc(buy.args.trader) : null, tx: l.transactionHash, ts });
     } else if (l.eventName === "Swap" && pairToken.has(at)) {
       const token = pairToken.get(at);
@@ -61,8 +62,8 @@ export function liveTrades(logs, { launchpad, router, whype, pairToken }, ts) {
         (s) => s.eventName === "Sync" && lc(s.address) === at && s.transactionHash === l.transactionHash && s.logIndex < l.logIndex,
       );
       // who traded: our router's Swapped for this token later in the same tx
-      const viaRouter = lc(a.sender) === router
-        ? sorted.find((s) => s.eventName === "Swapped" && lc(s.address) === router && s.transactionHash === l.transactionHash && lc(s.args.token) === token)
+      const viaRouter = routers.has(lc(a.sender))
+        ? sorted.find((s) => s.eventName === "Swapped" && lc(s.address) === lc(a.sender) && s.transactionHash === l.transactionHash && lc(s.args.token) === token)
         : undefined;
       trades.push({
         ...base(l),

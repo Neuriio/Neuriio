@@ -35,7 +35,7 @@ interface IFeeVault {
 /// Owner side of our V2 factory (src/swap/v2/UniswapV2Factory.sol); `feeToSetter` is the owner.
 interface ISwapFactoryAdmin is ISwapFactory {
     function feeToSetter() external view returns (address);
-    function launchpad() external view returns (address);
-    function setLaunchpad(address launchpad) external;
+    function registry() external view returns (address);
+    function setRegistry(address registry) external;
     function setFeeVault(address feeVault) external;
 }

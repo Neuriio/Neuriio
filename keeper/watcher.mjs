@@ -1,5 +1,6 @@
 // Live trade watcher: follows Elysium block by block and broadcasts every launched-token trade (bonding curve and
-// graduated pools) on Supabase Realtime the moment its block appears, so charts update without waiting for the
+// graduated pools) from EVERY Launchpad version in the LaunchRegistry (re-read each minute, so a new version is
+// picked up without a restart) and every router in the deployments file on Supabase Realtime the moment its block appears, so charts update without waiting for the
 // once-a-minute indexer. Stateless: storing trades stays the indexer's job (supabase/functions/indexer).
 //
 //   Primary: websocket log subscription (WS_URL; Elysium's official RPC has no websocket, the hypedexer node does).
@@ -29,8 +30,8 @@ const POLL_MS = Number(env("POLL_MS", 500));
 
 const lc = (a) => a.toLowerCase();
 const ctx = {
-  launchpad: lc(dep.launchpad),
-  router: lc(dep.swapRouter),
+  launchpads: new Set(), // every Launchpad version (LaunchRegistry.launchpads), loaded below
+  routers: new Set((dep.routers ?? [dep.swapRouter]).map(lc)),
   whype: lc(dep.whype),
   pairToken: new Map(), // pair -> token, filled from the factory, then from Graduated events
 };
@@ -54,7 +55,23 @@ async function loadPairs() {
     ctx.pairToken.set(pair, lc(lc(t0) === ctx.whype ? t1 : t0));
   }
 }
-const addresses = () => [dep.launchpad, dep.swapRouter, ...ctx.pairToken.keys()];
+const registryAbi = parseAbi([
+  "function launchpadsLength() view returns (uint256)",
+  "function launchpads(uint256) view returns (address)",
+  "function allTokensLength() view returns (uint256)",
+  "function allTokens(uint256) view returns (address)",
+]);
+/** Every Launchpad version ever approved; true if the list changed. */
+async function loadLaunchpads() {
+  const n = Number(await http.readContract({ address: dep.launchRegistry, abi: registryAbi, functionName: "launchpadsLength" }));
+  let changed = false;
+  for (let i = 0; i < n; i++) {
+    const p = lc(await http.readContract({ address: dep.launchRegistry, abi: registryAbi, functionName: "launchpads", args: [BigInt(i)] }));
+    if (!ctx.launchpads.has(p)) (ctx.launchpads.add(p), (changed = true));
+  }
+  return changed;
+}
+const addresses = () => [...ctx.launchpads, ...ctx.routers, ...ctx.pairToken.keys()];
 
 // ------------------------------------------------------------------ broadcast
 
@@ -204,13 +221,20 @@ async function poll() {
 
 // ------------------------------------------------------------------ start
 
+await loadLaunchpads();
 await loadPairs();
 // join the newest tokens' channels now, so their next trade already goes out over the websocket
-const padAbi = parseAbi(["function allTokensLength() view returns (uint256)", "function allTokens(uint256) view returns (address)"]);
-const nTokens = Number(await http.readContract({ address: dep.launchpad, abi: padAbi, functionName: "allTokensLength" }));
+const reg = dep.launchRegistry;
+const nTokens = Number(await http.readContract({ address: reg, abi: registryAbi, functionName: "allTokensLength" }));
 for (let i = nTokens - 1; i >= Math.max(0, nTokens - (MAX_CHANNELS - 1)); i--) {
-  channelFor(`trades:${lc(await http.readContract({ address: dep.launchpad, abi: padAbi, functionName: "allTokens", args: [BigInt(i)] }))}`);
+  channelFor(`trades:${lc(await http.readContract({ address: reg, abi: registryAbi, functionName: "allTokens", args: [BigInt(i)] }))}`);
 }
-log("start", { launchpad: ctx.launchpad, router: ctx.router, pairs: ctx.pairToken.size, tokens: nTokens, ws: WS_URL });
+log("start", { registry: reg, launchpads: [...ctx.launchpads], routers: [...ctx.routers], pairs: ctx.pairToken.size, tokens: nTokens, ws: WS_URL });
 subscribe();
 poll();
+// a new Launchpad version approved in the registry: start watching it too (no restart needed)
+setInterval(() => {
+  loadLaunchpads()
+    .then((changed) => changed && (log("launchpads", { launchpads: [...ctx.launchpads] }), resubscribe()))
+    .catch((e) => log("launchpads_error", { error: e.shortMessage ?? e.message }));
+}, 60_000).unref();

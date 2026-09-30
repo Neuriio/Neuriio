@@ -10,7 +10,7 @@
 // (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are provided by Supabase.)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { createPublicClient, getAddress, http, parseAbi, zeroAddress } from "npm:viem@2";
+import { createPublicClient, getAddress, http, keccak256, parseAbi, toBytes, zeroAddress } from "npm:viem@2";
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import {
   canonicalProfile,
@@ -29,7 +29,8 @@ import { env } from "../_shared/env.ts";
 const PRIVY_APP_ID = env("PRIVY_APP_ID");
 const PRIVY_APP_SECRET = env("PRIVY_APP_SECRET");
 const CHAIN_ID = Number(env("CHAIN_ID"));
-const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS"));
+const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS")); // the current version: passes are signed for it
+const REGISTRY = getAddress(env("REGISTRY_ADDRESS")); // identity across every version
 const signer = privateKeyToAccount(env("LAUNCH_SIGNER_KEY") as `0x${string}`);
 const chain = createPublicClient({ transport: http(env("RPC_URL")) });
 const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
@@ -47,10 +48,13 @@ function failed(what: string, detail: string) {
   return json(500, { error: "Something went wrong, try again" });
 }
 
-const launchpadAbi = parseAbi([
+const launchpadAbi = parseAbi(["function launchSigner() view returns (address)"]);
+const registryAbi = parseAbi([
   "function tokenOfXUser(uint64) view returns (address)",
   "function tokenOfCreator(address) view returns (address)",
-  "function launchSigner() view returns (address)",
+  "function tokenOfHandle(bytes32) view returns (address)",
+  "function reservedTicker(bytes32) view returns (bool)",
+  "function isLaunchpad(address) view returns (bool)",
 ]);
 
 Deno.serve(async (req) => {
@@ -93,16 +97,23 @@ Deno.serve(async (req) => {
     return json(422, { error: (e as Error).message });
   }
 
-  // 4. fail early if they already launched (the contract enforces this too)
-  const [byX, byWallet, onchainSigner] = await Promise.all([
-    chain.readContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "tokenOfXUser", args: [BigInt(xUserId)] }),
-    chain.readContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "tokenOfCreator", args: [creator] }),
+  // 4. fail early (the LaunchRegistry enforces all of this on-chain, across every Launchpad version)
+  const reg = (functionName: "tokenOfXUser" | "tokenOfCreator" | "tokenOfHandle", arg: bigint | `0x${string}`) =>
+    // deno-lint-ignore no-explicit-any
+    chain.readContract({ address: REGISTRY, abi: registryAbi, functionName, args: [arg] as any });
+  const [byX, byWallet, byHandle, reserved, approved, onchainSigner] = await Promise.all([
+    reg("tokenOfXUser", BigInt(xUserId)),
+    reg("tokenOfCreator", creator),
+    reg("tokenOfHandle", keccak256(toBytes(handle.toLowerCase()))),
+    chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "reservedTicker", args: [keccak256(toBytes(handle.toUpperCase()))] }),
+    chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "isLaunchpad", args: [LAUNCHPAD] }),
     chain.readContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launchSigner" }),
   ]);
-  if (byX !== zeroAddress || byWallet !== zeroAddress) {
-    return json(409, { error: "You already launched your token", token: byX !== zeroAddress ? byX : byWallet });
-  }
-  if (onchainSigner.toLowerCase() !== signer.address.toLowerCase()) {
+  const mine = [byX, byWallet].find((a) => a !== zeroAddress);
+  if (mine) return json(409, { error: "You already launched your token", token: mine });
+  if (byHandle !== zeroAddress) return json(409, { error: `@${handle} was already launched by another account`, token: byHandle });
+  if (reserved) return json(422, { error: `$${handle.toUpperCase()} is reserved (it looks like a real asset), so @${handle} can't launch` });
+  if (!approved || onchainSigner.toLowerCase() !== signer.address.toLowerCase()) {
     return json(503, { error: "Launches are paused" });
   }
 

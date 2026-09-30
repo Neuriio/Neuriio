@@ -4,7 +4,7 @@
 // multiply by the live HYPE price for USD. `?demo` (dev only) serves generated sample data instead.
 import { erc20Abi, keccak256, toBytes, zeroAddress, type Address } from "viem";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
-import { CATEGORIES, type CategoryId, LAUNCHPAD, launchpadAbi as padViews, pub, SECTORS, type SectorId } from "./launch";
+import { CATEGORIES, type CategoryId, LAUNCHPAD, launchpadAbi as padViews, pub, REGISTRY, registryAbi, SECTORS, type SectorId } from "./launch";
 
 export type TokenStat = {
   address: string;
@@ -12,6 +12,7 @@ export type TokenStat = {
   symbol: string;
   category: CategoryId;
   sector: SectorId | null; // from the creator profile (2026-09-30); null for tokens launched before sectors
+  launchpad: string | null; // the Launchpad version it was launched on (its curve trades there); null = legacy row
   creator: string;
   x_user_id: string;
   x_name: string | null;
@@ -88,7 +89,7 @@ export async function topTokens(by: Ranking = "volume_usd_24h", limit = 25): Pro
 }
 
 /**
- * Explore's Top 25 by TOTAL volume. The order comes from a snapshot the database re-ranks every 30 minutes
+ * Explore's Top 25 by TOTAL volume. The order comes from a snapshot the database re-ranks every minute
  * (pg_cron, migration 20260928030000_top_tokens.sql), so it holds still between scans; the numbers stay live.
  */
 export async function topByTotalVolume(): Promise<{ tokens: TokenStat[]; snapshotAt: string | null }> {
@@ -136,12 +137,15 @@ const CURVE_TOKENS = 793_100_000;
 async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat | null> {
   const address = byAddress
     ? (v as Address)
-    : await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "tokenOfHandle", args: [keccak256(toBytes(v.toLowerCase()))] });
+    : await pub.readContract({ address: REGISTRY, abi: registryAbi, functionName: "tokenOfHandle", args: [keccak256(toBytes(v.toLowerCase()))] });
   if (!address || address === zeroAddress) return null;
+  // read it from the Launchpad version that launched it
+  const pad = await pub.readContract({ address: REGISTRY, abi: registryAbi, functionName: "launchpadOf", args: [address] });
+  if (pad === zeroAddress) return null;
   const [curve, prof, isFtf] = await Promise.all([
-    pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "curves", args: [address] }),
-    pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "profile", args: [address] }),
-    pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "isFtf", args: [address] }).catch(() => false),
+    pub.readContract({ address: pad, abi: padViews, functionName: "curves", args: [address] }),
+    pub.readContract({ address: pad, abi: padViews, functionName: "profile", args: [address] }),
+    pub.readContract({ address: pad, abi: padViews, functionName: "isFtf", args: [address] }).catch(() => false),
   ]);
   const [creator, graduated, vHype, vToken, , realToken] = curve;
   if (creator === zeroAddress) return null;
@@ -149,6 +153,7 @@ async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat 
   const common = {
     address: address.toLowerCase(),
     sector: null, // the indexer adds it within a minute (from the stored profile)
+    launchpad: pad.toLowerCase(),
     creator: creator.toLowerCase(),
     launched_at: new Date().toISOString(),
     graduated,
@@ -168,7 +173,7 @@ async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat 
   };
   if (isFtf) {
     const [f, symbol] = await Promise.all([
-      pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "ftf", args: [address] }),
+      pub.readContract({ address: pad, abi: padViews, functionName: "ftf", args: [address] }),
       pub.readContract({ address, abi: erc20Abi, functionName: "symbol" }),
     ]);
     return {
@@ -397,6 +402,7 @@ function demoTokens(): TokenStat[] {
       symbol: handle.toUpperCase(),
       category: DEMO_CATS[i % DEMO_CATS.length],
       sector: SECTORS[i % SECTORS.length].id,
+      launchpad: LAUNCHPAD.toLowerCase(),
       creator: address,
       x_user_id: String(1_000 + i),
       x_name: handle.replace(/_/g, " "),

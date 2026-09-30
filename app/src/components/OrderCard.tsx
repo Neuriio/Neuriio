@@ -26,7 +26,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("");
   const [bal, setBal] = useState<{ hype: bigint; tokens: bigint } | null>(null);
-  const [q, setQ] = useState<{ out: bigint; refund: bigint } | null>(null);
+  const [q, setQ] = useState<{ out: bigint; refund: bigint; spot: number | null } | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [nonce, setNonce] = useState(0); // bump to refresh balances after a trade
@@ -62,7 +62,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
     setQuoting(true);
     const id = setTimeout(async () => {
       try {
-        const r = DEMO ? demoQuote(t, side, amountIn) : await quote(t.address as Address, t.graduated, side, amountIn);
+        const r = DEMO ? demoQuote(t, side, amountIn) : await quote(t.address as Address, t.graduated, side, amountIn, t.launchpad);
         if (alive) setQ(r);
       } catch {
         if (alive) setQ(null);
@@ -85,8 +85,11 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
   const tooMuch = have !== null && amountIn > have;
   const n = Number(amount) || 0;
   const usdValue = side === "buy" ? n * hypeUsd : n * t.price_hype * hypeUsd;
-  // price impact vs the current spot price
-  const spotOut = side === "buy" ? (n * (1 - feeBps / 10_000)) / t.price_hype : n * t.price_hype * (1 - feeBps / 10_000);
+  // price impact: how far this trade's average price is from the on-chain spot price read with the quote (fee
+  // excluded). Real, not slippage: "You receive" already includes it. Big on testnet (tiny 0.1 HYPE curve / ~0.3 HYPE
+  // pools); a 0.1 HYPE buy moves a mainnet-sized curve (60 HYPE) about 0.2%.
+  const spot = q?.spot ?? t.price_hype;
+  const spotOut = side === "buy" ? (n * (1 - feeBps / 10_000)) / spot : n * spot * (1 - feeBps / 10_000);
   const outNum = q ? Number(formatEther(q.out)) : 0;
   const impact = q && spotOut > 0 ? Math.max(0, (1 - outNum / spotOut) * 100) : null;
   const busy = status.kind === "busy";
@@ -96,7 +99,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
     setStatus({ kind: "busy", label: "Confirming…" });
     // does this buy take the curve's last tokens? (demo: any 5+ HYPE buy on a curve token)
     const graduates =
-      side === "buy" && !t.graduated && (DEMO ? amountIn >= parseEther("5") : await buyGraduates(t.address as Address, q).catch(() => false));
+      side === "buy" && !t.graduated && (DEMO ? amountIn >= parseEther("5") : await buyGraduates(t.address as Address, q, t.launchpad).catch(() => false));
     if (graduates) ownGraduations.add(t.address.toLowerCase());
     try {
       if (DEMO) {
@@ -107,7 +110,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
         await trade(
           provider,
           account,
-          { token: t.address as Address, graduated: t.graduated, side, amountIn, minOut: minOut(q.out) },
+          { token: t.address as Address, launchpad: t.launchpad, graduated: t.graduated, side, amountIn, minOut: minOut(q.out) },
           (s) => {
             setStatus({ kind: "busy", label: s === "approving" ? "Approving…" : "Confirming…" });
             if (graduates && s !== "approving") setGrad("graduating"); // once the wallet has sent it
@@ -211,8 +214,13 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
           <dd>{q ? `${fmt(minOut(q.out))} ${unitOut}` : "—"}</dd>
         </div>
         <div>
-          <dt>Price impact</dt>
-          <dd className={impact !== null && impact > 5 ? "price-down" : undefined}>{impact !== null ? `${impact.toFixed(2)}%` : "—"}</dd>
+          <dt title="How much this trade moves the price. You still receive the amount shown above.">Price impact</dt>
+          <dd
+            className={impact === null ? undefined : impact > 5 ? "price-down" : impact >= 1 ? "impact-mid" : undefined}
+            title="How much this trade moves the price. You still receive the amount shown above."
+          >
+            {impact !== null ? `${impact < 0.01 && impact > 0 ? "<0.01" : impact.toFixed(2)}%` : "—"}
+          </dd>
         </div>
         <div>
           <dt>Fee</dt>
@@ -249,5 +257,5 @@ function demoQuote(t: TokenStat, side: Side, amountIn: bigint) {
   const fee = 1 - (t.graduated ? 25 : 75) / 10_000;
   const impact = 1 / (1 + n / (side === "buy" ? 150 : 150 / t.price_hype));
   const out = side === "buy" ? ((n * fee) / t.price_hype) * impact : n * t.price_hype * fee * impact;
-  return { out: parseEther(out.toFixed(12) as `${number}`), refund: 0n };
+  return { out: parseEther(out.toFixed(12) as `${number}`), refund: 0n, spot: t.price_hype };
 }

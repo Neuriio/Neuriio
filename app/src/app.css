@@ -111,6 +111,10 @@ body {
 .price-up {
   color: #6ee7a0;
 }
+/* order card: price impact 1-5% (under 1% plain, over 5% .price-down) */
+.impact-mid {
+  color: #ffd27a;
+}
 .price-down {
   color: #ff8a8a;
 }
@@ -2551,6 +2555,17 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
+}
+/* preset amounts: brighter stroke + text than the chart's range buttons, so they don't read as disabled */
+.ex-order-quick .ex-range {
+  color: var(--text-2);
+  border-color: rgba(216, 255, 254, 0.38);
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.ex-order-quick .ex-range:hover:not(:disabled) {
+  color: #ffffff;
+  border-color: rgba(216, 255, 254, 0.75);
+  background: rgba(216, 255, 254, 0.06);
 }
 .ex-order-quick .ex-range:disabled {
   opacity: 0.45;
