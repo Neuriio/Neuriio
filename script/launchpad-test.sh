@@ -109,7 +109,7 @@ check "router sold all remaining $HANDLE for $(eth $QS) HYPE" "$( [ "$(call $TOK
 VAULT=$(jq -r .feeVault $D)
 EARNED=$(call $VAULT "creatorBalance(address)(uint256)" $TRADER)
 echo "== Fees in the vault: $(eth $(cast balance $VAULT --rpc-url $RPC)) HYPE (community $(eth $(call $VAULT "communityBalance()(uint256)")), buyback $(eth $(call $VAULT "buybackBalance()(uint256)")))"
-check "creator (the trader) earned $(eth $EARNED) HYPE = 80% of curve + pool fees" "$( [ "$EARNED" != "0" ] && echo true )"
+check "creator (the trader) earned $(eth $EARNED) HYPE (20% of curve fees + 80% of pool fees)" "$( [ "$EARNED" != "0" ] && echo true )"
 CB=$(cast balance $TRADER --rpc-url $RPC)
 T $VAULT "claim(address)" $TRADER >/dev/null
 CA=$(cast balance $TRADER --rpc-url $RPC)

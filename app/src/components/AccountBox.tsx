@@ -255,7 +255,7 @@ function CreatorFees({ fees }: { fees: Fees }) {
           ? "Claimed to your Neuriio wallet"
           : typeof status === "object"
             ? status.error
-            : "80% of your token's trading fees, paid in HYPE on Elysium"}
+            : "Your share of your token's trading fees (20% before it graduates, 80% after), paid in HYPE on Elysium"}
       </p>
     </section>
   );

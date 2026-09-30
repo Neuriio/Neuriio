@@ -11,7 +11,7 @@ import './interfaces/INeuriio.sol'; // Neuriio
 
 // Neuriio fork of Uniswap V2 (v2-core v1.0.1). Changes are marked "Neuriio": the swap fee is 0.25% (was 0.30%),
 // and right after each swap the pair moves that fee out of the pool as WHYPE to the factory's FeeVault
-// (80% to the token's creator, 20% to the protocol). Traders get exactly V2's output for a 0.25% fee.
+// (after graduation: 80% to the token's creator, 20% to the protocol). Traders get exactly V2's output for a 0.25% fee.
 contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     using SafeMath  for uint;
     using UQ112x112 for uint224;

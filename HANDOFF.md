@@ -290,6 +290,10 @@ SPONSOR_ACCOUNT=<keystore> TOPUP_FROM=... ./script/run-bots.sh burner   # also r
 ./script/launchpad-test.sh burner   # live: launch -> buy -> sell -> graduate (LP burned) -> router swaps; deploys if missing
 forge test                          # 92 passing (launchpad 32, bridge 23, account 23, oracle 14)
 ./script/run-watcher.sh             # live trades -> Supabase Realtime (charts); ONE instance (node allows 1 websocket/IP)
+./script/run-pay-protocol.sh burner # hourly: pays the protocol fee share to the protocol wallets (>= 0.01 HYPE waiting)
+./script/deploy-core.sh burner      # ONE-TIME per network: permanent core (registry, factory, vault, router) + first Launchpad
+./script/deploy-launchpad.sh burner # upgrades: a new Launchpad version (retires the previous one for new launches)
+./script/replace-feevault.sh burner # a new FeeVault (fix / new split); old creator balances stay claimable
 ./script/v2-diff.sh                 # every change our V2 fork makes vs upstream v2-core v1.0.1 (for auditors)
 #                                     fork suite (+ forge test --match-path 'test/fork/*' --fork-url elysium_testnet, 3)
 cd keeper && npm test               # 61 passing
@@ -586,6 +590,22 @@ on-chain; `token_stats.sector` reads it back (null for older tokens); `ftf_draft
 `20260929220350_sectors.sql` applied; `launch-pass` + `ftf` redeployed (both now require `sector`). Explore header shows
 chips in order sector (cyan) -> category / FTF badge -> Profile; no sector filter yet.
 
+### Fee split changed + protocol payout bot (user, 2026-09-30) — BUILT, testnet needs a fresh core to use it
+- **Curve (before graduation): 20% creator / 80% protocol. Pool (after graduation): 80% creator / 20% protocol
+  (unchanged).** FeeVault constants `CURVE_CREATOR_BPS = 2_000`, `POOL_CREATOR_BPS = 8_000` (constants on purpose:
+  no owner knob over creators' income; to change again, deploy a new vault with `./script/replace-feevault.sh`).
+  Of the trading volume that's: curve 0.15% creator / 0.60% protocol; pool 0.20% creator / 0.05% protocol.
+  Protocol share -> community 60% / buyback 40%, both = `0x10E942585ceBf3dcf8377ff8eC38F2458662EEC3` (user's wallet).
+  App copy updated (Account panel, Explore + Feed "creator fees earned" tooltips); tests + launchpad-test.sh updated.
+- **Payout bot** `keeper/pay-protocol.mjs` via `./script/run-pay-protocol.sh [account]`: hourly, calls
+  `payProtocol()` on each vault in `feeVaults` once >= MIN_HYPE (0.01) waits and wallets are set; the key only pays
+  gas (use a small separate keystore). `ONCE=1` = one check. Verified: testnet read (nothing due), anvil payout
+  (0.0022 HYPE paid to the wallet, vault emptied). Run it in its own terminal tab next to the watcher (hosting later).
+- **Testnet:** the live vault `0xea99…2f3a` still splits 80/20 on curve fees (old code, and this core's factory +
+  Launchpad can't switch vaults). The new split needs `./script/deploy-core.sh burner` (+ `COMMUNITY_WALLET` /
+  `BUYBACK_WALLET` = the wallet above) -> `./script/supabase-deploy.sh` -> restart watcher -> relaunch $VON_HL.
+  Mainnet gets it from the start.
+
 ### Security sweep #4 (2026-09-30): the upgrade-safe core + everything since sweep #3
 Reviewed: LaunchRegistry, Launchpad/FeeVault/factory changes, deploy scripts, indexer, watcher, app, migrations.
 **Fund safety (checked):** no owner can withdraw curve HYPE, pool liquidity (LP burned) or creators' fee balances
@@ -679,7 +699,8 @@ $VON_HL was relaunched on the current Launchpad after the old two tokens were cl
 ### How to run (each in its own terminal tab)
 ```bash
 npm --prefix app run dev          # then open http://localhost:5173 (NOT 127.0.0.1: Privy only allows localhost)
-./script/run-watcher.sh           # live trades for charts; ONE instance only; restart after any redeploy
+./script/run-watcher.sh           # live trades for charts; ONE instance only; follows every Launchpad version itself
+./script/run-pay-protocol.sh      # hourly protocol-fee payout (asks the keystore password)
 ```
 Redeploy flow (only when contracts change): `./script/deploy-launchpad.sh burner` -> `./script/supabase-deploy.sh`
 (db push + secrets + all 4 functions) -> restart the watcher -> optional `./script/launchpad-test.sh burner`.
@@ -689,7 +710,9 @@ Redeploy flow (only when contracts change): `./script/deploy-launchpad.sh burner
 1. **FTF live test:** the user is setting up 4 real X accounts themselves (each must log into Neuriio once).
 2. Old tokens (@von_hl, @test_2727525035) stay in Supabase/Explore (user: "those are fine"). Don't offer to clear again.
 3. "Ask to be added" browse UI: **not wanted** (backend `request` action stays, unused).
-4. **REMIND THE USER:** FeeVault community + buyback wallet addresses (they will send) -> `FeeVault.setWallets`.
+4. DONE 2026-09-30: FeeVault protocol share (community + buyback) -> `0x10E942585ceBf3dcf8377ff8eC38F2458662EEC3`
+   (both), set on vault `0xea99…2f3a`; `payProtocol()` (anyone) pays it out. Re-set on any new FeeVault / core
+   (`replace-feevault.sh` carries it over; `deploy-core.sh` takes COMMUNITY_WALLET / BUYBACK_WALLET env).
 5. **REMIND THE USER:** move contract ownership from the hot `burner` key to a **multisig** before mainnet.
 6. **FTF members get 50 launch points each** (decided 2026-09-30; one award per member per FTF, on top of a personal
    launch). **LIVE:** migration `20260929210743_ftf_launch_points.sql` (redefines `award_points()`), applied 2026-09-30.

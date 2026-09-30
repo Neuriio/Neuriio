@@ -398,20 +398,21 @@ contract LaunchpadTest is Test {
         assertApproxEqRel(back, 0.995 ether, 1e14); // 0.25% fee each way
     }
 
-    // ------------------------------------------------------------------ fees: 80% creator / 20% protocol
+    // ------------------------------------------------------------------ fees: curve 20% creator / 80% protocol,
+    //                                                                      pool 80% creator / 20% protocol
 
-    function test_curveFeesSplit80_20() public {
+    function test_curveFeesSplit20_80() public {
         address token = _launch(); // creator = `creator`
         _buy(alice, token, 1.0075 ether); // fee 0.0075
-        assertEq(vault.creatorBalance(creator), 0.006 ether);
-        assertEq(vault.creatorEarned(token), 0.006 ether);
-        assertEq(vault.communityBalance(), 0.0009 ether); // 60% of 0.0015
-        assertEq(vault.buybackBalance(), 0.0006 ether); // 40% of 0.0015
+        assertEq(vault.creatorBalance(creator), 0.0015 ether); // 20% before graduation
+        assertEq(vault.creatorEarned(token), 0.0015 ether);
+        assertEq(vault.communityBalance(), 0.0036 ether); // 60% of the protocol's 0.006
+        assertEq(vault.buybackBalance(), 0.0024 ether); // 40% of 0.006
 
         uint256 before = creator.balance;
         vm.prank(creator);
         vault.claim(creator);
-        assertEq(creator.balance - before, 0.006 ether);
+        assertEq(creator.balance - before, 0.0015 ether);
         assertEq(vault.creatorBalance(creator), 0);
         vm.prank(creator);
         vm.expectRevert(FeeVault.NothingToClaim.selector);
@@ -420,7 +421,7 @@ contract LaunchpadTest is Test {
 
     function test_protocolShareWaitsForWallets() public {
         address token = _launch();
-        _buy(alice, token, 10.075 ether); // fee 0.075 -> protocol 0.015
+        _buy(alice, token, 10.075 ether); // fee 0.075 -> protocol 80% = 0.06
         vm.expectRevert(FeeVault.WalletsNotSet.selector);
         vault.payProtocol();
 
@@ -432,8 +433,8 @@ contract LaunchpadTest is Test {
         vm.prank(owner);
         vault.setWallets(community, buyback);
         vault.payProtocol(); // anyone
-        assertEq(community.balance, 0.009 ether);
-        assertEq(buyback.balance, 0.006 ether);
+        assertEq(community.balance, 0.036 ether);
+        assertEq(buyback.balance, 0.024 ether);
         assertEq(vault.communityBalance() + vault.buybackBalance(), 0);
     }
 
@@ -608,7 +609,7 @@ contract LaunchpadTest is Test {
     function test_ftfFeesSplitEquallyAndGraduates() public {
         address token = _launchFtf(_ftfPass("Degen Den", "DEN"), 0);
         _buy(alice, token, 10 ether);
-        // 0.75% of 10 HYPE sent = fee on the gross; 80% of it split 4 ways
+        // 0.75% of 10 HYPE sent = fee on the gross; the curve's 20% creator share split 4 ways
         uint256 each = vault.creatorBalance(ftfWallets[1]);
         assertGt(each, 0);
         for (uint256 i = 1; i < 4; i++) assertEq(vault.creatorBalance(ftfWallets[i]), each);

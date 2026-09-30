@@ -207,7 +207,7 @@ function TokenDetail({ t, hypeUsd, onGraduated }: { t: TokenStat; hypeUsd: numbe
   // lifetime creator fees this token has earned (FeeVault.creatorEarned), shown next to the Profile button
   const [earned, setEarned] = useState<number | null>(null);
   useEffect(() => {
-    if (DEMO) return setEarned(t.volume_usd / 90 * 0.0075 * 0.8); // demo: ~80% of 0.75% of its volume, in HYPE
+    if (DEMO) return setEarned(t.volume_usd / 90 * 0.0075 * 0.2); // demo: ~20% of the curve's 0.75%, in HYPE
     let alive = true;
     const load = () => tokenCreatorEarned(t.address as Address).then((w) => alive && setEarned(Number(formatEther(w))), () => {});
     load();
@@ -279,7 +279,7 @@ function TokenDetail({ t, hypeUsd, onGraduated }: { t: TokenStat; hypeUsd: numbe
         <button className="ex-profile-btn" onClick={() => setShowProfile(true)}>
           <UserRound size={13} aria-hidden /> Profile
         </button>
-        <span className="ex-earned" title="Lifetime creator fees: 80% of this token's trading fees, paid in HYPE">
+        <span className="ex-earned" title="Lifetime creator fees: 20% of the curve's trading fees before graduation, 80% of the pool's after, paid in HYPE">
           <span className="ex-earned-label">Creator fees earned</span>
           <span className="ex-earned-value">
             {earned === null ? "…" : hypeUsd ? compactUsd(earned * hypeUsd) : `${earned.toFixed(4)} HYPE`}

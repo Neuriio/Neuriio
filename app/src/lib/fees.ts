@@ -1,4 +1,5 @@
-// Creator fees: 80% of every fee a launched token generates (curve 0.75%, pool 0.25%) builds up in the FeeVault as
+// Creator fees: the creator's share of every fee a launched token generates (20% of the curve's 0.75% before
+// graduation, 80% of the pool's 0.25% after) builds up in the FeeVault as
 // HYPE on Elysium (an FTF's share is split equally between its 4 members). `claim` sends it to the Neuriio wallet.
 import { parseAbi, type Address, type EIP1193Provider, zeroAddress } from "viem";
 import { confirmed, walletClientFor } from "./tx";

@@ -11,13 +11,18 @@ import {LaunchRegistry} from "./LaunchRegistry.sol";
 /// its 4 members):
 ///   - curve trades: the Launchpad's fee (0.75%), sent with each trade
 ///   - graduated pool swaps: the pair's 0.25%, taken out as WHYPE and unwrapped here
-/// 80% is credited to the token's creator (claim any time); 20% goes to the protocol, split between the
-/// community-rewards wallet (60%) and the KNTQ buyback wallet (40%). The creator share is fixed; the protocol
-/// split and wallets are owner-set, and the protocol share waits here until both wallets are set.
+/// The creator's share depends on where the fee came from (user, 2026-09-30):
+///   - curve (before graduation): 20% to the token's creator, 80% to the protocol
+///   - pool (after graduation):   80% to the token's creator, 20% to the protocol
+/// Creators claim any time. The protocol share is split between the community-rewards wallet (`communityBps`, 60%) and
+/// the KNTQ buyback wallet (the rest); it waits here until both wallets are set, then anyone can `payProtocol()`.
+/// The creator shares are constants on purpose (no owner knob over creators' income): changing them means deploying
+/// a new FeeVault (script/replace-feevault.sh), which is public and leaves old balances claimable.
 /// Part of the permanent core: it serves every Launchpad version (a curve fee is accepted only from the token's own
 /// Launchpad, per the LaunchRegistry, which also names the creators to pay).
 contract FeeVault is Ownable2Step, ReentrancyGuard {
-    uint256 public constant CREATOR_BPS = 8_000;
+    uint256 public constant CURVE_CREATOR_BPS = 2_000; // before graduation
+    uint256 public constant POOL_CREATOR_BPS = 8_000; // after graduation
 
     IWHYPE public immutable whype;
     ISwapFactory public immutable factory;
@@ -119,7 +124,7 @@ contract FeeVault is Ownable2Step, ReentrancyGuard {
         if (amount == 0) return;
         address[] memory creators = registry.creatorsOf(token);
         if (creators.length == 0) revert UnknownToken(token);
-        uint256 toCreator = amount * CREATOR_BPS / 10_000;
+        uint256 toCreator = amount * (fromPool ? POOL_CREATOR_BPS : CURVE_CREATOR_BPS) / 10_000;
         uint256 protocol = amount - toCreator;
         uint256 toCommunity = protocol * communityBps / 10_000;
         // equal shares; the rounding remainder (a few wei) goes to the first (the creator / an FTF's founder)

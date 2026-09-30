@@ -207,7 +207,7 @@ function Me() {
     if (DEMO) {
       topTokens("volume_usd_24h", 1).then(([t]) => {
         setToken(t ?? null);
-        if (t) setEarned((t.volume_usd / 90) * 0.0075 * 0.8);
+        if (t) setEarned((t.volume_usd / 90) * 0.0075 * 0.2);
       });
       return;
     }
@@ -264,7 +264,7 @@ function Me() {
               {sector && <span className="lp-chip ex-sector-chip">{sector}</span>}
               {cat && <span className={`lp-chip${token.kind === "ftf" ? " ex-ftf-chip" : ""}`}>{cat}</span>}
             </div>
-            <div className="feed-me-fees" title="Lifetime creator fees: 80% of your token's trading fees, paid in HYPE">
+            <div className="feed-me-fees" title="Lifetime creator fees: 20% of the curve's trading fees before graduation, 80% of the pool's after, paid in HYPE">
               <span className="feed-side-title">Creator fees earned</span>
               <span className="feed-me-fees-value">
                 {earned === null ? "…" : hypeUsd ? compactUsd(earned * hypeUsd) : `${earned.toFixed(4)} HYPE`}

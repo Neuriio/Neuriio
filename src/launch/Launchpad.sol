@@ -26,8 +26,8 @@ interface ICurveFeeVault {
 /// handle in caps as the ticker; the pass also fixes the creator's category and the hash of their profile (who they
 /// are + links to their work; the profile itself lives off-chain). Tokens are memes: no promises, no revenue share. Launching is free: 1B supply, all held here. 793.1M are sold on a bonding curve, a
 /// constant-product curve over *virtual* reserves (`virtualHype` HYPE : 1.073B tokens at launch), so no
-/// seed liquidity is needed. Each curve trade pays a fee (`feeBps`, 0.75% at deploy) to the FeeVault: 80% to the
-/// creator, 20% to the protocol. The buy that sells the last curve token
+/// seed liquidity is needed. Each curve trade pays a fee (`feeBps`, 0.75% at deploy) to the FeeVault: 20% to the
+/// creator, 80% to the protocol (after graduation, pool fees split 80% creator / 20% protocol). The buy that sells the last curve token
 /// graduates the token in the same tx: every HYPE raised plus the remaining 206.9M tokens go into our
 /// pool on our Uniswap V2 fork (TOKEN/WHYPE, src/swap/v2) and the LP tokens are sent to the dead address (burned), so that liquidity is
 /// locked forever. The curve's final price equals the pool's opening price.
@@ -118,7 +118,7 @@ contract Launchpad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     /// Starting virtual HYPE reserve for NEW launches. Graduation raises ~2.8335x this.
     uint256 public virtualHype;
     uint16 public feeBps;
-    /// Receives every curve fee (80% to the token's creator, 20% to the protocol). Owner-replaceable (`setFeeVault`),
+    /// Receives every curve fee (20% to the token's creator, 80% to the protocol). Owner-replaceable (`setFeeVault`),
     /// so a FeeVault fix or a new fee split never needs a new Launchpad, and a broken vault can't freeze trading.
     ICurveFeeVault public feeVault;
 
