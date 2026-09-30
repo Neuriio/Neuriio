@@ -8,12 +8,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { Search, UserRound } from "lucide-react";
-import { CATEGORIES } from "../lib/launch";
+import { CATEGORIES, SECTORS } from "../lib/launch";
 import { CandleChart, type ChartControls } from "./CandleChart";
 import { subscribeTrades, useLivePrices } from "../lib/live";
 import { tokenCreatorEarned } from "../lib/fees";
 import { formatEther, type Address } from "viem";
 import { OrderCard } from "./OrderCard";
+import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { PositionsCard } from "./PositionsCard";
 import { ProfileModal } from "./ProfileModal";
 import { Avatar } from "./Avatar";
@@ -161,7 +162,17 @@ export function ExploreCard() {
         </div>
       <section className="panel ex-card ex-detail-card">
         <CardBg side="center" />
-        {picked ? <TokenDetail key={picked.address} t={picked} hypeUsd={hypeUsd} /> : <p className="ex-empty">Pick a token.</p>}
+        {picked ? (
+          <TokenDetail
+            key={picked.address}
+            t={picked}
+            hypeUsd={hypeUsd}
+            // it graduated live: switch to pool trading now (the indexer stores it within a minute)
+            onGraduated={(pair) => setPicked((p) => (p && p.address === picked.address ? { ...p, graduated: true, pair, curve_progress: 1 } : p))}
+          />
+        ) : (
+          <p className="ex-empty">Pick a token.</p>
+        )}
       </section>
       </div>
 
@@ -185,7 +196,8 @@ export function ExploreCard() {
   );
 }
 
-function TokenDetail({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
+function TokenDetail({ t, hypeUsd, onGraduated }: { t: TokenStat; hypeUsd: number; onGraduated: (pair: string) => void }) {
+  const [grad, setGrad] = useState<GradStage>(null); // everyone watching sees the graduation (the buyer's own is in OrderCard)
   const [interval, setInterval_] = useState<IntervalSeconds>(900);
   const [data, setData] = useState<Candle[] | null>(null);
   const [controls, setControls] = useState<ChartControls | null>(null);
@@ -226,6 +238,13 @@ function TokenDetail({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
         controls.applyTrade(trade);
       },
       startPrice.current,
+      (g) => {
+        onGraduated(g.pair);
+        if (ownGraduations.has(g.token)) return;
+        setGrad("graduating");
+        setTimeout(() => setGrad("graduated"), 1600);
+        setTimeout(() => setGrad(null), 3800);
+      },
     );
   }, [controls, t.address]);
   const price = livePrice ?? t.price_hype;
@@ -244,15 +263,18 @@ function TokenDetail({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
   }, [t.address, interval]);
 
   const cat = CATEGORIES.find((c) => c.id === t.category)?.label ?? t.category;
+  const sector = SECTORS.find((x) => x.id === t.sector)?.label;
   const usdOr = (hype: number) => (hypeUsd ? compactUsd(hype * hypeUsd) : "…");
   return (
     <div className="ex-detail">
+      <GraduatingOverlay stage={grad} symbol={t.symbol} />
       <header className="ex-head">
         <Avatar handle={t.handle} pfp={t.x_pfp_url} size={44} />
         <div className="ex-head-names">
           <span className="ex-handle">{displayName(t)}</span>
           <span className="ex-ticker">${t.symbol}</span>
         </div>
+        {sector && <span className="lp-chip ex-sector-chip">{sector}</span>}
         <span className={`lp-chip${t.kind === "ftf" ? " ex-ftf-chip" : ""}`}>{t.kind === "ftf" ? "FTF" : cat}</span>
         <button className="ex-profile-btn" onClick={() => setShowProfile(true)}>
           <UserRound size={13} aria-hidden /> Profile

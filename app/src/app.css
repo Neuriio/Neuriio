@@ -192,6 +192,36 @@ body {
   color: var(--muted);
   outline: none;
 }
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.menu-new {
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cyan-2);
+  background: rgba(204, 236, 236, 0.1);
+  border: 1px solid rgba(204, 236, 236, 0.45);
+  border-radius: 4px;
+}
+/* trading (/trade) isn't live: greyed out, not clickable */
+.menu-soon,
+.menu-soon:hover {
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: default;
+}
+.menu-soon-tag {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .logo img {
   display: block;
   width: 100%;
@@ -896,6 +926,21 @@ body {
   font-size: 10px;
   color: var(--muted);
 }
+/* Sector step, part 1: 7 sectors in 4 columns; part 2 shows the pick next to the question */
+.lp-cats.lp-sectors {
+  grid-template-columns: repeat(4, 1fr);
+}
+.lp-q:has(.lp-sector-pick) {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.lp-sector-pick {
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
 .lp-field {
   display: flex;
   flex-direction: column;
@@ -1299,7 +1344,7 @@ body {
 .launch-intro .li-kicker {
   font-size: 20px;
 }
-/* stage 2: the FTF line, same style as "The Future for Creators", Next pinned bottom-right */
+/* stage 2: the FTF line, same style as "The future of ownership", Next pinned bottom-right */
 .li-about {
   max-width: 660px;
 }
@@ -1581,6 +1626,447 @@ body {
   }
   .top-marquee {
     display: none; /* no room between logo and buttons on phones */
+  }
+}
+
+/* ---- /feed: posts like X (like, comment, send). First pass, 2026-09-30 ---- */
+/* as wide as Explore's three cards together; in the page flow, so it grows and the page scrolls */
+.stage-feed {
+  position: relative;
+  top: auto;
+  left: auto;
+  transform: none;
+  width: min(1480px, calc(100vw - 32px));
+  margin: 120px auto 0;
+  padding-bottom: 110px; /* room for the footer links */
+}
+/* search above the card (same as Explore's) */
+.feed-search {
+  position: relative;
+  width: min(460px, 100%);
+  margin: 0 auto 16px;
+  z-index: 2;
+}
+.feed-search .ex-search {
+  margin: 0;
+  background: #1b1428;
+  box-shadow: 0 12px 32px rgba(7, 2, 12, 0.45);
+}
+/* left column (you, wallet, trending) + posts */
+.feed-grid {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 32px;
+  padding: 24px;
+}
+.feed-side {
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  position: sticky;
+  top: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(10, 6, 18, 0.35);
+}
+.feed-side-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+.feed-side-box + .feed-side-box {
+  border-top: 1px solid var(--line);
+}
+.feed-side-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.feed-side-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.feed-muted {
+  color: var(--muted);
+}
+.feed-locked p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.feed-me-id {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.feed-me-names {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.feed-me-chips {
+  display: flex;
+  gap: 8px;
+}
+.feed-me-fees {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.feed-me-fees-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #8fe3a7;
+}
+.feed-me-fees-value .feed-muted {
+  font-size: 11px;
+  font-weight: 400;
+}
+.feed-me-launch {
+  font-size: 12px;
+}
+.feed-notices {
+  gap: 8px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.feed-notices-head {
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.feed-notices-head .feed-side-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.feed-notices-count {
+  min-width: 18px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  color: #10231a;
+  background: #8fe3a7;
+  border-radius: 9px;
+}
+.feed-notices-empty {
+  font-size: 11px;
+}
+.feed-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  color: var(--text-2);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.feed-notice:hover {
+  color: #ffffff;
+}
+.feed-notice-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feed-venue {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.feed-venue-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.feed-bal {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.feed-bal-amt {
+  text-align: right;
+}
+.feed-bal-empty {
+  font-size: 11px;
+}
+.feed-trend-list {
+  margin: 0 -8px;
+  padding: 0;
+  list-style: none;
+}
+.feed-trend-list .ex-row {
+  text-decoration: none;
+}
+.feed-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.feed-post {
+  display: flex;
+  gap: 14px;
+  padding: 18px 4px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.feed-post:first-child {
+  padding-top: 4px;
+}
+.feed-post:last-child {
+  border-bottom: none;
+}
+.feed-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.feed-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+}
+.feed-name {
+  font-weight: 700;
+  color: #ffffff;
+}
+.feed-handle,
+.feed-dot,
+.feed-time {
+  color: var(--muted);
+}
+.feed-ticker {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cyan-2);
+}
+.feed-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.feed-actions {
+  display: flex;
+  gap: 28px;
+  margin-top: 4px;
+}
+.feed-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 0;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.feed-act:hover {
+  color: var(--cyan-2);
+}
+.feed-send {
+  gap: 5px;
+}
+.feed-send b {
+  font-size: 14px;
+}
+.feed-like:hover,
+.feed-like.is-on {
+  color: #ff8fb1;
+}
+/* send window */
+.send-modal {
+  width: min(440px, 100%);
+}
+.send-to {
+  gap: 7px;
+}
+.send-to b {
+  color: #ffffff;
+}
+.send-tokens {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.send-token {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: rgba(70, 55, 100, 0.3);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.send-token:hover {
+  border-color: rgba(204, 236, 236, 0.35);
+}
+.send-token.is-on {
+  background: rgba(204, 236, 236, 0.08);
+  border-color: rgba(204, 236, 236, 0.6);
+}
+.send-token-names {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.send-token-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+.send-token-bal {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+.send-amount {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.send-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 42px;
+  padding: 0 12px;
+  background: rgba(10, 6, 18, 0.45);
+  border: 1px solid rgba(236, 221, 255, 0.14);
+  border-radius: var(--radius);
+}
+.send-input:focus-within {
+  border-color: rgba(204, 236, 236, 0.5);
+}
+.send-input.is-bad {
+  border-color: rgba(255, 120, 120, 0.6);
+}
+.send-input input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  color: #ffffff;
+  background: none;
+  border: none;
+  outline: none;
+}
+.send-sym {
+  font-size: 12px;
+  color: var(--muted);
+}
+.send-go {
+  width: 100%;
+  justify-content: center;
+}
+.send-note {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+.send-empty,
+.send-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 4px;
+  text-align: center;
+}
+.send-empty p,
+.send-done p {
+  margin: 0;
+  font-size: 13px;
+}
+.send-done-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: #10231a;
+  background: #8fe3a7;
+  border-radius: 50%;
+}
+
+/* comments window */
+.feed-thread {
+  width: min(560px, 100%);
+  max-height: min(640px, 100%);
+}
+.feed-thread-post {
+  display: flex;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.feed-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.feed-comment {
+  display: flex;
+  gap: 10px;
+}
+.feed-comment .feed-text {
+  font-size: 13px;
+}
+@media (max-width: 860px) {
+  .stage-feed {
+    margin-top: 110px;
+  }
+  .feed-grid {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+  .feed-side {
+    position: static;
   }
 }
 
@@ -2387,6 +2873,13 @@ body {
   mask-image: radial-gradient(ellipse 45% 120% at 50% 0%, #000 20%, transparent 75%);
 }
 
+/* the token's sector, first in the header (before the category / FTF badge) */
+.ex-sector-chip {
+  color: var(--cyan-2);
+  background: rgba(204, 236, 236, 0.08);
+  border-color: rgba(204, 236, 236, 0.4);
+}
+
 /* FTF: the badge (instead of a category) and the members list in the profile window */
 .ex-ftf-chip {
   color: #ffe3a3;
@@ -2848,4 +3341,129 @@ body {
   pointer-events: none;
   user-select: none;
   filter: drop-shadow(0 4px 14px rgba(7, 2, 12, 0.5));
+}
+
+/* ---- "Graduating" moment (a buy that sells the curve's last tokens): light blur + orb over the whole page ---- */
+.grad-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 45%, rgba(129, 114, 152, 0.28), rgba(27, 18, 41, 0.35) 60%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.grad-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+}
+.grad-orb {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  display: grid;
+  place-items: center;
+}
+/* glowing core: cyan -> lavender, breathing */
+.grad-core {
+  position: absolute;
+  inset: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #d8fffe 18%, #9fd9e8 38%, #817298 72%, #463764 100%);
+  box-shadow: 0 0 40px rgba(204, 236, 236, 0.55), 0 0 90px rgba(129, 114, 152, 0.6), inset 0 0 18px rgba(255, 255, 255, 0.35);
+  animation: grad-breathe 1.8s ease-in-out infinite;
+}
+/* two spinning rings of light around it */
+.grad-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(216, 255, 254, 0.95) 60deg, transparent 140deg, rgba(129, 114, 152, 0.8) 240deg, transparent 320deg);
+  -webkit-mask: radial-gradient(circle, transparent 62%, #000 64%, #000 68%, transparent 70%);
+  mask: radial-gradient(circle, transparent 62%, #000 64%, #000 68%, transparent 70%);
+  filter: drop-shadow(0 0 8px rgba(216, 255, 254, 0.7));
+  animation: grad-spin 1.6s linear infinite;
+}
+.grad-ring-2 {
+  inset: 14px;
+  opacity: 0.7;
+  animation-duration: 2.6s;
+  animation-direction: reverse;
+}
+.grad-orb.is-done .grad-core {
+  animation: none;
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #c9f7d6 25%, #8fe3a7 60%, #4f9e6c 100%);
+  box-shadow: 0 0 50px rgba(143, 227, 167, 0.6), 0 0 100px rgba(143, 227, 167, 0.3);
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+.grad-orb.is-done .grad-ring {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.grad-check {
+  position: relative;
+  color: #10231a;
+}
+.grad-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.grad-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+  text-shadow: 0 0 24px rgba(204, 236, 236, 0.45);
+}
+.grad-dots i {
+  font-style: normal;
+  animation: grad-dot 1.2s infinite;
+}
+.grad-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.grad-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+.grad-sub {
+  font-size: 13px;
+  color: var(--text-2);
+}
+@keyframes grad-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes grad-breathe {
+  0%,
+  100% {
+    transform: scale(0.94);
+    filter: brightness(0.95);
+  }
+  50% {
+    transform: scale(1.04);
+    filter: brightness(1.15);
+  }
+}
+@keyframes grad-dot {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grad-ring,
+  .grad-core,
+  .grad-dots i {
+    animation: none;
+  }
 }

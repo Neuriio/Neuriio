@@ -3,8 +3,11 @@ const usdFmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "US
 export const usd = (n: number) => usdFmt.format(n);
 
 /** Token amounts: more decimals for small numbers, fewer for big ones. */
+/** Token amounts; millions and up are compact (launched tokens have a 1B supply): 139049676 -> "139.05M". */
 export const amount = (n: number) =>
-  n.toLocaleString("en-US", { maximumFractionDigits: n >= 1000 ? 2 : n >= 1 ? 4 : 6 });
+  n >= 1e6
+    ? n.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 })
+    : n.toLocaleString("en-US", { maximumFractionDigits: n >= 1000 ? 2 : n >= 1 ? 4 : 6 });
 
 export const shortAddress = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 

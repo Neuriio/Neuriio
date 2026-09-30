@@ -380,6 +380,11 @@ Off-chain money-path code (relayer + sponsor + one-click, JS) ~910 lines. Still 
   if it recurs: restart with `npm --prefix app run dev -- --force` and hard-refresh. The Browser pane can't do X OAuth: the user
   tests logged-in states in Firefox; `?demo` shows the logged-in account panel with sample data. The Elysium RPC returns 403 to
   Python's default user agent (send one, e.g. `curl/8.4.0`). Anvil forks can't run the oracle push (ArbSys stub).
+- **HyperCore HYPE -> Elysium (2026-09-30):** `./script/hype-to-elysium.sh burner [amount]`: HyperCore spot ->
+  HyperEVM (sendAsset to 0x2222…2222, ~4 s) -> Elysium (`Inbox.depositEth`, ~70 s), keeps 0.01 HYPE on HyperEVM.
+  Moved 58.28 HYPE this way (burner Elysium balance ~58.97 after). **The burner's HL testnet account is in "unified
+  account" mode:** HyperCore refuses `spotSend` ("Action disabled when unified account is active"); `sendAsset` works.
+  The relayer's `usdSend` (FastBridge payouts) may be refused too: check before running the bots again.
 - **Hyperliquid API budget per viewer** (limit 1,200 weight/min/IP): allMids = 2, clearinghouse/spotClearinghouse = 2,
   metaAndAssetCtxs/spotMetaAndAssetCtxs = 20. App today ≈ 26/min (marquee: allMids every 5 s + prevDayPx every 10 min) +
   ≈ 65/min when logged in (balances every 10 s, spot price lists cached 60 s).
@@ -573,6 +578,42 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
 - **Last commit** includes everything up to the logo on the intro card. Tests: 96 forge, 66 keeper, 11 supabase-shared,
   app typecheck 0 errors; all 13 migrations pass in order on PGlite (scratch harness, not in the repo).
 
+### Sectors (user, 2026-09-30) — LIVE
+/launch step "Sector" (replaces "Who you are" / FTF "Category") has two parts: **sector** (Robotics, Quantum, Finance,
+AI, Energy, Memory, Space) -> **"How are you active in the sector?"** (the 6 categories; Back returns to part 1). Same for personal
+and FTF. **No contract change:** the sector goes into the creator profile JSON (now `v: 2`), whose hash the pass fixes
+on-chain; `token_stats.sector` reads it back (null for older tokens); `ftf_drafts.sector`. Migration
+`20260929220350_sectors.sql` applied; `launch-pass` + `ftf` redeployed (both now require `sector`). Explore header shows
+chips in order sector (cyan) -> category / FTF badge -> Profile; no sector filter yet.
+
+### Security sweep #3 (2026-09-30)
+Contracts unchanged since sweep #2 (96 forge tests pass; Launchpad 20,943 B). Reviewed this session's app / functions /
+DB / watcher changes. **Fixed:** Supabase advisors: `candle_bucket` search_path pinned; `rls_auto_enable()` (Supabase's
+event-trigger fn) no longer callable via the API (migration `20260930033121_advisor_hardening.sql`). **Verified OK:**
+Realtime: anon/authenticated can only RECEIVE on `trades:%` (no fake trade/graduated events); users/launch_passes/
+indexer_state have RLS on and no policies (service role only; anon reads nothing); `sector` validated server-side in
+`launch-pass` + `ftf` and hashed into the profile; creator_profiles are all JSON (token_stats casts them); post text is
+React-escaped. **Accepted / open:** `leaderboard` + `points_totals` are SECURITY DEFINER views on purpose (public X
+card + points only); pg_net in public (Supabase default). **To handle later:** (1) FTF tickers can imitate real ones
+(e.g. $USDC, $HYPE): shown with "$" in balances and as launched tokens in Send, but reserve those tickers in the
+contract at the next redeploy; (2) when posts become real, the Send recipient wallet must come from the `users` table
+server-side, never from client post data; (3) FTF launch points can be farmed with extra FTFs (user informed);
+(4) balances read every launched token's balance (1 multicall, up to 1,000 tokens) per viewer every 10 s: fine now,
+index holdings server-side at scale.
+
+### Graduation moment (2026-09-30)
+A buy that graduates a token shows a full-page overlay (light blur, glowing orb, "Graduating..." -> "Graduated",
+`GraduatingOverlay.tsx`): the buyer's own from `OrderCard` (`buyGraduates` in lib/trade.ts: refund > 0 or tokensOut >=
+curve's realToken), everyone else viewing that token on Explore from the watcher's new Realtime event **"graduated"**
+{token, pair, trader, tx, ts} on `trades:<token>` + `trades:all` (their order card flips to pool trading at once).
+$VON_HL was relaunched on the current Launchpad after the old two tokens were cleared (user ran the SQL:
+`supabase/snippets/clear-old-launchpad-tokens.sql`), then graduated live (pool `0x82b6…801e`, LP burned).
+
+### Supabase access (user, 2026-09-30)
+**Claude has the Supabase connector** (project `yviymgfgaepmtijgyyyo`) and may adjust the database going forward:
+`apply_migration` for DDL (then rename the local file in `supabase/migrations/` to the version it records, from
+`list_migrations`, so the CLI history stays in sync), `execute_sql` for reads/data fixes, logs, advisors, Edge Functions.
+
 ### How to run (each in its own terminal tab)
 ```bash
 npm --prefix app run dev          # then open http://localhost:5173 (NOT 127.0.0.1: Privy only allows localhost)
@@ -582,20 +623,20 @@ Redeploy flow (only when contracts change): `./script/deploy-launchpad.sh burner
 (db push + secrets + all 4 functions) -> restart the watcher -> optional `./script/launchpad-test.sh burner`.
 `?demo` on /launch and /explore shows everything with sample data (dev only).
 
-### Open items (user's call / next up)
-1. **FTF live test** needs 4 real X accounts that have each logged into Neuriio once (user has a 2nd account).
-2. **Old tokens** (@von_hl, @test_2727525035) from the previous launchpad are still in Supabase, so Explore lists them,
-   but they trade on contracts the app no longer uses. Offer to clear their rows (tokens/trades/candles/points) like
-   the earlier resets; ask first.
-3. **"Ask to be added"** to an FTF exists in the backend (`ftf` action `request`, founder approves in notifications)
-   but there is no UI to browse open FTFs and request yet.
-4. FeeVault **community + buyback wallet addresses** (user still to send) -> `FeeVault.setWallets`.
-5. Move contract ownership from the hot `burner` key to a **multisig** before mainnet.
-6. Decide: do FTF members get launch points (currently none)?
-7. **Formal security audit** (Fable, TODO 6) + `docs/ARCHITECTURE.md` / `docs/SECURITY_AUDIT.md`; two quick sweeps done
-   2026-09-29 (see "Security review" and "Security sweep #2" below).
-8. Later: promo video (`notes/promo-video-higgsfield.md`), pitch deck, hosting for watcher/bots, Supabase Pro before
-   mainnet, Realtime relies on Supabase *legacy* keys (re-test when Supabase retires them).
+### Open items (user's call / next up) — reviewed with the user 2026-09-30
+1. **FTF live test:** the user is setting up 4 real X accounts themselves (each must log into Neuriio once).
+2. Old tokens (@von_hl, @test_2727525035) stay in Supabase/Explore (user: "those are fine"). Don't offer to clear again.
+3. "Ask to be added" browse UI: **not wanted** (backend `request` action stays, unused).
+4. **REMIND THE USER:** FeeVault community + buyback wallet addresses (they will send) -> `FeeVault.setWallets`.
+5. **REMIND THE USER:** move contract ownership from the hot `burner` key to a **multisig** before mainnet.
+6. **FTF members get 50 launch points each** (decided 2026-09-30; one award per member per FTF, on top of a personal
+   launch). **LIVE:** migration `20260929210743_ftf_launch_points.sql` (redefines `award_points()`), applied 2026-09-30.
+   Note: members can farm 50 per extra FTF (launches are free); user was told, cap to once per person if it matters.
+7. **REMIND THE USER:** formal security audit (Fable, TODO 6) + `docs/ARCHITECTURE.md` / `docs/SECURITY_AUDIT.md`;
+   two quick sweeps done 2026-09-29 (see "Security review" and "Security sweep #2" below).
+8. **Now (2026-09-30): X banner for the Neuriio X page** (x.com/Neuriio). Later: promo video
+   (`notes/promo-video-higgsfield.md`), pitch deck, hosting for watcher/bots, Supabase Pro before mainnet, Realtime
+   relies on Supabase *legacy* keys (re-test when Supabase retires them).
 9. Working preferences (see memory): build UI one element at a time in the user's order; don't ask "which box next";
    **don't commit/push unless the user says so, and don't ask about it**.
 

@@ -21,6 +21,9 @@ export type LiveTrade = {
   ts: number; // block time, ms
 };
 
+/** keeper watcher "graduated" event: a buy just graduated `token` (its pool is open, LP burned). */
+export type LiveGraduation = { token: string; pair: string; trader: string | null; tx: string; ts: number };
+
 let client: RealtimeClient | null = null;
 function rt() {
   if (!client) {
@@ -30,8 +33,13 @@ function rt() {
   return client;
 }
 
-/** Calls `onTrade` for each live trade of `token`; returns an unsubscribe function. */
-export function subscribeTrades(token: string, onTrade: (t: LiveTrade) => void, startPriceHype?: number): () => void {
+/** Calls `onTrade` for each live trade of `token` (and `onGraduated` if it graduates); returns an unsubscribe. */
+export function subscribeTrades(
+  token: string,
+  onTrade: (t: LiveTrade) => void,
+  startPriceHype?: number,
+  onGraduated?: (g: LiveGraduation) => void,
+): () => void {
   if (DEMO) return demoFeed(token, onTrade, startPriceHype ?? 1e-7);
   const seen = new Set<string>();
   const channel = rt().channel(`trades:${token.toLowerCase()}`, { config: { private: true } });
@@ -43,6 +51,7 @@ export function subscribeTrades(token: string, onTrade: (t: LiveTrade) => void, 
       seen.add(id);
       onTrade(t);
     })
+    .on("broadcast", { event: "graduated" }, ({ payload }) => onGraduated?.(payload as LiveGraduation))
     .subscribe();
   return () => {
     rt().removeChannel(channel);

@@ -7,7 +7,8 @@ import { formatEther, parseEther, type Address } from "viem";
 import { DEMO, displayName, type TokenStat } from "../lib/explore";
 import { compactUsd } from "../lib/format";
 import { SUPABASE_URL } from "../lib/config";
-import { balances, friendlyTradeError, minOut, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
+import { balances, buyGraduates, friendlyTradeError, minOut, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
+import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { elysiumProvider } from "../lib/tx";
 
 const QUICK_BUY = ["0.1", "0.5", "1", "5"];
@@ -29,6 +30,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
   const [quoting, setQuoting] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [nonce, setNonce] = useState(0); // bump to refresh balances after a trade
+  const [grad, setGrad] = useState<GradStage>(null); // the full-page "Graduating" moment
 
   const amountIn = useMemo(() => {
     try {
@@ -92,17 +94,29 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
   async function submit() {
     if (!t || !q || !account) return;
     setStatus({ kind: "busy", label: "Confirming…" });
+    // does this buy take the curve's last tokens? (demo: any 5+ HYPE buy on a curve token)
+    const graduates =
+      side === "buy" && !t.graduated && (DEMO ? amountIn >= parseEther("5") : await buyGraduates(t.address as Address, q).catch(() => false));
+    if (graduates) ownGraduations.add(t.address.toLowerCase());
     try {
       if (DEMO) {
-        await new Promise((r) => setTimeout(r, 1200));
+        if (graduates) setGrad("graduating");
+        await new Promise((r) => setTimeout(r, graduates ? 3200 : 1200));
       } else {
         const provider = await elysiumProvider(wallet!);
         await trade(
           provider,
           account,
           { token: t.address as Address, graduated: t.graduated, side, amountIn, minOut: minOut(q.out) },
-          (s) => setStatus({ kind: "busy", label: s === "approving" ? "Approving…" : "Confirming…" }),
+          (s) => {
+            setStatus({ kind: "busy", label: s === "approving" ? "Approving…" : "Confirming…" });
+            if (graduates && s !== "approving") setGrad("graduating"); // once the wallet has sent it
+          },
         );
+      }
+      if (graduates) {
+        setGrad("graduated");
+        setTimeout(() => setGrad(null), 2200);
       }
       // ask the indexer to store it now (stats, Top 25 volume); the live feed already shows it everywhere
       if (!DEMO) fetch(`${SUPABASE_URL}/functions/v1/indexer`, { method: "POST" }).catch(() => {});
@@ -110,6 +124,8 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
       setAmount("");
       setNonce((x) => x + 1);
     } catch (e) {
+      setGrad(null);
+      ownGraduations.delete(t.address.toLowerCase());
       setStatus({ kind: "error", text: friendlyTradeError((e as Error).message) });
     }
   }
@@ -217,6 +233,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
         {cta}
       </button>
       <p className="ex-order-note">Tokens are memes with no promise of value.</p>
+      <GraduatingOverlay stage={grad} symbol={t.symbol} />
     </div>
   );
 }

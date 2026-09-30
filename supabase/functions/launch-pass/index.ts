@@ -1,6 +1,6 @@
 // POST /functions/v1/launch-pass
 //   headers: Authorization: Bearer <Privy access token>
-//   body:    { category: "trader" | ..., profile: { about, links: [{ label, url }] } }
+//   body:    { sector: "robotics" | ..., category: "trader" | ..., profile: { about, links: [{ label, url }] } }
 //   200:     { pass, signature, profileHash, launchpad, chainId }  -> Launchpad.launch(pass, signature, minTokensOut)
 //
 // Verifies the Privy login, reads the user's X account + Neuriio (embedded) wallet from Privy, stores the profile,
@@ -16,6 +16,8 @@ import {
   canonicalProfile,
   CATEGORIES,
   type Category,
+  SECTORS,
+  type Sector,
   launchpadDomain,
   launchPassTypes,
   PASS_TTL_SECONDS,
@@ -73,18 +75,20 @@ Deno.serve(async (req) => {
   if ((recent ?? 0) >= PASSES_PER_10_MIN) return json(429, { error: "Too many attempts, try again in a few minutes" });
 
   // 3. what they're launching
-  let body: { category?: string; profile?: { about: string; links?: { label: string; url: string }[] } };
+  let body: { sector?: string; category?: string; profile?: { about: string; links?: { label: string; url: string }[] } };
   try {
     body = await req.json();
   } catch {
     return json(400, { error: "Invalid JSON" });
   }
+  const sector = body.sector as Sector;
+  if (!SECTORS.includes(sector)) return json(422, { error: `Pick a sector: ${SECTORS.join(", ")}` });
   const category = body.category as Category;
   const categoryIndex = CATEGORIES.indexOf(category);
   if (categoryIndex < 0) return json(422, { error: `Pick a category: ${CATEGORIES.join(", ")}` });
   let profile: { content: string; hash: `0x${string}` };
   try {
-    profile = canonicalProfile(body.profile!, { xUserId, handle, category });
+    profile = canonicalProfile(body.profile!, { xUserId, handle, sector, category });
   } catch (e) {
     return json(422, { error: (e as Error).message });
   }

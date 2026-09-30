@@ -6,6 +6,10 @@ import { keccak256, toBytes } from "npm:viem@2";
 export const CATEGORIES = ["trader", "meme_trader", "researcher", "influencer", "builder", "creator"] as const;
 export type Category = (typeof CATEGORIES)[number];
 
+/** The sector a token belongs to (2026-09-30). Off-chain only: part of the profile, so its hash fixes it on-chain. */
+export const SECTORS = ["robotics", "quantum", "finance", "ai", "energy", "memory", "space"] as const;
+export type Sector = (typeof SECTORS)[number];
+
 export const HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/;
 
 export const PASS_TTL_SECONDS = 15 * 60;
@@ -34,13 +38,14 @@ export type ProfileInput = { about: string; links?: Link[] };
  */
 export function canonicalProfile(
   input: ProfileInput,
-  who: { xUserId: string; handle: string; category: Category },
+  who: { xUserId: string; handle: string; sector: Sector; category: Category },
 ): { content: string; hash: `0x${string}` } {
   const { about, links } = validAboutAndLinks(input);
   const content = JSON.stringify({
-    v: 1,
+    v: 2, // v2 adds sector
     xUserId: who.xUserId,
     handle: who.handle,
+    sector: who.sector,
     category: who.category,
     about,
     links,
@@ -105,15 +110,16 @@ export function validFtfIdentity(name: unknown, ticker: unknown): { name: string
 /** The FTF's profile, as hashed into its pass: who they are together + links. */
 export function canonicalFtfProfile(
   input: ProfileInput,
-  ftf: { name: string; ticker: string; founderXUserId: string; category: Category; pfpUrl: string | null },
+  ftf: { name: string; ticker: string; founderXUserId: string; sector: Sector; category: Category; pfpUrl: string | null },
 ): { content: string; hash: `0x${string}` } {
   const { about, links } = validAboutAndLinks(input);
   const content = JSON.stringify({
-    v: 1,
+    v: 2, // v2 adds sector
     kind: "ftf",
     name: ftf.name,
     ticker: ftf.ticker,
     founder: ftf.founderXUserId,
+    sector: ftf.sector,
     category: ftf.category,
     pfp: ftf.pfpUrl,
     about,

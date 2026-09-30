@@ -4,7 +4,7 @@
 // `?demo`: an in-memory stand-in (invites are accepted after a few seconds).
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import type { CategoryId } from "./launch";
+import type { CategoryId, SectorId } from "./launch";
 import { SUPABASE_URL } from "./config";
 
 export const DEMO = import.meta.env.DEV && new URLSearchParams(location.search).has("demo");
@@ -23,6 +23,7 @@ export type FtfDraft = {
   name: string;
   ticker: string;
   status: string;
+  sector: SectorId | null;
   category: CategoryId | null;
   pfpUrl: string | null;
   about: string | null;
@@ -147,7 +148,7 @@ function demoCall(action: string, body: Record<string, unknown>): unknown {
       return snapshot();
     case "create":
       demo.view = {
-        draft: { id: "demo", founder: "1", name: String(body.name), ticker: String(body.ticker).toUpperCase(), status: "open", category: null, pfpUrl: null, about: null, links: [] },
+        draft: { id: "demo", founder: "1", name: String(body.name), ticker: String(body.ticker).toUpperCase(), status: "open", sector: null, category: null, pfpUrl: null, about: null, links: [] },
         members: [{ x_user_id: "1", role: "founder", status: "accepted", x_handle: "neuriio" }],
       };
       return snapshot();
@@ -162,7 +163,7 @@ function demoCall(action: string, body: Record<string, unknown>): unknown {
       v.members = v.members.filter((m) => m.x_user_id !== body.xUserId);
       return snapshot();
     case "profile":
-      Object.assign(v.draft!, { category: body.category, about: body.about, links: body.links });
+      Object.assign(v.draft!, { sector: body.sector, category: body.category, about: body.about, links: body.links });
       return snapshot();
     case "pfp":
       v.draft!.pfpUrl = `data:${body.contentType};base64,${body.base64}`;

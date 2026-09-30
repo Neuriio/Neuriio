@@ -7,21 +7,28 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowLeft,
   ArrowRight,
+  Atom,
+  Bot,
+  BrainCircuit,
   Brush,
   ChartCandlestick,
   Check,
   ExternalLink,
   Flame,
   Hammer,
+  Landmark,
   LoaderCircle,
   Megaphone,
+  MemoryStick,
   Microscope,
+  Orbit,
   Plus,
   Rocket,
   Upload,
   UserRound,
   Users,
   X,
+  Zap,
 } from "lucide-react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { formatEther, type Address, type EIP1193Provider } from "viem";
@@ -48,6 +55,8 @@ import {
   MAX_LINKS,
   pub,
   requestLaunchPass,
+  SECTORS,
+  type SectorId,
 } from "../lib/launch";
 import { EASE_OUT } from "../lib/motion";
 import { SUPABASE_URL } from "../lib/config";
@@ -68,17 +77,26 @@ const ICONS: Record<CategoryId, typeof Flame> = {
   builder: Hammer,
   creator: Brush,
 };
+const SECTOR_ICONS: Record<SectorId, typeof Flame> = {
+  robotics: Bot,
+  quantum: Atom,
+  finance: Landmark,
+  ai: BrainCircuit,
+  energy: Zap,
+  memory: MemoryStick,
+  space: Orbit,
+};
 type Mode = "personal" | "ftf";
-type StepId = "type" | "who" | "members" | "category" | "profile" | "launch";
+// "sector" is two parts in one step: the sector, then how you're active in it (the category)
+type StepId = "type" | "members" | "sector" | "profile" | "launch";
 const STEP_IDS: Record<Mode, StepId[]> = {
-  personal: ["type", "who", "profile", "launch"],
-  ftf: ["type", "members", "category", "profile", "launch"],
+  personal: ["type", "sector", "profile", "launch"],
+  ftf: ["type", "members", "sector", "profile", "launch"],
 };
 const STEP_LABEL: Record<StepId, string> = {
   type: "Type",
-  who: "Who you are",
   members: "Members",
-  category: "Category",
+  sector: "Sector",
   profile: "Profile",
   launch: "Launch",
 };
@@ -133,7 +151,7 @@ const FTF_LINE =
   "The platform to tokenize your account and own your defi, or get 3 friends to form a FTF (Friends Turned Fam) and put everyone onchain.";
 
 /**
- * First screen for everyone (750 x 350): "The Future for Creators" + one button (Login / Launch). Launch plays a
+ * First screen for everyone (750 x 350): "The future of ownership" + one button (Login / Launch). Launch plays a
  * short reveal of the FTF line in the same style, with Next in the bottom-right, which opens the 3-step flow.
  */
 function LaunchIntro({
@@ -164,7 +182,7 @@ function LaunchIntro({
         {stage === "welcome" ? (
           <motion.div key="welcome" className="li-content" {...leave}>
             <motion.span className="li-kicker" {...rise(0)}>
-              The Future for Creators
+              The future of ownership
             </motion.span>
             <motion.div {...rise(0.08)}>
               <button className="li-btn" onClick={loggedIn ? () => setStage("about") : onLogin} disabled={busy}>
@@ -235,6 +253,8 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   const [invites, setInvites] = useState(["", "", ""]);
   const [ftfBusy, setFtfBusy] = useState(false);
   const [ftfError, setFtfError] = useState<string | null>(null);
+  const [sector, setSector] = useState<SectorId | null>(null);
+  const [sectorPart, setSectorPart] = useState<"sector" | "role">("sector");
   const [category, setCategory] = useState<CategoryId | null>(null);
   const [about, setAbout] = useState("");
   const [links, setLinks] = useState<Link[]>([{ label: "X", url: `https://x.com/${handle}` }]);
@@ -264,6 +284,10 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
     const v = await ftfCall<FtfView>(tokenFor, "mine");
     setFtf(v);
     if (v.draft) {
+      if (v.draft.sector) {
+        setSector(v.draft.sector);
+        setSectorPart("role");
+      }
       if (v.draft.category) setCategory(v.draft.category);
       if (v.draft.about) setAbout(v.draft.about);
       if (v.draft.links?.length) setLinks(v.draft.links);
@@ -330,9 +354,8 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
     && inviteHandles.every((h) => /^[a-z0-9_]{1,15}$/.test(h) && h !== handle.toLowerCase());
   const canNext = {
     type: mode !== null && !(mode === "personal" && personalToken),
-    who: category !== null,
     members: acceptedCount === FTF_SIZE,
-    category: category !== null,
+    sector: sector !== null && category !== null && sectorPart === "role",
     profile: aboutLen >= ABOUT_MIN && aboutLen <= ABOUT_MAX && linksOk,
     launch: agreed && buy >= 0,
   }[current];
@@ -364,6 +387,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
       const token = await getAccessToken!();
       if (!token) throw new Error("Session expired, log in again");
       const pass = await requestLaunchPass(token, {
+        sector: sector!,
         category: category!,
         profile: { about: about.trim(), links: cleanLinks.map((l) => ({ label: l.label.trim(), url: l.url.trim() })) },
       });
@@ -418,8 +442,10 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
               <span className="lp-members-count">{acceptedCount}/{FTF_SIZE} in</span>
             </div>
           )}
-          <div className={`lp-chip${category ? "" : " lp-chip-empty"}`}>
-            {category ? CATEGORIES.find((c) => c.id === category)!.label : "Pick a category"}
+          <div className={`lp-chip${sector ? "" : " lp-chip-empty"}`}>
+            {sector
+              ? [SECTORS.find((x) => x.id === sector)!.label, category && CATEGORIES.find((c) => c.id === category)!.label].filter(Boolean).join(" · ")
+              : "Pick a sector"}
           </div>
           <CurveChart progress={curveProgress(buy, params)} />
           <dl className="lp-stats">
@@ -584,7 +610,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                       )}
                       <p className="lp-est">
                         {acceptedCount === FTF_SIZE
-                          ? "All 4 are in. Next: category, profile and picture."
+                          ? "All 4 are in. Next: sector, profile and picture."
                           : `${acceptedCount}/${FTF_SIZE} in. Waiting for everyone to accept from their notifications.`}
                       </p>
                     </>
@@ -593,9 +619,39 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                 </motion.div>
               )}
 
-              {phase.kind === "form" && (current === "who" || current === "category") && (
-                <motion.div key="s0" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
-                  <p className="lp-q">{isFtf ? "What is this FTF known for?" : "What are you known for?"}</p>
+              {phase.kind === "form" && current === "sector" && sectorPart === "sector" && (
+                <motion.div key="s0-sector" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
+                  <p className="lp-q">{isFtf ? "What sector is this FTF?" : "What sector are you?"}</p>
+                  <div className="lp-cats lp-sectors">
+                    {SECTORS.map((x) => {
+                      const Icon = SECTOR_ICONS[x.id];
+                      return (
+                        <button
+                          key={x.id}
+                          className={`lp-cat${sector === x.id ? " is-on" : ""}`}
+                          onClick={() => {
+                            setSector(x.id);
+                            setSectorPart("role");
+                          }}
+                        >
+                          <Icon size={16} strokeWidth={1.8} />
+                          <span className="lp-cat-label">{x.label}</span>
+                          <span className="lp-cat-hint">{x.hint}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+
+              {phase.kind === "form" && current === "sector" && sectorPart === "role" && (
+                <motion.div key="s0-role" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
+                  <p className="lp-q">
+                    {isFtf ? "How is this FTF active in the sector?" : "How are you active in the sector?"}
+                    <button className="link-btn lp-sector-pick" onClick={() => setSectorPart("sector")}>
+                      {SECTORS.find((x) => x.id === sector)?.label} · change
+                    </button>
+                  </p>
                   <div className="lp-cats">
                     {CATEGORIES.map((c) => {
                       const Icon = ICONS[c.id];
@@ -787,7 +843,11 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
 
           {phase.kind === "form" && (
             <footer className="lp-foot">
-              <button className="link-btn lp-back" onClick={() => setStep(step - 1)} disabled={step === 0}>
+              <button
+                className="link-btn lp-back"
+                onClick={() => (current === "sector" && sectorPart === "role" ? setSectorPart("sector") : setStep(step - 1))}
+                disabled={step === 0}
+              >
                 <ArrowLeft size={12} /> Back
               </button>
               {current === "members" && !ftf.draft ? (
@@ -799,11 +859,12 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                   className="lock-login lp-cta"
                   disabled={!canNext || ftfBusy}
                   onClick={async () => {
-                    // FTF: save category + profile before the launch step (the pass is signed from what's saved)
+                    // FTF: save sector + category + profile before the launch step (the pass is signed from what's saved)
                     if (isFtf && current === "profile") {
                       try {
                         await ftfDo("profile", {
                           draftId: ftf.draft!.id,
+                          sector,
                           category,
                           about: about.trim(),
                           links: cleanLinks.map((l) => ({ label: l.label.trim(), url: l.url.trim() })),

@@ -21,7 +21,7 @@ const ratio = (num, den) => (den === 0n ? null : Number(formatUnits((num * 10n *
  * @param logs     decoded viem logs (eventName, args, address, transactionHash, logIndex, blockNumber), any order
  * @param ctx      { launchpad, router, whype, pairToken: Map<pair, token> } (lowercase addresses)
  * @param ts       block timestamp in ms
- * @returns { trades: LiveTrade[], graduated: {token, pair}[] }
+ * @returns { trades: LiveTrade[], graduated: {token, pair, trader, tx, ts}[] }  (trader = who made the graduating buy)
  */
 export function liveTrades(logs, { launchpad, router, whype, pairToken }, ts) {
   const sorted = [...logs].sort((a, b) =>
@@ -46,7 +46,8 @@ export function liveTrades(logs, { launchpad, router, whype, pairToken }, ts) {
         priceHype: ratio(a.virtualHype, a.virtualToken),
       });
     } else if (at === launchpad && l.eventName === "Graduated") {
-      graduated.push({ token: lc(l.args.token), pair: lc(l.args.pair) });
+      const buy = sorted.find((s) => s.eventName === "Trade" && lc(s.address) === launchpad && s.transactionHash === l.transactionHash);
+      graduated.push({ token: lc(l.args.token), pair: lc(l.args.pair), trader: buy ? lc(buy.args.trader) : null, tx: l.transactionHash, ts });
     } else if (l.eventName === "Swap" && pairToken.has(at)) {
       const token = pairToken.get(at);
       const tokenIs0 = token < whype;

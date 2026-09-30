@@ -4,13 +4,14 @@
 // multiply by the live HYPE price for USD. `?demo` (dev only) serves generated sample data instead.
 import { erc20Abi, keccak256, toBytes, zeroAddress, type Address } from "viem";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
-import { CATEGORIES, type CategoryId, LAUNCHPAD, launchpadAbi as padViews, pub } from "./launch";
+import { CATEGORIES, type CategoryId, LAUNCHPAD, launchpadAbi as padViews, pub, SECTORS, type SectorId } from "./launch";
 
 export type TokenStat = {
   address: string;
   handle: string;
   symbol: string;
   category: CategoryId;
+  sector: SectorId | null; // from the creator profile (2026-09-30); null for tokens launched before sectors
   creator: string;
   x_user_id: string;
   x_name: string | null;
@@ -147,6 +148,7 @@ async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat 
   const price = Number(vHype) / Number(vToken);
   const common = {
     address: address.toLowerCase(),
+    sector: null, // the indexer adds it within a minute (from the stored profile)
     creator: creator.toLowerCase(),
     launched_at: new Date().toISOString(),
     graduated,
@@ -318,6 +320,31 @@ export async function tokensByAddress(addresses: string[]): Promise<Map<string, 
   return out;
 }
 
+// ------------------------------------------------------------------ launched tokens a wallet holds (balances, Send)
+
+let allCache: { at: number; list: Promise<TokenStat[]> } | null = null;
+/** Every launched token (cached 60 s; prices in it are for valuing balances, not trading). */
+function allTokens(): Promise<TokenStat[]> {
+  if (allCache && Date.now() - allCache.at < 60_000) return allCache.list;
+  const list = rest<Record<string, unknown>[]>("token_stats?select=*&limit=1000").then((rows) => rows.map(toStat));
+  allCache = { at: Date.now(), list };
+  list.catch(() => (allCache = null));
+  return list;
+}
+
+/** Launched tokens this wallet holds right now, read on-chain (one multicall): bought, launched or received. */
+export async function launchedHoldings(wallet: Address): Promise<{ token: TokenStat; balance: bigint }[]> {
+  const list = await allTokens();
+  if (!list.length) return [];
+  const res = await pub.multicall({
+    contracts: list.map((t) => ({ address: t.address as Address, abi: erc20Abi, functionName: "balanceOf", args: [wallet] }) as const),
+    allowFailure: true,
+  });
+  return list
+    .map((token, i) => ({ token, balance: res[i].status === "success" ? (res[i].result as bigint) : 0n }))
+    .filter((h) => h.balance > 0n);
+}
+
 /** ?demo only: three example positions. */
 export async function positions(): Promise<Position[]> {
   return demoPositions();
@@ -369,6 +396,7 @@ function demoTokens(): TokenStat[] {
       handle,
       symbol: handle.toUpperCase(),
       category: DEMO_CATS[i % DEMO_CATS.length],
+      sector: SECTORS[i % SECTORS.length].id,
       creator: address,
       x_user_id: String(1_000 + i),
       x_name: handle.replace(/_/g, " "),

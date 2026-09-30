@@ -51,7 +51,7 @@ test("aggregator sell straight on the pair: trader unknown, token1 orientation",
 
 test("graduation is reported (so the watcher adds the new pair)", () => {
   const { graduated } = liveTrades([log(PAD, "Graduated", { token: TOKEN, pair: PAIR, hype: e, tokens: e, liquidityBurned: e }, 1)], ctx, 0);
-  assert.deepEqual(graduated, [{ token: TOKEN, pair: PAIR }]);
+  assert.deepEqual(graduated.map(({ token, pair }) => ({ token, pair })), [{ token: TOKEN, pair: PAIR }]);
 });
 
 test("two swaps in one tx each use their own Sync", () => {

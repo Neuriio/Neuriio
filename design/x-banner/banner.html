@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Neuriio X banner</title>
+<link href="https://fonts.googleapis.com/css2?family=Lilex:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* X banner, 3000x1000 (X shows it at 1500x500). Safe zones: the profile picture covers roughly
+     x < 760, y > 640 on desktop; phones crop ~120px off the top and bottom. */
+  :root {
+    --bg: #463764;
+    --surface: #352751;
+    --lavender: #817298;
+    --muted: #8c7d9f;
+    --text: #f3efff;
+    --text-2: #ecddff;
+    --cyan: #ccecec;
+    --line: rgba(236, 221, 255, 0.16);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 3000px; height: 1000px; overflow: hidden; background: var(--surface); }
+  body { font-family: "Lilex", ui-monospace, Menlo, monospace; color: var(--text); }
+
+  .banner {
+    position: relative;
+    width: 3000px;
+    height: 1000px;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 38% 70% at 76% 50%, rgba(129, 114, 152, 0.45), transparent 70%),
+      radial-gradient(ellipse 50% 80% at 20% 40%, rgba(70, 55, 100, 0.9), transparent 75%),
+      linear-gradient(160deg, #3b2c5a 0%, var(--surface) 55%, #2a1f42 100%);
+  }
+  /* the app's dot grid, fading toward the edges */
+  .dots {
+    position: absolute; inset: 0;
+    background: radial-gradient(circle, #1b1229 2px, transparent 2.6px) 0 0 / 44px 44px;
+    -webkit-mask-image: radial-gradient(ellipse 70% 80% at 60% 50%, #000 20%, transparent 80%);
+            mask-image: radial-gradient(ellipse 70% 80% at 60% 50%, #000 20%, transparent 80%);
+    opacity: 0.9;
+  }
+
+  /* ---- mark, right ---- */
+  .mark-wrap {
+    position: absolute;
+    left: 1960px; top: 480px;
+    transform: translate(-0%, -50%);
+  }
+  .mark {
+    width: 800px;
+    display: block;
+    filter: drop-shadow(0 0 60px rgba(204, 236, 236, 0.18)) drop-shadow(0 30px 80px rgba(27, 18, 41, 0.6));
+  }
+  /* faint outline echoes behind the mark */
+  .echo {
+    position: absolute; left: 0; top: 0;
+    width: 800px; opacity: 0.07;
+    filter: brightness(2.2) grayscale(1);
+  }
+  .echo.e1 { transform: translate(-70px, 40px) scale(1.12); }
+  .echo.e2 { transform: translate(-140px, 80px) scale(1.24); opacity: 0.04; }
+
+  /* ---- copy, left ---- */
+  .copy {
+    position: absolute;
+    left: 190px; top: 160px;
+    width: 1760px;
+  }
+  .kicker {
+    font-size: 40px; font-weight: 600; letter-spacing: 0.32em;
+    color: var(--cyan); text-transform: uppercase;
+    display: flex; align-items: center; gap: 24px;
+  }
+  .kicker::before {
+    content: ""; width: 70px; height: 3px; background: var(--cyan); opacity: 0.8;
+  }
+  h1 {
+    margin-top: 30px; white-space: nowrap;
+    font-size: 146px; font-weight: 700; line-height: 1; letter-spacing: -0.03em;
+    color: var(--text);
+  }
+  h1 .dot { color: var(--cyan); }
+  .sub {
+    margin-top: 34px; white-space: nowrap;
+    font-size: 44px; font-weight: 400; line-height: 1.35;
+    color: var(--text-2); opacity: 0.85;
+  }
+  .chips {
+    margin-top: 44px;
+    display: flex; gap: 22px;
+  }
+  .chip {
+    font-size: 34px; font-weight: 500;
+    padding: 16px 28px;
+    border: 2px solid var(--line);
+    border-radius: 14px;
+    background: linear-gradient(160deg, rgba(70, 55, 100, 0.65), rgba(53, 39, 81, 0.4));
+    color: var(--text);
+  }
+  .chip b { color: var(--cyan); font-weight: 600; }
+
+  /* ---- bottom-right tag ---- */
+  .tag {
+    position: absolute; right: 150px; bottom: 150px;
+    font-size: 34px; letter-spacing: 0.12em; color: var(--muted);
+  }
+</style>
+</head>
+<body>
+  <div class="banner">
+    <div class="dots"></div>
+
+    <div class="mark-wrap">
+      <img class="echo e2" src="mark.png" alt="" />
+      <img class="echo e1" src="mark.png" alt="" />
+      <img class="mark" src="mark.png" alt="Neuriio" />
+    </div>
+
+    <div class="copy">
+      <div class="kicker">Neuriio</div>
+      <h1>Tokenize Accounts<span class="dot">.</span></h1>
+      <p class="sub">Grow your account. Reach new audiences. Stay relevant.</p>
+      <div class="chips">
+        <span class="chip">Launch <b>solo</b></span>
+        <span class="chip">Form an <b>FTF</b> · Friends Turned Fam</span>
+      </div>
+    </div>
+
+    <div class="tag">ON ELYSIUM</div>
+  </div>
+</body>
+</html>

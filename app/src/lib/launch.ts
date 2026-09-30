@@ -16,6 +16,18 @@ export const CATEGORIES = [
 ] as const;
 export type CategoryId = (typeof CATEGORIES)[number]["id"];
 
+/** "What sector are you?" (2026-09-30). Off-chain: part of the hashed profile (supabase/functions/_shared/launchPass.ts). */
+export const SECTORS = [
+  { id: "robotics", label: "Robotics", hint: "Machines, automation, hardware" },
+  { id: "quantum", label: "Quantum", hint: "Qubits, physics, deep tech" },
+  { id: "finance", label: "Finance", hint: "Markets, DeFi, money" },
+  { id: "ai", label: "AI", hint: "Models, agents, compute" },
+  { id: "energy", label: "Energy", hint: "Power, grids, climate" },
+  { id: "memory", label: "Memory", hint: "Chips, storage, data" },
+  { id: "space", label: "Space", hint: "Launches, satellites, beyond" },
+] as const;
+export type SectorId = (typeof SECTORS)[number]["id"];
+
 export const ABOUT_MIN = 50;
 export const ABOUT_MAX = 5000;
 export const MAX_LINKS = 10;
@@ -87,7 +99,7 @@ export type LaunchPassResponse = {
 /** Our backend checks the X login and signs the one-time launch pass. */
 export async function requestLaunchPass(
   accessToken: string,
-  body: { category: CategoryId; profile: { about: string; links: { label: string; url: string }[] } },
+  body: { sector: SectorId; category: CategoryId; profile: { about: string; links: { label: string; url: string }[] } },
 ): Promise<LaunchPassResponse> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/launch-pass`, {
     method: "POST",

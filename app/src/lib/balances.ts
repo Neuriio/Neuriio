@@ -1,9 +1,11 @@
 // Everything the account panel shows: the Neuriio wallet's balances on Elysium and on HyperCore.
-// Each venue always lists HYPE, KNTQ and USDC (true values, even $0.00), then any other token held.
+// Each venue always lists HYPE, KNTQ and USDC (true values, even $0.00), then any other token held. On Elysium that
+// includes launched tokens (shown as "$TICKER", valued at their curve/pool price x HYPE's HyperCore mainnet price).
 import { createPublicClient, erc20Abi, fallback, formatUnits, http, type Address } from "viem";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { elysiumTestnet } from "../chain";
 import { ELYSIUM_RPCS, ELYSIUM_TOKENS, HL_TESTNET, SHOWN_TOKENS } from "./config";
+import { launchedHoldings } from "./explore";
 
 export type TokenBalance = { symbol: string; amount: number; usd: number };
 export type VenueBalance = { total: number; tokens: TokenBalance[] };
@@ -58,13 +60,21 @@ async function loadSpotPrices(client: InfoClient) {
 }
 
 async function elysium(user: Address, price: Map<string, number>): Promise<VenueBalance> {
-  const [native, ...raw] = await Promise.all([
+  const [held, native, ...raw] = await Promise.all([
+    launchedHoldings(user).catch(() => []), // a Supabase hiccup must not hide the rest
     pub.getBalance({ address: user }),
     ...ELYSIUM_TOKENS.map((t) => pub.readContract({ address: t.address, abi: erc20Abi, functionName: "balanceOf", args: [user] })),
   ]);
   const amounts = new Map<string, number>([["HYPE", Number(formatUnits(native, 18))]]); // gas HYPE
   ELYSIUM_TOKENS.forEach((t, i) => amounts.set(t.symbol, (amounts.get(t.symbol) ?? 0) + Number(formatUnits(raw[i], t.decimals))));
   const byToken = new Map([...amounts].map(([symbol, amount]) => [symbol, { symbol, amount, usd: amount * (price.get(symbol) ?? 0) }]));
+  // launched tokens: "$" keeps a ticker like HYPE apart from the real one
+  const hypeUsd = price.get("HYPE") ?? 0;
+  for (const { token, balance } of held) {
+    const amount = Number(formatUnits(balance, 18));
+    const symbol = `$${token.symbol}`;
+    byToken.set(symbol, { symbol, amount, usd: amount * token.price_hype * hypeUsd });
+  }
   return arrange(byToken);
 }
 

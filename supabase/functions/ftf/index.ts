@@ -5,7 +5,7 @@
 //   create  { name, ticker }            -> you're the founder (accepted); then invite 3 people
 //   mine    {}                          the FTF you're forming (as founder), with member cards
 //   inbox   {}                          notifications: invites to you + requests on FTFs you founded
-//   profile { draftId, category, about, links }   founder, after all 4 accepted
+//   profile { draftId, sector, category, about, links }   founder, after all 4 accepted
 //   pfp     { draftId, contentType, base64 }      founder: the FTF's picture (png/jpeg/webp, <= 512 KB)
 //   invite  { draftId, handle }        founder invites a Neuriio user by X handle
 //   request { draftId }                ask to be added (anyone logged in)
@@ -30,6 +30,8 @@ import {
   ftfPassTypes,
   launchpadDomain,
   PASS_TTL_SECONDS,
+  SECTORS,
+  type Sector,
   validFtfIdentity,
 } from "../_shared/launchPass.ts";
 import { CORS, HttpError, internalError, json, privyAuth, userRow, type XUser } from "../_shared/privy.ts";
@@ -58,6 +60,7 @@ type Draft = {
   ticker: string;
   profile: string | null;
   profile_hash: string | null;
+  sector: Sector | null;
   category: Category | null;
   pfp_url: string | null;
   status: string;
@@ -127,7 +130,7 @@ async function view(d: Draft) {
     } catch { /* stored by us; never malformed */ }
   }
   return {
-    draft: { id: d.id, founder: d.founder, name: d.name, ticker: d.ticker, status: d.status, category: d.category, pfpUrl: d.pfp_url, about, links },
+    draft: { id: d.id, founder: d.founder, name: d.name, ticker: d.ticker, status: d.status, sector: d.sector, category: d.category, pfpUrl: d.pfp_url, about, links },
     members: members.map((m) => ({ ...m, ...cards.get(m.x_user_id) })),
   };
 }
@@ -195,24 +198,26 @@ async function inbox(who: XUser) {
   return { items: [...invites, ...requests].sort((a, b) => String(b.at).localeCompare(String(a.at))) };
 }
 
-/** Founder, once all 4 accepted: category + about + links (the picture comes from `pfp`). */
+/** Founder, once all 4 accepted: sector + category + about + links (the picture comes from `pfp`). */
 async function profile(who: XUser, body: Body) {
   const d = await draftOf(body.draftId);
   mustBeOpen(d);
   mustBeFounder(d, who);
   if (accepted(await membersOf(d.id)).length !== FTF_MEMBERS) fail(409, `All ${FTF_MEMBERS} members have to accept first`);
+  const sector = String(body.sector) as Sector;
+  if (!SECTORS.includes(sector)) fail(422, `Pick a sector: ${SECTORS.join(", ")}`);
   const category = String(body.category) as Category;
   if (!CATEGORIES.includes(category)) fail(422, `Pick a category: ${CATEGORIES.join(", ")}`);
   let p: { content: string; hash: `0x${string}` };
   try {
-    p = canonicalFtfProfile(body, { name: d.name, ticker: d.ticker, founderXUserId: d.founder, category, pfpUrl: d.pfp_url });
+    p = canonicalFtfProfile(body, { name: d.name, ticker: d.ticker, founderXUserId: d.founder, sector, category, pfpUrl: d.pfp_url });
   } catch (e) {
     return fail(422, (e as Error).message);
   }
   const { error } = await db.from("ftf_drafts")
-    .update({ category, profile: p.content, profile_hash: p.hash, updated_at: new Date().toISOString() }).eq("id", d.id);
+    .update({ sector, category, profile: p.content, profile_hash: p.hash, updated_at: new Date().toISOString() }).eq("id", d.id);
   if (error) dbError("profile", error.message);
-  return view({ ...d, category, profile: p.content, profile_hash: p.hash });
+  return view({ ...d, sector, category, profile: p.content, profile_hash: p.hash });
 }
 
 const PFP_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
@@ -239,9 +244,9 @@ async function pfp(who: XUser, body: Body) {
   const url = db.storage.from("ftf-pfp").getPublicUrl(path).data.publicUrl;
   // the profile document includes the picture URL, so it has to be saved again after a new picture
   let patch: Partial<Draft> = { pfp_url: url };
-  if (d.profile && d.category) {
+  if (d.profile && d.sector && d.category) {
     const old = JSON.parse(d.profile);
-    const p = canonicalFtfProfile({ about: old.about, links: old.links }, { name: d.name, ticker: d.ticker, founderXUserId: d.founder, category: d.category, pfpUrl: url });
+    const p = canonicalFtfProfile({ about: old.about, links: old.links }, { name: d.name, ticker: d.ticker, founderXUserId: d.founder, sector: d.sector, category: d.category, pfpUrl: url });
     patch = { ...patch, profile: p.content, profile_hash: p.hash };
   }
   const { error } = await db.from("ftf_drafts").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", d.id);
@@ -358,7 +363,7 @@ async function pass(who: XUser, body: Body) {
   mustBeFounder(d, who);
   const acc = accepted(await membersOf(d.id));
   if (acc.length !== FTF_MEMBERS) fail(409, `An FTF launches with exactly ${FTF_MEMBERS} members (${acc.length} accepted)`);
-  if (!d.profile || !d.profile_hash || !d.category) fail(409, "Add the FTF's category and profile first");
+  if (!d.profile || !d.profile_hash || !d.sector || !d.category) fail(409, "Add the FTF's sector, category and profile first");
   // founder first, then in the order they joined
   const ordered = [acc.find((m) => m.role === "founder")!, ...acc.filter((m) => m.role !== "founder")];
   const { data: users, error } = await db.from("users").select("x_user_id, wallet").in("x_user_id", ordered.map((m) => m.x_user_id));

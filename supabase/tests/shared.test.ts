@@ -82,7 +82,7 @@ test("launched -> token row", () => {
 });
 
 test("profile validation + stable hash", () => {
-  const who = { xUserId: "1", handle: "a", category: "trader" as const };
+  const who = { xUserId: "1", handle: "a", sector: "ai" as const, category: "trader" as const };
   assert.throws(() => canonicalProfile({ about: "too short" }, who), /at least 50/);
   assert.throws(() => canonicalProfile({ about: "x".repeat(60), links: [{ label: "p", url: "http://x.com" }] }, who), /https/);
   const a = canonicalProfile({ about: "  " + "y".repeat(60) + " ", links: [{ label: " P ", url: "https://x.com/a" }] }, who);
@@ -91,7 +91,7 @@ test("profile validation + stable hash", () => {
 });
 
 test("profile: link list is capped before any per-link work", () => {
-  const who = { xUserId: "1", handle: "a", category: "trader" as const };
+  const who = { xUserId: "1", handle: "a", sector: "ai" as const, category: "trader" as const };
   const many = Array.from({ length: 100_000 }, () => ({ label: "x", url: "https://x.com" }));
   assert.throws(() => canonicalProfile({ about: "y".repeat(60), links: many }, who), /At most 10 links/);
   assert.throws(() => canonicalProfile({ about: "y".repeat(60), links: "nope" as never }, who), /must be a list/);
@@ -110,7 +110,7 @@ test("FTF name + ticker rules match the contract", () => {
   assert.deepEqual(validFtfIdentity(" Degen Den ", "den"), { name: "Degen Den", ticker: "DEN" });
   for (const bad of ["", "De  n", "Den<script>", "x".repeat(33)]) assert.throws(() => validFtfIdentity(bad, "DEN"), /Name/);
   for (const bad of ["D", "DEN!", "ABCDEFGHIJK"]) assert.throws(() => validFtfIdentity("Degen Den", bad), /Ticker/);
-  const a = canonicalFtfProfile({ about: "z".repeat(60) }, { name: "Degen Den", ticker: "DEN", founderXUserId: "1", category: "trader", pfpUrl: null });
-  assert.match(a.content, /"category":"trader"/);
+  const a = canonicalFtfProfile({ about: "z".repeat(60) }, { name: "Degen Den", ticker: "DEN", founderXUserId: "1", sector: "space", category: "trader", pfpUrl: null });
+  assert.match(a.content, /"sector":"space","category":"trader"/);
   assert.match(a.content, /"kind":"ftf"/);
 });

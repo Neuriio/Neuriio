@@ -20,6 +20,13 @@ const routerAbi = parseAbi([
 export type Side = "buy" | "sell";
 export type Quote = { out: bigint; refund: bigint }; // refund: HYPE sent back when a buy sells out the curve
 
+/** True if this curve buy sells the curve's last tokens, i.e. the same transaction graduates the token. */
+export async function buyGraduates(token: Address, q: Quote): Promise<boolean> {
+  if (q.refund > 0n) return true; // more HYPE than the curve had left: only happens on the graduating buy
+  const [, graduated, , , , realToken] = await pub.readContract({ address: LAUNCHPAD, abi: padAbi, functionName: "curves", args: [token] });
+  return !graduated && q.out >= realToken;
+}
+
 /** Exact amount out for `amountIn` (HYPE wei to buy, token wei to sell). */
 export async function quote(token: Address, graduated: boolean, side: Side, amountIn: bigint): Promise<Quote> {
   if (amountIn === 0n) return { out: 0n, refund: 0n };

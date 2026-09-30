@@ -1,14 +1,15 @@
 // Menu button (just three bold lines, no box) next to the logo: same click-to-morph spring panel as
 // Account/Points, opening from the top-left. Lists the app's sections as plain line items (no boxes).
-// Explore and Launch are live pages; the others aren't built yet.
+// Feed (new page, being built), Launch and Explore are links; trading (Perps, Spot, Outcome on one line, the future
+// /trade page) is greyed out as "Coming soon".
 import { Menu } from "lucide-react";
 import { Morph } from "./Morph";
 
 const PAGES = [
-  { label: "Explore", href: "/explore" },
+  { label: "Feed", href: "/feed", isNew: true },
   { label: "Launch", href: "/launch" },
+  { label: "Explore", href: "/explore" },
 ];
-const ITEMS = ["Dashboard", "Spot", "Perps", "Outcome"];
 
 export function MenuBox() {
   return (
@@ -24,13 +25,14 @@ export function MenuBox() {
         {PAGES.map((p) => (
           <a key={p.href} href={p.href} className="menu-item">
             {p.label}
+            {p.isNew && <span className="menu-new">New</span>}
           </a>
         ))}
-        {ITEMS.map((item) => (
-          <button key={item} type="button" className="menu-item">
-            {item}
-          </button>
-        ))}
+        {/* /trade: not live yet */}
+        <span className="menu-item menu-soon" aria-disabled="true">
+          Perps, Spot and Outcome
+          <span className="menu-soon-tag">Coming soon</span>
+        </span>
       </nav>
     </Morph>
   );

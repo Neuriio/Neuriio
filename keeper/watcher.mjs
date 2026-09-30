@@ -4,7 +4,8 @@
 //
 //   Primary: websocket log subscription (WS_URL; Elysium's official RPC has no websocket, the hypedexer node does).
 //   Fallback: HTTP polling of eth_getLogs every POLL_MS (RPC_URL) whenever the websocket is down.
-//   Output:   private Realtime channels "trades:<token>" and "trades:all", event "trade" (see src/watch/trades.mjs).
+//   Output:   private Realtime channels "trades:<token>" and "trades:all", event "trade" (see src/watch/trades.mjs),
+//             plus event "graduated" {token, pair, trader, tx, ts} when a buy graduates a token (the app's overlay).
 //             Only the service key can send there (migration 20260928020000_live_trades.sql). Sent over a
 //             persistent Realtime websocket (~75-135 ms to a viewer, measured 2026-09-29) instead of the REST
 //             broadcast endpoint (~300-490 ms); REST only while a token's channel is still joining.
@@ -93,14 +94,14 @@ setInterval(() => {
 }, 60_000).unref();
 channelFor("trades:all"); // always joined
 
-async function broadcast(trades) {
-  if (!trades.length) return;
+async function broadcast(items, event = "trade") {
+  if (!items.length) return;
   const viaRest = [];
-  for (const t of trades) {
+  for (const t of items) {
     for (const topic of [`trades:${t.token}`, "trades:all"]) {
       const c = channelFor(topic);
-      if (c.ready) c.ch.send({ type: "broadcast", event: "trade", payload: t }).catch(() => {});
-      else viaRest.push({ topic, event: "trade", payload: t, private: true }); // channel still joining
+      if (c.ready) c.ch.send({ type: "broadcast", event, payload: t }).catch(() => {});
+      else viaRest.push({ topic, event, payload: t, private: true }); // channel still joining
     }
   }
   if (!viaRest.length) return;
@@ -144,6 +145,7 @@ async function handle(logs, source) {
     const received = Date.now();
     const { trades, graduated } = liveTrades(group, ctx, timestampOf(group));
     await broadcast(trades);
+    await broadcast(graduated, "graduated"); // after its trades, so charts already show the last curve buy
     if (trades.length) log("trades", { block: Number(n), n: trades.length, source, ms: Date.now() - received });
     for (const g of graduated) {
       ctx.pairToken.set(g.pair, g.token);

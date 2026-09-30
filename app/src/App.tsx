@@ -9,6 +9,7 @@ import { LogoMarquee } from "./components/LogoMarquee";
 import { useTickerLogos } from "./lib/tickers";
 import { LaunchCard } from "./components/LaunchCard";
 import { ExploreCard } from "./components/ExploreCard";
+import { FeedCard } from "./components/FeedCard";
 import { useRegisterOnLogin } from "./lib/register";
 import { useNotificationsPoller } from "./lib/ftf";
 
@@ -39,6 +40,11 @@ export function App() {
         // launch: one bigger card, no tabs bar
         <main className="stage stage-launch">
           <LaunchCard />
+        </main>
+      ) : PAGE === "/feed" ? (
+        // feed: one column as wide as Explore's three cards; grows with the page and scrolls
+        <main className="stage stage-feed">
+          <FeedCard />
         </main>
       ) : PAGE === "/explore" ? (
         // explore: search + top list beside the picked token's chart
