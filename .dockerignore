@@ -1,0 +1,19 @@
+# Build context for Dockerfile (web app) and keeper/Dockerfile.watcher: each COPYs only what it needs
+**/node_modules
+**/.env*
+app/dist
+.git
+archive
+broadcast
+cache
+design
+lib
+logs
+notes
+out
+script
+src
+supabase
+test
+.claude
+.github

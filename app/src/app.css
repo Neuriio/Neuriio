@@ -1192,6 +1192,34 @@ body {
   transform: translate(-50%, calc(-50% - 40px));
   width: min(1000px, calc(100vw - 32px));
 }
+/* launch + feed pages: twisted dot strands on the page edges, half cut off like the X banner, top to bottom,
+   behind everything */
+.dna-strand {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 240px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+.dna-left {
+  left: -120px;
+}
+.dna-right {
+  right: -120px;
+}
+/* feed scrolls: the strands stay put, top to bottom of the window */
+.dna-fixed {
+  position: fixed;
+  height: 100vh;
+}
+/* hidden once the visible half would run into the card */
+@media (max-width: 1260px) {
+  .dna-strand {
+    display: none;
+  }
+}
 .stage-launch .launch-grid {
   grid-template-columns: 310px 1fr;
   min-height: 510px;
@@ -1634,7 +1662,8 @@ body {
 }
 
 /* ---- /feed: posts like X (like, comment, send). First pass, 2026-09-30 ---- */
-/* as wide as Explore's three cards together; in the page flow, so it grows and the page scrolls */
+/* as wide as Explore's three cards together. The page itself doesn't scroll: the card grows to fill the window
+   (between the search and the footer links) and then the posts scroll inside it (user, 2026-10-01) */
 .stage-feed {
   position: relative;
   top: auto;
@@ -1660,15 +1689,27 @@ body {
 .feed-grid {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 32px;
   padding: 24px;
+  /* window minus the top bar + search (180px) and the footer links (110px) */
+  max-height: calc(100dvh - 290px);
+}
+.feed-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(236, 221, 255, 0.18) transparent;
+  padding-right: 8px;
 }
 .feed-side {
   display: flex;
   flex-direction: column;
   align-self: start;
-  position: sticky;
-  top: 16px;
+  max-height: 100%;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(236, 221, 255, 0.18) transparent;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: rgba(10, 6, 18, 0.35);
@@ -2070,7 +2111,17 @@ body {
     padding: 16px;
   }
   .feed-side {
-    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  /* phones: one column (you, then posts), so the page scrolls instead of the posts */
+  .feed-grid {
+    max-height: none;
+    grid-template-rows: auto;
+  }
+  .feed-list {
+    overflow: visible;
+    padding-right: 0;
   }
 }
 

@@ -598,6 +598,44 @@ tokens**. The user sends them testnet HYPE on the call if they have none. After 
 - `?demo` sample data is dev-only: the link shows real testnet data. The Feed still has sample posts (not stored).
 - Burner (owner) has ~0.68 HYPE for gas.
 
+**Answered 2026-09-30:** link = **https://neuriio-production.up.railway.app** (Railway domain, port 8080; no custom
+domain so the user's domain isn't leaked; removed after the call), **no password**, Railway project created by the user
+from the GitHub repo (deploys on every push to `main`). Config: root `Dockerfile` (+ `.dockerignore`) builds `app/` with
+Railway variable `VITE_PRIVY_APP_ID` (build arg) and serves `app/dist` with `app/serve.mjs` (SPA fallback + security
+headers, tested locally). Privy allowed origin to add: `https://neuriio-production.up.railway.app`.
+**Watcher on Railway (2026-10-01):** second service in the same project, same repo, variable
+`RAILWAY_DOCKERFILE_PATH=keeper/Dockerfile.watcher`, runtime variables `SUPABASE_SERVICE_KEY` (legacy service_role key;
+user accepted storing it in Railway) + `SUPABASE_URL=https://yviymgfgaepmtijgyyyo.supabase.co`. No domain/networking
+(worker). Don't also run `./script/run-watcher.sh` on the Mac, or every trade is broadcast twice. Later hardening: a
+broadcast-only role/JWT instead of service_role.
+
+**Security check of the site done 2026-09-30** (no keys or secrets in the bundle, git history, or client; server keys
+only in Supabase secrets; private tables unreadable). Fixed: the `?check` page (`PrivyCheck.jsx`) is now dev-only.
+**To do during/after the Railway setup:**
+1. ~~Static server sends security headers~~ DONE in `app/serve.mjs` (`X-Frame-Options: DENY`, `frame-ancestors 'none'`,
+   nosniff, referrer policy, HSTS).
+2. Privy dashboard (user): allowed origins = the demo origin + localhost only; remove the demo origin after the call.
+3. Before mainnet: move contract ownership from `burner` to a multisig (also in the reminders).
+
+**Contract verification (found 2026-09-30):** the Elysium explorer is Blockscout, no API key:
+`forge verify-contract ADDRESS PATH:CONTRACT --chain 99801 --verifier blockscout --verifier-url https://elysium.kinetiq.xyz/api/ --watch`
+(+ ABI-encoded constructor args; Launchpad uses the `size` profile, 200 runs). Guide: explorer -> Developers -> Verify contract.
+Plan: audit (crit/high/med) -> fix -> redeploy -> verify Launchpad, LaunchRegistry, FeeVault, LaunchToken, SwapRouter
+(+ our modified V2 factory/pair). WHYPE is out of scope (mainnet uses the canonical one).
+**DO AFTER the Railway setup (user chose option B, 2026-09-30): rename to Neuriio names, redeploy testnet core, verify.**
+Renames: Launchpad -> `NeuriioPad`, LaunchRegistry -> `NeuriioRegistry`, FeeVault -> `NeuriioFees`,
+LaunchToken -> `NeuriioToken`, SwapRouter -> `NeuriiSwap` (**confirm with the user: typo for `NeuriioSwap`?**).
+A rename changes the bytecode metadata, so the live contracts can't be verified under new names: redeploy is required.
+Steps: rename contracts/files + imports/tests/scripts -> `forge test` -> redeploy core (`script/deploy-core.sh`; resets the
+testnet token list) -> update `deployments/elysium-testnet.json`, Supabase secrets (`LAUNCHPAD_ADDRESS`,
+`REGISTRY_ADDRESS`, ...), app config, indexer start block -> FeeVault wallets (`0x10E9…EEC3` both) + launch signer ->
+verify each with the forge command above. Keep the EIP-712 domain name "Neuriio Launchpad" unless the user says otherwise
+(changing it means the backend + contract must change together).
+
+**Audit pass 2026-09-30 (Opus 5.5, critical + high only):** Launchpad, LaunchRegistry, FeeVault, LaunchToken, SwapRouter,
+launch-pass + ftf pass signing. **No critical or high findings.** Medium/low not reviewed (left for the Fable audit).
+Biggest trust point: `LAUNCH_SIGNER_KEY` in Supabase secrets (a leak = passes for any handle; rotate via `setLaunchSigner`).
+
 ## 10a. START HERE (state after 2026-09-29; kept for reference)
 
 ### Where things stand

@@ -10,6 +10,7 @@ import { useTickerLogos } from "./lib/tickers";
 import { LaunchCard } from "./components/LaunchCard";
 import { ExploreCard } from "./components/ExploreCard";
 import { FeedCard } from "./components/FeedCard";
+import { DnaStrand } from "./components/DnaStrand";
 import { useRegisterOnLogin } from "./lib/register";
 import { useNotificationsPoller } from "./lib/ftf";
 
@@ -38,14 +39,22 @@ export function App() {
 
       {PAGE === "/launch" ? (
         // launch: one bigger card, no tabs bar
-        <main className="stage stage-launch">
-          <LaunchCard />
-        </main>
+        <>
+          <DnaStrand side="left" />
+          <DnaStrand side="right" phase={1.3} />
+          <main className="stage stage-launch">
+            <LaunchCard />
+          </main>
+        </>
       ) : PAGE === "/feed" ? (
         // feed: one column as wide as Explore's three cards; grows with the page and scrolls
-        <main className="stage stage-feed">
-          <FeedCard />
-        </main>
+        <>
+          <DnaStrand side="left" fixed />
+          <DnaStrand side="right" phase={1.3} fixed />
+          <main className="stage stage-feed">
+            <FeedCard />
+          </main>
+        </>
       ) : PAGE === "/explore" ? (
         // explore: search + top list beside the picked token's chart
         <main className="stage stage-explore">
