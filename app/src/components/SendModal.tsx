@@ -1,21 +1,22 @@
 // Send window (Feed): pick one of your Elysium tokens, enter an amount, send it to the poster's Neuriio wallet.
 // Over the blurred page like Notifications; Escape, × or a click outside closes it (not while sending).
 // `to` null = a sample post with no wallet behind it: the window shows but can't send. `?demo` simulates a send.
+// Target "address" (Account panel): no poster; the user types any 0x address to send to.
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { formatUnits, parseEther, parseUnits, type Address } from "viem";
+import { formatUnits, getAddress, isAddress, parseEther, parseUnits, type Address } from "viem";
 import { Check, ExternalLink, LoaderCircle, X } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { EASE_OUT } from "../lib/motion";
-import { amount as fmt } from "../lib/format";
+import { amount as fmt, shortAddress } from "../lib/format";
 import { DEMO } from "../lib/explore";
 import { elysiumProvider } from "../lib/tx";
 import { elysiumTestnet } from "../chain";
 import { GAS_RESERVE, sendableTokens, sendToken, type SendToken } from "../lib/send";
 
-export type SendTarget = { handle: string; name: string; pfp: string | null; wallet: Address | null };
+export type SendTarget = { handle: string; name: string; pfp: string | null; wallet: Address | null } | "address";
 
 type Phase = { kind: "form" } | { kind: "sending" } | { kind: "sent"; hash: string } | { kind: "error"; message: string };
 
@@ -34,6 +35,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
   const [tokens, setTokens] = useState<SendToken[] | null>(null);
   const [picked, setPicked] = useState<SendToken | null>(null);
   const [value, setValue] = useState("");
+  const [toInput, setToInput] = useState("");
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
 
   // fresh state + balances each time it opens
@@ -41,6 +43,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
     if (!target) return;
     setPicked(null);
     setValue("");
+    setToInput("");
     setPhase({ kind: "form" });
     setTokens(null);
     if (DEMO) return setTokens(DEMO_TOKENS);
@@ -64,7 +67,12 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
     units = null;
   }
   const tooMuch = units !== null && units > max;
-  const canSend = !!picked && units !== null && units > 0n && !tooMuch && (DEMO || !!target?.wallet);
+  const byAddress = target === "address";
+  const typed = toInput.trim();
+  const badAddress = byAddress && typed !== "" && !isAddress(typed);
+  const recipient: Address | null = !target ? null : byAddress ? (isAddress(typed) ? getAddress(typed) : null) : target.wallet;
+  const toLabel = !target ? "" : byAddress ? (recipient ? shortAddress(recipient) : "") : `@${target.handle}`;
+  const canSend = !!picked && units !== null && units > 0n && !tooMuch && (DEMO ? !byAddress || !!recipient : !!recipient);
 
   async function send() {
     if (!picked || !units || !target) return;
@@ -74,7 +82,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
         await new Promise((r) => setTimeout(r, 1400));
         return setPhase({ kind: "sent", hash: "" });
       }
-      const hash = await sendToken(await elysiumProvider(wallet!), from!, target.wallet!, picked, units);
+      const hash = await sendToken(await elysiumProvider(wallet!), from!, recipient!, picked, units);
       setPhase({ kind: "sent", hash });
     } catch (e) {
       const m = (e as Error).message ?? "";
@@ -99,7 +107,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
             className="nt-modal send-modal"
             role="dialog"
             aria-modal="true"
-            aria-label={`Send to @${target.handle}`}
+            aria-label={byAddress ? "Send on Elysium" : `Send to @${target.handle}`}
             onClick={(e) => e.stopPropagation()}
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -107,9 +115,13 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
             transition={{ duration: 0.22, ease: EASE_OUT }}
           >
             <header className="nt-head">
-              <span className="nt-title send-to">
-                Send to <Avatar handle={target.handle} pfp={target.pfp} size={22} /> <b>@{target.handle}</b>
-              </span>
+              {byAddress ? (
+                <span className="nt-title">Send on Elysium</span>
+              ) : (
+                <span className="nt-title send-to">
+                  Send to <Avatar handle={target.handle} pfp={target.pfp} size={22} /> <b>@{target.handle}</b>
+                </span>
+              )}
               <button className="ex-modal-close" onClick={onClose} disabled={busy} aria-label="Close">
                 <X size={16} />
               </button>
@@ -128,7 +140,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
                   <Check size={20} strokeWidth={3} />
                 </span>
                 <p>
-                  Sent {value} {picked?.symbol} to @{target.handle}
+                  Sent {value} {picked?.symbol} to {toLabel}
                 </p>
                 {phase.hash && (
                   <a className="link-btn" target="_blank" rel="noreferrer" href={`${elysiumTestnet.blockExplorers.default.url}/tx/${phase.hash}`}>
@@ -141,6 +153,23 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
               </div>
             ) : (
               <>
+                {byAddress && (
+                  <label className="send-amount">
+                    <span className="feed-side-title">To</span>
+                    <span className={`send-input send-input-address${badAddress ? " is-bad" : ""}`}>
+                      <input
+                        value={toInput}
+                        onChange={(e) => setToInput(e.target.value)}
+                        placeholder="0x… address on Elysium"
+                        spellCheck={false}
+                        autoComplete="off"
+                        autoFocus
+                        disabled={busy}
+                      />
+                    </span>
+                    {badAddress && <span className="lp-warn">Not a valid address</span>}
+                  </label>
+                )}
                 <span className="feed-side-title">Your tokens on Elysium</span>
                 <ul className="send-tokens">
                   {tokens?.map((t) => (
@@ -175,7 +204,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
                         onChange={(e) => setValue(e.target.value.replace(",", "."))}
                         placeholder="0.0"
                         inputMode="decimal"
-                        autoFocus
+                        autoFocus={!byAddress}
                         disabled={busy}
                       />
                       <span className="send-sym">{picked.symbol}</span>
@@ -187,14 +216,17 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
                   </label>
                 )}
 
-                {!DEMO && !target.wallet && <p className="send-note">Sample post: there's no wallet behind it, so it can't receive yet.</p>}
+                {!DEMO && !byAddress && !target.wallet && <p className="send-note">Sample post: there's no wallet behind it, so it can't receive yet.</p>}
                 {phase.kind === "error" && <p className="nt-error">{phase.message}</p>}
 
                 <button className="lock-login send-go" disabled={!canSend || busy} onClick={send}>
                   {busy ? <LoaderCircle size={13} className="spin" /> : null}
                   {busy ? "Sending…" : picked && units ? `Send ${value} ${picked.symbol}` : "Send"}
                 </button>
-                <p className="send-note">Goes straight to their Neuriio wallet. You pay a little HYPE for gas.</p>
+                <p className="send-note">
+                  {byAddress ? "Elysium testnet only: double-check the address, sends can't be undone." : "Goes straight to their Neuriio wallet."} You
+                  pay a little HYPE for gas.
+                </p>
               </>
             )}
           </motion.div>

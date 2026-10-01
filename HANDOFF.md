@@ -1,4 +1,4 @@
-# Handoff — Neuriio (state as of 2026-09-30 end: upgrade-safe core live on testnet; FIRST THING NEXT SESSION: §10 "NEXT SESSION: live demo link")
+# Handoff — Neuriio (state as of 2026-10-01: Railway demo site LIVE, web + watcher services; see "RAILWAY LIVE" in §10)
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
@@ -608,6 +608,17 @@ headers, tested locally). Privy allowed origin to add: `https://neuriio-producti
 user accepted storing it in Railway) + `SUPABASE_URL=https://yviymgfgaepmtijgyyyo.supabase.co`. No domain/networking
 (worker). Don't also run `./script/run-watcher.sh` on the Mac, or every trade is broadcast twice. Later hardening: a
 broadcast-only role/JWT instead of service_role.
+
+**RAILWAY LIVE (fixed 2026-10-01):** https://neuriio-production.up.railway.app serves `/`, `/launch`, `/feed`,
+`/explore` with 200 + security headers. Cause of the 502: the project (`lively-renewal`) had only ONE service, `Neuriio`,
+carrying `RAILWAY_DOCKERFILE_PATH=keeper/Dockerfile.watcher`, so the public domain pointed at the watcher (no web server).
+Fix: created a second service **`watcher`** (same repo, `main`; `RAILWAY_DOCKERFILE_PATH`, `SUPABASE_URL`,
+`SUPABASE_SERVICE_KEY`), removed those three from `Neuriio` (now only `PORT=8080` + `VITE_PRIVY_APP_ID`), and rebuilt it with
+`railway redeploy -s Neuriio --from-source -y` (deleting variables via CLI does NOT trigger a rebuild; plain "Redeploy"
+may reuse the old image). Mac watcher stopped; the Railway `watcher` service is the only one now.
+Railway access: the claude.ai Railway connector never loads in Code sessions; use the **Railway CLI** (installed via
+`brew install railway`, logged in as the user, repo linked to `lively-renewal` / `production` / `Neuriio`). Claude can read
+logs/variables; deploys and variable writes get blocked by the auto-mode safety check, so the user runs those.
 
 **Security check of the site done 2026-09-30** (no keys or secrets in the bundle, git history, or client; server keys
 only in Supabase secrets; private tables unreadable). Fixed: the `?check` page (`PrivyCheck.jsx`) is now dev-only.

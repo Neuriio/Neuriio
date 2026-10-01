@@ -505,6 +505,15 @@ body {
   flex-direction: column;
   gap: 8px;
 }
+.deposit-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 22px;
+}
+.deposit-foot .feed-send:hover {
+  color: var(--text);
+}
 .deposit-label,
 .deposit-note {
   font-size: 11px;
@@ -2024,6 +2033,9 @@ body {
 }
 .send-input:focus-within {
   border-color: rgba(204, 236, 236, 0.5);
+}
+.send-input-address input {
+  font-size: 13px;
 }
 .send-input.is-bad {
   border-color: rgba(255, 120, 120, 0.6);

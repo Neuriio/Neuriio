@@ -2,7 +2,8 @@
 // outside morphs it back.
 //   Logged out: the button says "Account"; the panel shows a blurred placeholder with a small centered
 //   card whose Login button opens Privy (X, Google, Telegram). Every user gets a Neuriio wallet.
-//   Logged in: the button shows picture + handle; the panel has the deposit address (copy), balances
+//   Logged in: the button shows picture + handle; the panel has the deposit address (copy) + Send (any token
+//   to any address on Elysium, the Feed's send window), balances
 //   on Elysium + HyperCore by token, creator fees with a Claim button (for creators / FTF members), private key
 //   export (Privy's own secure modal) and log out.
 import { useEffect, useState } from "react";
@@ -10,6 +11,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { Bell, Check, Copy } from "lucide-react";
 import { useNotifications } from "../lib/ftf";
 import { NotificationsModal } from "./NotificationsModal";
+import { SendModal } from "./SendModal";
 import { useExportWallet, usePrivy, useWallets } from "@privy-io/react-auth";
 import { formatEther, type Address, type EIP1193Provider } from "viem";
 import { claimCreatorFees, creatorFees } from "../lib/fees";
@@ -76,6 +78,7 @@ function MorphView({ me, address, balances, fees, onExport, onLogout, locked = f
   const { items } = useNotifications();
   const count = locked ? 0 : items.length;
   const [bellOpen, setBellOpen] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
   return (
     <Morph
       label="Account"
@@ -140,11 +143,16 @@ function MorphView({ me, address, balances, fees, onExport, onLogout, locked = f
           : undefined
       }
     >
-      {address ? <DepositAddress address={address} /> : <p className="empty">Creating your wallet…</p>}
+      {address ? (
+        <DepositAddress address={address} onSend={locked ? undefined : () => setSendOpen(true)} />
+      ) : (
+        <p className="empty">Creating your wallet…</p>
+      )}
       <Venue name="Elysium" v={balances?.elysium} />
       <Venue name="HyperCore" v={balances?.hypercore} />
       {!locked && fees && <CreatorFees fees={fees} />}
       {!locked && <NotificationsModal open={bellOpen} onClose={() => setBellOpen(false)} />}
+      {!locked && <SendModal target={sendOpen ? "address" : null} onClose={() => setSendOpen(false)} />}
       {!locked && (
         <div className="dropdown-actions">
           {onExport && (
@@ -170,7 +178,7 @@ function Avatar({ src, initial }: { src: string | null; initial: string }) {
   );
 }
 
-function DepositAddress({ address }: { address: string }) {
+function DepositAddress({ address, onSend }: { address: string; onSend?: () => void }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     await navigator.clipboard.writeText(address);
@@ -186,7 +194,14 @@ function DepositAddress({ address }: { address: string }) {
           {copied ? "Copied" : "Copy"}
         </span>
       </button>
-      <span className="deposit-note">Elysium Testnet Only</span>
+      <span className="deposit-foot">
+        <span className="deposit-note">Elysium Testnet Only</span>
+        {onSend && (
+          <button className="feed-act feed-send" onClick={onSend}>
+            Send <b>$</b>
+          </button>
+        )}
+      </span>
     </div>
   );
 }
