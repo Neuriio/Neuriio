@@ -1,4 +1,4 @@
-# Handoff — Neuriio (state as of 2026-09-29 end: launchpad + Explore + FTF built and live on testnet; START AT §10 "START HERE")
+# Handoff — Neuriio (state as of 2026-09-30 end: upgrade-safe core live on testnet; FIRST THING NEXT SESSION: §10 "NEXT SESSION: live demo link")
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
@@ -567,7 +567,38 @@ same model as Hyperliquid's own app (agent trades, can't withdraw). Quote fields
    so subscriptions can start before the PropAMM is funded.
 7. **Before mainnet:** professional audit, legal/jurisdiction review (leveraged perps + prediction markets), confirm HL fees at scale, contract minEdge granularity (whole bps; 4.5 needs a contract change).
 
-## 10. START HERE (next session, after 2026-09-29)
+## 10. NEXT SESSION (2026-10-01): live demo link — do this FIRST
+
+**Goal (user):** people on a call open a link to the real app, explore it, **launch their own token** and **buy
+tokens**. The user sends them testnet HYPE on the call if they have none. After the call the link is switched off.
+
+**Plan (agreed 2026-09-30):**
+1. **Host the app on Railway** as a static site (`npm --prefix app run build` -> `app/dist`, served by a tiny static
+   server; SPA fallback so `/launch`, `/explore`, `/feed` load directly). Railway env `VITE_PRIVY_APP_ID` (from
+   `app/.env.local`; not in git). Ask the user for: the **domain + subdomain** (e.g. `demo.<domain>`), whether they
+   want a **password prompt** (basic auth) on top, and Railway access (Railway CLI logged in on the Mac, or they create
+   the project on railway.com and we add the config).
+2. **Point the subdomain** at the Railway service (DNS CNAME from Railway).
+3. **Privy dashboard (user does it):** add the demo origin (`https://demo.<domain>`) to the app's **allowed origins**
+   (today only `http://localhost:5173`), or X login fails on the link. Remove it again after the call.
+4. **Keep running on the Mac during the call:** `./script/run-watcher.sh` (live charts) and, optionally,
+   `./script/run-pay-protocol.sh burner`. Indexer, DB and functions already run in Supabase. Backend CORS is `*`.
+5. **Switch off after the call:** remove the custom domain in Railway or stop the service (link dies at once); remove
+   the Privy origin. Re-enable later the same way.
+**Things to know / check before the call:**
+- Guests log in with **X** (Privy's shared X app: the consent screen says "Privy"); each gets a Neuriio wallet. The
+  **deposit address** is in the Account panel (copy button): the user sends testnet HYPE there from their wallet
+  `0xF1AE…E2aE` (~58 HYPE), e.g. 0.3-0.5 HYPE each (launch is free but needs gas; buys need HYPE).
+- **One personal token per X account**; reserved handles/tickers (@usdc, @hype, …) can't launch. Launch passes are
+  rate-limited (5 per X account per 10 min). A guest who already launched sees "Open in Explore".
+- **Testnet curve is tiny (0.1 HYPE virtual):** a token graduates at ~0.29 HYPE raised, so with a few buyers tokens
+  graduate fast (the Graduating orb shows for everyone watching) and price impact on 0.1 HYPE buys is large (real,
+  explained in the tooltip). Optional before the call: `Launchpad.setVirtualHype` (owner) to e.g. 1-5 HYPE for NEW
+  launches so it feels closer to mainnet (5 HYPE -> graduates at ~14 HYPE raised).
+- `?demo` sample data is dev-only: the link shows real testnet data. The Feed still has sample posts (not stored).
+- Burner (owner) has ~0.68 HYPE for gas.
+
+## 10a. START HERE (state after 2026-09-29; kept for reference)
 
 ### Where things stand
 - **Live on Elysium testnet (redeployed 2026-09-29 late, includes FTF):** Launchpad `0x3c1b64c5d4ecc1ffc7fa8ab2eb643e86aba8932f`,
