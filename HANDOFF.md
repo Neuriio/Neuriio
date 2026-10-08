@@ -28,7 +28,9 @@ Check at phone width (375 px) with the dev preview (`.claude/launch.json` "app",
     Syncs with `docs/` on `main` (`.gitbook.yaml` root: ./docs/). The SITE-level Git Sync was not used (it wants a
     `gitbook-docs.yaml`; don't enable it). GitBook may have regrouped pages under `get-started/`: pull before
     editing docs, edits made in GitBook arrive as commits ("GITBOOK-n: ...").
-  - `app.neuriio.xyz` -> Railway `Neuriio` web service (CNAME), Privy allowed origin added. Live but unannounced.
+  - `app.neuriio.xyz` -> Railway `Neuriio` web service (CNAME, now **Proxied**; SSL/TLS mode **Full (Strict)**), Privy
+    allowed origin added. **Hidden until launch:** a second Cloudflare Redirect Rule sends `https://app.neuriio.xyz/*`
+    -> `docs.neuriio.xyz` (302). **Delete that rule at launch.** Testers use `neuriio-production.up.railway.app`.
     **Do NOT make `/` open the Launch page yet** (user: only when going live). Possible **private beta with a
     passcode** before launch: not decided, not built.
 - **Repo cleaned 2026-10-08** (Appendix A): launchpad only; PropAMM-era code removed; README rewritten; CI green.
