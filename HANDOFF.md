@@ -31,6 +31,10 @@ Check at phone width (375 px) with the dev preview (`.claude/launch.json` "app",
   - `app.neuriio.xyz` -> Railway `Neuriio` web service (CNAME, now **Proxied**; SSL/TLS mode **Full (Strict)**), Privy
     allowed origin added. **Hidden until launch:** a second Cloudflare Redirect Rule sends `https://app.neuriio.xyz/*`
     -> `docs.neuriio.xyz` (302). **Delete that rule at launch.** Testers use `neuriio-production.up.railway.app`.
+    **Passcode gate (built 2026-10-08, `app/serve.mjs`):** Railway variable `APP_PASSCODE` on the `Neuriio` service turns
+    it on (unset = off). Every page and file needs the passcode (only `/brand/logo.png` is open); a correct code sets a
+    30-day HttpOnly cookie (HMAC of the passcode: changing `APP_PASSCODE` signs everyone out); 10 wrong tries per visitor
+    / 200 overall per 15 min. Closes the railway.app URL and the skip-Cloudflare route. Remove the variable at launch.
     **Do NOT make `/` open the Launch page yet** (user: only when going live). Possible **private beta with a
     passcode** before launch: not decided, not built.
 - **Repo cleaned 2026-10-08** (Appendix A): launchpad only; PropAMM-era code removed; README rewritten; CI green.
