@@ -31,11 +31,14 @@ Set up, in this order (user = needs the user's accounts/clicks; Claude = can do 
    5372584) and VERIFIED on the explorer (Blockscout): NeuriioRegistry `0xd7879e97c6558486ca0a92283d70a46e89ea84fc`,
    NeuriioFees `0x7e9e5e96c3e99fd201a15e6a33c59aec51a39b2b` (protocol wallets both `0x10E9…EEC3`), NeuriioSwap
    `0x4a85eca6f3ef4a07d049bd1907debb3e8961acac`, NeuriioPad `0xd9943d81b72aa55e52580bbb595af797b04d5e59`,
-   UniswapV2Factory (ours) `0xd30f539cf731d843534a9e3fe9fec51bb456339c`; WHYPE unchanged. Still to verify: the first
-   NeuriioToken and the first graduated UniswapV2Pair (need one launch + graduation on the new core). Verify command:
+   UniswapV2Factory (ours) `0xd30f539cf731d843534a9e3fe9fec51bb456339c`; WHYPE unchanged. Also verified: NeuriioToken (first: @von_hl
+   `0xe37c75b2fcfff1d3ac963552a556e6b78b6d5137`) and UniswapV2Pair (first: `0xd53a1901004dae187fbc333c9925b40ba44495eb`);
+   the explorer auto-matches later tokens and pools (same bytecode), e.g. @__HLOS and its pool matched on their own.
+   NeuriioToken verifies with `--compilation-profile size` (NeuriioPad deploys it, so it's built in NeuriioPad's 200-run
+   profile) and args `(name, symbol, 1e27)`; UniswapV2Pair has no constructor args. Verify command:
    `forge verify-contract ADDR PATH:NAME --chain 99801 --verifier blockscout --verifier-url https://elysium.kinetiq.xyz/api/
    --compilation-profile default|size --constructor-args $(cast abi-encode "constructor(...)" ...) --watch`
-   (`size` only for NeuriioPad; constructor args are in local `broadcast/*/run-latest.json`). Old testnet tokens stay
+   (`size` for NeuriioPad and NeuriioToken; constructor args are in local `broadcast/*/run-latest.json`). Old testnet tokens stay
    on the old core (registry 0x4e16…) and no longer show in the app.
 5. **App domain (user + Claude):** if posts link neuriio.xyz, add it as a Railway custom domain on the `Neuriio`
    service (Railway shows the CNAME), add the origin in the Privy dashboard, and keep the Railway site up (the old
