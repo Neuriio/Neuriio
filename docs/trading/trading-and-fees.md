@@ -20,7 +20,7 @@ All fees are collected in HYPE by the **NeuriioFees** contract and split between
 | Curve trades (0.75%) | 20% | 80% |
 | Pool trades (0.25%) | 80% | 20% |
 
-The protocol share is split between **community rewards (60%)** and **buybacks (40%)**.
+The protocol share is split between **community rewards (60%)** and **KNTQ buybacks (40%)**: HYPE used to buy back KNTQ, the Kinetiq token.
 
 The creator percentages are fixed in the contract: nobody, including Neuriio, can lower a creator's share of fees
 from that contract.
