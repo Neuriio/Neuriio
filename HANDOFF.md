@@ -1,33 +1,41 @@
-# Handoff — Neuriio (state as of 2026-10-08: SOFT LAUNCH Mon 2026-10-12 with docs live; NEW CHAT STARTS AT "SOFT LAUNCH SETUP" below)
+# Handoff — Neuriio (state as of 2026-10-08: docs live at neuriio.xyz, soft launch Mon 10-12; NEXT CHAT: mobile design, see "NEXT CHAT STARTS HERE")
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
 **Project name: Neuriio.** Local folder `/Users/von/Neuriio` (renamed from `elysium`); code lives in the
 **private** GitHub repo **https://github.com/finding-agi/Neuriio** (renamed from `finding-agi/elysium`; old URL redirects).
 
-## SOFT LAUNCH SETUP — NEW CHAT STARTS HERE (written 2026-10-08)
+## NEXT CHAT STARTS HERE (written 2026-10-08)
 
-**Soft launch = Mon 2026-10-12** (first X post), then posts Wed 10-14 and Fri 10-16. **The GitBook docs must be live
-with the soft launch** (user, 2026-10-08), so every post links them. Content plan + post drafts + docs page outline:
-Claude Doc "Neuriio launch content: Oct 12–16" https://claude.ai/code/artifact/8243ce06-32c0-4c72-abd5-f330b843eb20
-(read it first; open question there: testnet-live vs coming-soon on Oct 12).
+**FIRST TASK NEXT CHAT: update the mobile design of the app** (user, 2026-10-08). Start by asking the user which
+screens / what looks wrong on mobile, then work one element at a time in their order (see memory "UI pacing").
+Check at phone width (375 px) with the dev preview (`.claude/launch.json` "app", `?demo` for sample data).
 
-Set up, in this order (user = needs the user's accounts/clicks; Claude = can do in the repo):
-1. **Ask the user first:** Oct 12 = live testnet app people can try, or coming-soon with no link? Which link in posts
-   (neuriio.xyz vs the Railway address)? Docs domain (GitBook default vs docs.neuriio.xyz)? Creator fee share to
-   publish (app copy says 20% before graduation, 80% after; check `FeeVault` + `Launchpad` match before docs print it).
-2. **GitBook (user, by Fri 10-09):** create the account + a space, connect **Git Sync** to `finding-agi/Neuriio`
-   (private repo: install the GitBook GitHub app on it), branch `main`, folder `docs/`. Optional custom domain
-   `docs.neuriio.xyz` (CNAME at the DNS provider, set in GitBook).
-3. **Docs content (Claude, by Sun 10-11):** write `docs/` as Markdown + `docs/SUMMARY.md` (GitBook's table of
-   contents) and `docs/README.md` (first page), 12 pages per the doc's outline: Start (What is Neuriio, Getting
-   started), Launching (Launch your token, Bonding curve, Graduation and locked liquidity, For builders), Trading
-   (Trading and fees, Creator fees, Feed and points), Trust (Safety and contracts, Creator rules, Disclaimer).
-   Minimum if short on time: What is Neuriio, Getting started, the four Launching pages, Disclaimer.
-   Facts come from this file (§0 fees/curve numbers) and the contracts; copy rules: back/support/trade, never
-   invest/returns, "fair launch"/"locked liquidity" never "raise money", never equity; tokens are memes.
-   Commit + push only when the user says so (Git Sync publishes from `main`).
-4. **Contract addresses for "Safety and contracts" — DONE 2026-10-08:** renamed core redeployed on testnet (core block
+### State at end of 2026-10-08 (soft-launch setup is DONE)
+- **Soft launch Mon 2026-10-12** = the first X post (announcement video on the user's "social exposure" thesis), then
+  posts Wed 10-14 and Fri 10-16. The **app is NOT announced yet**: the soft launch points people to the docs only.
+  Content plan, post drafts and the 45 s video script: Claude Doc "Neuriio launch content: Oct 12–16"
+  https://claude.ai/code/artifact/8243ce06-32c0-4c72-abd5-f330b843eb20 . The user makes the video/graphics.
+- **Thesis ("What is Neuriio", written by the user, `docs/README.md`; also in memory "neuriio-thesis"):**
+  launchpads evolve by what they give exposure to (memes -> stocks/crypto onchain -> **social exposure**);
+  $TRUMP/$MELANIA showed the demand; the problem is authenticity; Neuriio = X login only, you can only launch your
+  own X handle; FTFs; "own your own DeFi" is the (undefined) next step. Build all copy from this.
+- **Domains (Cloudflare DNS, all verified working 2026-10-08):**
+  - `neuriio.xyz` (put in the X profile) -> Cloudflare Redirect Rule "soft launch" (`https://neuriio.xyz/*`, 302)
+    -> `docs.neuriio.xyz`; A `@` 192.0.2.1 proxied placeholder; Always Use HTTPS on. Switch the target to the app
+    when going live (302 so it can change).
+  - `docs.neuriio.xyz` -> GitBook site "Neuriio Docs" (Ultimate plan), published + Public. The "Docs" space Git
+    Syncs with `docs/` on `main` (`.gitbook.yaml` root: ./docs/). The SITE-level Git Sync was not used (it wants a
+    `gitbook-docs.yaml`; don't enable it). GitBook may have regrouped pages under `get-started/`: pull before
+    editing docs, edits made in GitBook arrive as commits ("GITBOOK-n: ...").
+  - `app.neuriio.xyz` -> Railway `Neuriio` web service (CNAME), Privy allowed origin added. Live but unannounced.
+    **Do NOT make `/` open the Launch page yet** (user: only when going live). Possible **private beta with a
+    passcode** before launch: not decided, not built.
+- **Repo cleaned 2026-10-08** (Appendix A): launchpad only; PropAMM-era code removed; README rewritten; CI green.
+- **Docs (13 pages in `docs/`):** written from the contracts; the user reviews/edits in GitBook. KNTQ named in the
+  protocol buyback share. Points page has no rates (Points panel in the app is still a placeholder).
+
+**Testnet contracts (renamed core, redeployed + verified 2026-10-08):** renamed core redeployed on testnet (core block
    5372584) and VERIFIED on the explorer (Blockscout): NeuriioRegistry `0xd7879e97c6558486ca0a92283d70a46e89ea84fc`,
    NeuriioFees `0x7e9e5e96c3e99fd201a15e6a33c59aec51a39b2b` (protocol wallets both `0x10E9…EEC3`), NeuriioSwap
    `0x4a85eca6f3ef4a07d049bd1907debb3e8961acac`, NeuriioPad `0xd9943d81b72aa55e52580bbb595af797b04d5e59`,
@@ -40,12 +48,10 @@ Set up, in this order (user = needs the user's accounts/clicks; Claude = can do 
    --compilation-profile default|size --constructor-args $(cast abi-encode "constructor(...)" ...) --watch`
    (`size` for NeuriioPad and NeuriioToken; constructor args are in local `broadcast/*/run-latest.json`). Old testnet tokens stay
    on the old core (registry 0x4e16…) and no longer show in the app.
-5. **App domain (user + Claude):** if posts link neuriio.xyz, add it as a Railway custom domain on the `Neuriio`
-   service (Railway shows the CNAME), add the origin in the Privy dashboard, and keep the Railway site up (the old
-   plan to take it down after the demo call no longer applies if it's the soft-launch app).
-6. **Content assets (user):** promo video 38 s cut (Appendix B at the end of this file) + Post 1 visual by 10-11,
-   Post 2 four-stage graphic by 10-13, schedule all three posts in X with the docs link.
-Later (not for the soft launch): real posting on the Feed (§10 "LIVE TEST PASSED" note), multisig ownership, formal audit.
+
+### Later (not for the soft launch)
+Private beta / passcode decision; `/` -> Launch at go-live; real posting on the Feed; Points panel + leaderboard;
+multisig ownership + formal audit before mainnet.
 
 ## 0. PIVOT 2026-09-27: token launchpad (pump.fun model); PropAMM PAUSED
 
@@ -1228,6 +1234,9 @@ Data to build for it (Supabase, public-read):
 - Kept: `script/hype-to-elysium.sh` (now runs `keeper/tools/hype-to-elysium.mjs`). `src/swap/v2/` is excluded from
   `forge fmt` (foundry.toml) so it still diffs cleanly against upstream v2-core.
 - README rewritten for the launchpad.
+
+**Superseded 2026-10-08:** the first announcement video now follows the user's "social exposure" thesis (docs/README.md,
+"What is Neuriio"); its 45 s script is Post 1 in the content doc. The shot prompts below are still reused.
 
 ## Appendix B. Promo video: "Tokenize Accounts" (Higgsfield) — work on AFTER the Explore page
 
