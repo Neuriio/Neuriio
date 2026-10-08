@@ -1,35 +1,23 @@
 # What is Neuriio
 
-Neuriio is a fair-launch token launchpad on [Elysium](https://elysium.kinetiq.xyz/docs/what-is-elysium). It does two things:
+The evolution of launchpads are changing to what we get exposure to. The beginning launchpads allowed us to get exposure to any narrative or meme that surfaced the internet in real time. We are currently in a new meta of token launches that are backed by stocks and crypto onchain. This allows you to not only get exposure to the narrative but the underlying stock or crypto tied to it as well. We believe the next evolution is social exposure.
 
-* **Tokenize accounts.** Your X account has a voice; on Neuriio it can have a ticker. Log in with X and launch a token
-  named after your account, so your audience can back you and trade alongside you.
-* **Fair launches for builders.** Teams building real products can launch a token through their company's X account
-  with no presale, no insider allocation and liquidity locked forever, so nobody can drain it.
+## Social Exposure
 
-## How it works, in one minute
+When $TRUMP and $MELANIA launched this was our first introduction into what is called "Social Exposure". The difficulty current launchpads face is authenticity. It was hard to believe these coins launched because anyone can launch a ticker and enter any info attached to make it seem legit. The market clearly showed immense interest for getting social exposure added to their portfolio once confirmed true, which leads us to tokenizing your X account.
 
-1. **Launch.** Log in with X. Each X account can launch one token, for free (you only pay gas).
-2. **Bonding curve.** The token trades on a bonding curve priced in HYPE. Everyone buys from the same curve, at the
-   same price for the same moment.
-3. **Graduation.** When the curve sells out, the token graduates: in the same transaction, all the HYPE it raised and
-   the rest of its supply move into its own pool.
-4. **Locked liquidity.** The pool's LP tokens are burned. The liquidity can never be pulled, by anyone, including us.
+## Tokenize Account
 
-Creators earn a share of every trade's fee in HYPE, before and after graduation.
+Your X account has data and information that holds social value and credibility in the world we live in today. On Neuriio, the only way to login is through X auth and the only token you can launch is the name of your X handle. This eliminates vamping and authenticity because only the X account owner can approve and launch the token. We also have the option to create a FTF (Friends Turned Fam) where you and 3 others upon approval can launch an FTF together to put everyone onchain.
 
-## Why it's fair
+We are excited for everyone to gain social exposure to their favorite X accounts and FTFs to see what everyone unlocks and builds on top of. Social exposure is just the start and then you will own your own DeFi, which has never been done before.
 
-* No presale, no team allocation, no whitelist. The creator gets no free tokens.
-* Only Neuriio's launchpad can open a token's pool, so nobody can open it first at a bad price.
-* Graduation happens inside the trade that sells the last curve token, so there's no gap to front-run.
-* All contracts are verified on the Elysium explorer. See [Safety and contracts](trust/safety-and-contracts.md).
+&#x20;
 
 {% hint style="info" %}
 Neuriio is live on **Elysium testnet**. Testnet tokens and HYPE have no value.
 {% endhint %}
 
 {% hint style="warning" %}
-Tokens on Neuriio are memes with no promise of value. They are not equity, shares or a claim on any person or company.
-Read the [Disclaimer](trust/disclaimer.md).
+Tokens on Neuriio are memes with no promise of value. They are not equity, shares or a claim on any person or company. Read the [Disclaimer](trust/disclaimer.md).
 {% endhint %}
