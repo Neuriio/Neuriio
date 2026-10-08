@@ -7,9 +7,12 @@ Read this first in a new session. `README.md` has per-step detail; this file is 
 
 ## NEXT CHAT STARTS HERE (written 2026-10-08)
 
-**FIRST TASK NEXT CHAT: update the mobile design of the app** (user, 2026-10-08). Start by asking the user which
-screens / what looks wrong on mobile, then work one element at a time in their order (see memory "UI pacing").
-Check at phone width (375 px) with the dev preview (`.claude/launch.json` "app", `?demo` for sample data).
+**NEXT CHAT, IN THIS ORDER (user, 2026-10-08):**
+1. **Content first (needed immediately):** finish the Higgsfield motion-design prompts for the announcement video
+   (Appendix C, at the end of this file: drafted shot by shot, ready to paste) and help the user generate + edit.
+2. **Mobile design: fixed and LIVE by Wed 2026-10-14.** Ask the user which screens / what looks wrong on mobile,
+   then work one element at a time in their order (memory "UI pacing"). Check at 375 px with the dev preview
+   (`.claude/launch.json` "app", `?demo` for sample data). "Live" = deployed to Railway (still behind the passcode).
 
 ### State at end of 2026-10-08 (soft-launch setup is DONE)
 - **Soft launch Mon 2026-10-12** = the first X post (announcement video on the user's "social exposure" thesis), then
@@ -56,6 +59,10 @@ Check at phone width (375 px) with the dev preview (`.claude/launch.json` "app",
    on the old core (registry 0x4e16…) and no longer show in the app.
 
 ### Later (not for the soft launch)
+**Points (checked 2026-10-08):** tracking works (indexer every minute; rates in `points_rules` = 100 pts/$1M curve+pool,
+75/$1M HL, 50 per launch). Catch: launch points are keyed per TOKEN, so testnet redeploys credited @von_hl 4x and
+@__HLOS 2x. Decide: make launch points once per X account ever, and/or reset `points_ledger` at the beta start and
+at mainnet (all points so far are the user's tests).
 At go-live: delete the app redirect rule, remove `APP_PASSCODE`, `/` -> Launch; real posting on the Feed; Points panel + leaderboard;
 multisig ownership + formal audit before mainnet.
 
@@ -1320,3 +1327,36 @@ word like the /launch intro.
   card that pulses once.
 
 Possible follow-ups: a 9:16 version, a 15-second cut.
+
+## Appendix C. Higgsfield prompts: announcement video "Social exposure" (drafted 2026-10-08)
+
+Script (45 s, 10 beats) = Post 1 in the content doc. Generate each shot WITHOUT text (typography goes on in the
+editor: CapCut / Premiere / After Effects), 5 s clips, 16:9 first then 9:16 re-generations. Keep one seed for the set;
+for continuity feed a good clip's last frame into the next shot (image-to-video). Brand: deep purple #1b1428 / #120c1d,
+lavender dot grid #817298, soft cyan #d8fffe, pale lavender #ecddff. Logo file: `app/public/brand/logo.png`.
+
+**Style block (paste first in every prompt):**
+> Minimal premium motion-design brand film, clean 2D/2.5D motion graphics, deep purple background (#1b1428) with a
+> subtle lavender (#817298) dot grid at 20px spacing, accents in soft cyan (#d8fffe) and pale lavender (#ecddff), flat
+> elegant shapes, generous negative space, slow smooth camera, soft glow, subtle film grain, calm and confident.
+
+**Negative prompt (every shot):** `text, letters, numbers, words, watermark, logos, brand marks, faces, people,
+hands, photorealism, clutter, bright saturated colors, busy background, glitch, distortion`
+
+| # | Time | On-screen text (added in editor) | Higgsfield prompt (after the style block) |
+| --- | --- | --- | --- |
+| 1 | 0–4 s | Launchpads keep changing what we get exposure to. | Slow push-in on an empty dark purple dot grid. One dot in the centre brightens to soft cyan and pulses once, then a gentle ripple of light travels outward across the grid. |
+| 2 | 4–9 s | First: memes. Any narrative, in real time. | Dozens of small rounded blank cards pop up across the grid in quick random bursts, each glowing briefly in lavender or cyan and fading out, like ideas appearing and disappearing in real time. Energetic but tidy. |
+| 3 | 9–14 s | Then: stocks and crypto, onchain. | The flickering cards slow down and settle into a neat floating row. A thin glowing line chart draws itself across each card from left to right, rising gently. Calm, structured. |
+| 4 | 14–18 s | Next: social exposure. | Many small blank profile cards (a round empty avatar and a few soft placeholder lines) drift in the dark. One card in the centre rises toward the camera, sharpens and glows with a soft cyan edge while the others fall into soft bokeh. |
+| 5 | 18–23 s | $TRUMP. $MELANIA. The first taste. | Two simple glowing blank pill-shaped tags float side by side in the centre, softly pulsing, with faint particles drifting up from them. Empty tags only (the tickers are typed on in the editor). |
+| 6 | 23–28 s | The problem: anyone can launch any ticker. | One blank profile card duplicates itself again and again into a crowd of identical copies that flicker and jitter slightly out of sync, some flickering out. Uneasy, unclear which one is real. Slightly cooler tones. |
+| 7 | 28–33 s | On Neuriio, only you can launch you. | The flickering copies dissolve into dust and drift away. A single profile card remains in the centre; a thin cyan ring closes around it and locks with one gentle pulse of light. Feeling of authenticity and calm. |
+| 8 | 33–37 s | Log in with X. Launch your handle. Nothing else. | The single profile card flips smoothly in 3D; its back is a sleek token card with a glowing cyan edge and a small rising line. A soft light sweep passes across it. |
+| 9 | 37–41 s | Or launch an FTF: four friends, one token. | Four glowing profile cards glide in from the four corners of the frame and lock together in the centre into one larger card, which pulses once with soft cyan light. |
+| 10 | 41–45 s | Tokenize Account. neuriio.xyz (+ small disclaimer) | IMAGE-TO-VIDEO with logo.png on the purple background: the logo assembles piece by piece from small grid squares, settles in the centre with a soft cyan glow, then holds still for 2 seconds. |
+
+Shots reused from Appendix B's older prompts: 1 (grid awakens), 4 (relevance), 8 (card flip), 9 (FTF teaser),
+10 (logo end card); new: 2, 3, 5, 6, 7. Music: soft ambient synth, one low hit on beat 4 ("social exposure") and
+on beat 10. Disclaimer on the end card: "Tokens are memes with no promise of value. Not equity."
+Open for the user: try 2–3 variations of shots 6 and 7 (the problem -> solution moment carries the video).
