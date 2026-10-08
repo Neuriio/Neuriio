@@ -17,7 +17,7 @@ export const pairEvents = parseAbi([
   "event Sync(uint112 reserve0, uint112 reserve1)", // emitted right before Swap: reserves after the trade
 ]);
 
-/** Launchpad.sol: virtual token reserve at launch (1.073B); tokens sold from the curve = this - virtualToken. */
+/** NeuriioPad.sol: virtual token reserve at launch (1.073B); tokens sold from the curve = this - virtualToken. */
 const VIRTUAL_TOKENS = 1_073_000_000n * 10n ** 18n;
 
 export type Venue = "curve" | "pool" | "hl_perp" | "hl_spot" | "hl_outcome";

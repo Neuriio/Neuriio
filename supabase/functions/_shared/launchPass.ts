@@ -1,5 +1,5 @@
 // Pure launch-pass logic (no I/O): category mapping, profile validation + canonical form, EIP-712 types.
-// Must match src/launch/Launchpad.sol (LaunchPass struct, Category enum, EIP712 domain).
+// Must match src/launch/NeuriioPad.sol (LaunchPass struct, Category enum, EIP712 domain).
 
 import { keccak256, toBytes } from "npm:viem@2";
 
@@ -78,7 +78,7 @@ function validAboutAndLinks(input: ProfileInput): { about: string; links: Link[]
 }
 
 // ------------------------------------------------------------------ FTF (Friends Turned Fam)
-// Must match Launchpad.sol: FtfPass, _checkFtfName, _checkFtfTicker (4 members, founder first).
+// Must match NeuriioPad.sol: FtfPass, _checkFtfName, _checkFtfTicker (4 members, founder first).
 
 export const FTF_MEMBERS = 4;
 export const FTF_NAME_RE = /^[A-Za-z0-9_.&'-]+( [A-Za-z0-9_.&'-]+)*$/; // single spaces inside, none at the ends

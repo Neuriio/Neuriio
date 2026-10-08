@@ -8,4 +8,4 @@ ACCOUNT=${1:-burner}
 echo "Moving HYPE HyperCore -> HyperEVM -> Elysium for keystore '$ACCOUNT' (enter keystore password)"
 KEY=$(cast wallet decrypt-keystore "$ACCOUNT" | awk '{print $NF}')
 cd keeper
-KEY=$KEY AMOUNT=${2:-} node test/live/hype-core-to-elysium.mjs
+KEY=$KEY AMOUNT=${2:-} node tools/hype-to-elysium.mjs

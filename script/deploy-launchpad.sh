@@ -20,8 +20,8 @@ FROM=$(cast block-number --rpc-url $RPC)
 
 OUT=$(REGISTRY=$REG SWAP_FACTORY=$(jq -r .swapFactory $D) WHYPE=$(jq -r .whype $D) FEE_VAULT=$(jq -r .feeVault $D) \
   LAUNCH_SIGNER=$SIGNER RETIRE=$PREV VIRTUAL_HYPE=${VIRTUAL_HYPE:-100000000000000000} FEE_BPS=${FEE_BPS:-75} \
-  forge script script/DeployLaunchpad.s.sol --rpc-url elysium_testnet --account "$ACCOUNT" --broadcast --slow | tee /dev/stderr)
-L=$(echo "$OUT" | awk '$1 == "Launchpad:" { print tolower($2) }' | tail -1)
+  forge script script/DeployNeuriioPad.s.sol --rpc-url elysium_testnet --account "$ACCOUNT" --broadcast --slow | tee /dev/stderr)
+L=$(echo "$OUT" | awk '$1 == "NeuriioPad:" { print tolower($2) }' | tail -1)
 [[ "$L" =~ ^0x[0-9a-f]{40}$ ]] || { echo "Couldn't read the Launchpad address from the script output: '$L'" >&2; exit 1; }
 jq --arg l "$L" --argjson b "$FROM" '.launchpad = $l | .launchpads = ((.launchpads // []) + [{address: $l, block: $b}])' \
   $D > $D.tmp && mv $D.tmp $D

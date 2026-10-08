@@ -8,7 +8,7 @@ auto_detect_solc = true
 additional_compiler_profiles = [{ name = "size", optimizer_runs = 200 }]
 compilation_restrictions = [
   { paths = "src/swap/v2/**", version = "=0.5.16" },
-  { paths = "src/launch/Launchpad.sol", max_optimizer_runs = 200 },
+  { paths = "src/launch/NeuriioPad.sol", max_optimizer_runs = 200 },
 ]
 evm_version = "prague" # ArbOS 40+ (Elysium runs 51): needed for EIP-7702
 optimizer = true
@@ -27,3 +27,7 @@ elysium_testnet = "https://testnet-rpc.elysium.kinetiq.xyz"
 elysium_testnet_alt = "https://elysium-testnet-rpc.hypedexer.com/"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[fmt]
+# the Uniswap V2 fork keeps upstream formatting so it diffs cleanly against v2-core (script/v2-diff.sh)
+ignore = ["src/swap/v2/**/*.sol"]

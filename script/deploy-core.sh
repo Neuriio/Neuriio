@@ -14,7 +14,7 @@ FROM=$(cast block-number --rpc-url $RPC) # indexers start here (the registry is 
 OUT=$(WHYPE=$(jq -r '.whype // empty' $D) \
   forge script script/DeployCore.s.sol --rpc-url elysium_testnet --account "$ACCOUNT" --broadcast --slow | tee /dev/stderr)
 addr() { echo "$OUT" | awk -v k="$1" '$1 == k":" { print tolower($2) }' | tail -1; }
-W=$(addr WHYPE); REG=$(addr LaunchRegistry); V=$(addr FeeVault); R=$(addr SwapRouter)
+W=$(addr WHYPE); REG=$(addr NeuriioRegistry); V=$(addr NeuriioFees); R=$(addr NeuriioSwap)
 F=$(echo "$OUT" | awk '/SwapFactory \(UniswapV2Factory\):/ { print tolower($NF) }' | tail -1)
 for x in "$W" "$REG" "$F" "$V" "$R"; do
   [[ "$x" =~ ^0x[0-9a-f]{40}$ ]] || { echo "Couldn't read a deployed address from the script output: '$x'" >&2; exit 1; }

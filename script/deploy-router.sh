@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ACCOUNT=${1:-burner}
 D=deployments/elysium-testnet.json
-OUT=$(forge create src/swap/SwapRouter.sol:SwapRouter --rpc-url elysium_testnet --account "$ACCOUNT" --broadcast \
+OUT=$(forge create src/swap/NeuriioSwap.sol:NeuriioSwap --rpc-url elysium_testnet --account "$ACCOUNT" --broadcast \
   --constructor-args "$(jq -r .swapFactory $D)" "$(jq -r .whype $D)")
 R=$(echo "$OUT" | awk '/Deployed to:/{print $3}')
 [ -n "$R" ] || { echo "$OUT" >&2; exit 1; }

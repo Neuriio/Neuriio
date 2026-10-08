@@ -3,10 +3,10 @@ pragma solidity =0.5.16;
 import './interfaces/IUniswapV2Factory.sol';
 import './UniswapV2Pair.sol';
 
-// Neuriio fork of Uniswap V2 (v2-core v1.0.1). Changes are marked "Neuriio": only a token's own Launchpad (per the
-// LaunchRegistry, any Launchpad version) creates its pair (so nobody can open a graduating token's pool first at a
-// bad price), and the factory holds the WHYPE and FeeVault addresses its pairs send their swap fee to (see
-// UniswapV2Pair._takeFee). Part of the permanent core: every Launchpad version's pools live here.
+// Neuriio fork of Uniswap V2 (v2-core v1.0.1). Changes are marked "Neuriio": only a token's own NeuriioPad (per the
+// NeuriioRegistry, any NeuriioPad version) creates its pair (so nobody can open a graduating token's pool first at a
+// bad price), and the factory holds the WHYPE and NeuriioFees addresses its pairs send their swap fee to (see
+// UniswapV2Pair._takeFee). Part of the permanent core: every NeuriioPad version's pools live here.
 interface INeuriioRegistry { // Neuriio
     function launchpadOf(address token) external view returns (address);
 }
@@ -16,7 +16,7 @@ contract UniswapV2Factory is IUniswapV2Factory {
     address public feeToSetter;
     address public whype;     // Neuriio
     address public feeVault;  // Neuriio: owner-replaceable (0 = pools keep the fee, like V2)
-    address public registry;  // Neuriio: set once (LaunchRegistry)
+    address public registry;  // Neuriio: set once (NeuriioRegistry)
 
     mapping(address => mapping(address => address)) public getPair;
     address[] public allPairs;
@@ -33,7 +33,7 @@ contract UniswapV2Factory is IUniswapV2Factory {
     }
 
     function createPair(address tokenA, address tokenB) external returns (address pair) {
-        // Neuriio: TOKEN/WHYPE only, created by that token's own Launchpad
+        // Neuriio: TOKEN/WHYPE only, created by that token's own NeuriioPad
         require(tokenA == whype || tokenB == whype, 'UniswapV2: FORBIDDEN');
         require(msg.sender == INeuriioRegistry(registry).launchpadOf(tokenA == whype ? tokenB : tokenA), 'UniswapV2: FORBIDDEN');
         require(tokenA != tokenB, 'UniswapV2: IDENTICAL_ADDRESSES');
@@ -62,7 +62,7 @@ contract UniswapV2Factory is IUniswapV2Factory {
         feeToSetter = _feeToSetter;
     }
 
-    // Neuriio: every pool reads this on each swap, so a new FeeVault (a fix, a new fee split) takes over at once,
+    // Neuriio: every pool reads this on each swap, so a new NeuriioFees (a fix, a new fee split) takes over at once,
     // and address(0) is the emergency switch if a vault ever fails: swaps keep working and the fee stays in the pool.
     event FeeVaultSet(address feeVault);
     function setFeeVault(address _feeVault) external {

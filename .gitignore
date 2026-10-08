@@ -2,11 +2,6 @@
 cache/
 out/
 
-# Ignores development broadcast logs
-!/broadcast
-/broadcast/*/31337/
-/broadcast/**/dry-run/
-
 # Dotenv file
 .env
 node_modules/
@@ -17,3 +12,9 @@ app/dist/
 # Supabase CLI local state
 supabase/.temp/
 supabase/.branches/
+
+# Foundry deploy logs (kept locally only)
+broadcast/
+
+# Claude Code local preview config
+.claude/

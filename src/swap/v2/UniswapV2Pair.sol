@@ -10,7 +10,7 @@ import './interfaces/IUniswapV2Callee.sol';
 import './interfaces/INeuriio.sol'; // Neuriio
 
 // Neuriio fork of Uniswap V2 (v2-core v1.0.1). Changes are marked "Neuriio": the swap fee is 0.25% (was 0.30%),
-// and right after each swap the pair moves that fee out of the pool as WHYPE to the factory's FeeVault
+// and right after each swap the pair moves that fee out of the pool as WHYPE to the factory's NeuriioFees
 // (after graduation: 80% to the token's creator, 20% to the protocol). Traders get exactly V2's output for a 0.25% fee.
 contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     using SafeMath  for uint;
@@ -205,7 +205,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         _update(IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)), reserve0, reserve1);
     }
 
-    // Neuriio: moves the 0.25% fee out of the pool as WHYPE, to the FeeVault. With x = token balance, y = WHYPE
+    // Neuriio: moves the 0.25% fee out of the pool as WHYPE, to the NeuriioFees. With x = token balance, y = WHYPE
     // balance, ft/fh = the fee on the token/WHYPE input (rounded down): the K check above guarantees
     // (x - ft)(y - fh) >= k_before; we remove fh + ft's value at the post-swap price, ft * (y - fh) / x (rounded
     // down), leaving x * (y - fh - ft * (y - fh) / x) >= (x - ft)(y - fh) >= k_before. So k never drops.

@@ -1,13 +1,52 @@
-# Handoff — Neuriio (state as of 2026-10-01: Railway demo site LIVE, web + watcher services; see "RAILWAY LIVE" in §10)
+# Handoff — Neuriio (state as of 2026-10-08: SOFT LAUNCH Mon 2026-10-12 with docs live; NEW CHAT STARTS AT "SOFT LAUNCH SETUP" below)
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
 **Project name: Neuriio.** Local folder `/Users/von/Neuriio` (renamed from `elysium`); code lives in the
 **private** GitHub repo **https://github.com/finding-agi/Neuriio** (renamed from `finding-agi/elysium`; old URL redirects).
 
+## SOFT LAUNCH SETUP — NEW CHAT STARTS HERE (written 2026-10-08)
+
+**Soft launch = Mon 2026-10-12** (first X post), then posts Wed 10-14 and Fri 10-16. **The GitBook docs must be live
+with the soft launch** (user, 2026-10-08), so every post links them. Content plan + post drafts + docs page outline:
+Claude Doc "Neuriio launch content: Oct 12–16" https://claude.ai/code/artifact/8243ce06-32c0-4c72-abd5-f330b843eb20
+(read it first; open question there: testnet-live vs coming-soon on Oct 12).
+
+Set up, in this order (user = needs the user's accounts/clicks; Claude = can do in the repo):
+1. **Ask the user first:** Oct 12 = live testnet app people can try, or coming-soon with no link? Which link in posts
+   (neuriio.xyz vs the Railway address)? Docs domain (GitBook default vs docs.neuriio.xyz)? Creator fee share to
+   publish (app copy says 20% before graduation, 80% after; check `FeeVault` + `Launchpad` match before docs print it).
+2. **GitBook (user, by Fri 10-09):** create the account + a space, connect **Git Sync** to `finding-agi/Neuriio`
+   (private repo: install the GitBook GitHub app on it), branch `main`, folder `docs/`. Optional custom domain
+   `docs.neuriio.xyz` (CNAME at the DNS provider, set in GitBook).
+3. **Docs content (Claude, by Sun 10-11):** write `docs/` as Markdown + `docs/SUMMARY.md` (GitBook's table of
+   contents) and `docs/README.md` (first page), 12 pages per the doc's outline: Start (What is Neuriio, Getting
+   started), Launching (Launch your token, Bonding curve, Graduation and locked liquidity, For builders), Trading
+   (Trading and fees, Creator fees, Feed and points), Trust (Safety and contracts, Creator rules, Disclaimer).
+   Minimum if short on time: What is Neuriio, Getting started, the four Launching pages, Disclaimer.
+   Facts come from this file (§0 fees/curve numbers) and the contracts; copy rules: back/support/trade, never
+   invest/returns, "fair launch"/"locked liquidity" never "raise money", never equity; tokens are memes.
+   Commit + push only when the user says so (Git Sync publishes from `main`).
+4. **Contract addresses for "Safety and contracts" — DONE 2026-10-08:** renamed core redeployed on testnet (core block
+   5372584) and VERIFIED on the explorer (Blockscout): NeuriioRegistry `0xd7879e97c6558486ca0a92283d70a46e89ea84fc`,
+   NeuriioFees `0x7e9e5e96c3e99fd201a15e6a33c59aec51a39b2b` (protocol wallets both `0x10E9…EEC3`), NeuriioSwap
+   `0x4a85eca6f3ef4a07d049bd1907debb3e8961acac`, NeuriioPad `0xd9943d81b72aa55e52580bbb595af797b04d5e59`,
+   UniswapV2Factory (ours) `0xd30f539cf731d843534a9e3fe9fec51bb456339c`; WHYPE unchanged. Still to verify: the first
+   NeuriioToken and the first graduated UniswapV2Pair (need one launch + graduation on the new core). Verify command:
+   `forge verify-contract ADDR PATH:NAME --chain 99801 --verifier blockscout --verifier-url https://elysium.kinetiq.xyz/api/
+   --compilation-profile default|size --constructor-args $(cast abi-encode "constructor(...)" ...) --watch`
+   (`size` only for NeuriioPad; constructor args are in local `broadcast/*/run-latest.json`). Old testnet tokens stay
+   on the old core (registry 0x4e16…) and no longer show in the app.
+5. **App domain (user + Claude):** if posts link neuriio.xyz, add it as a Railway custom domain on the `Neuriio`
+   service (Railway shows the CNAME), add the origin in the Privy dashboard, and keep the Railway site up (the old
+   plan to take it down after the demo call no longer applies if it's the soft-launch app).
+6. **Content assets (user):** promo video 38 s cut (Appendix B at the end of this file) + Post 1 visual by 10-11,
+   Post 2 four-stage graphic by 10-13, schedule all three posts in X with the docs link.
+Later (not for the soft launch): real posting on the Feed (§10 "LIVE TEST PASSED" note), multisig ownership, formal audit.
+
 ## 0. PIVOT 2026-09-27: token launchpad (pump.fun model); PropAMM PAUSED
 
-**PropAMM is paused until we have capital** for its reserves + hedge margin. Code moved to `archive/propamm/` as `.txt`
+**PropAMM is paused until we have capital** for its reserves + hedge margin. Code removed from the tree in the 2026-10-08 repo cleanup; restore from git history (`git checkout 9fcfe57 -- archive/propamm`, stored there as `.txt`)
 (see its README; deployed testnet pools are untouched and idle). **In its place:** a pump.fun-style **launchpad** on Elysium
 with **our own swap** (like pump.fun's PumpSwap). Decided by the user:
 - Launched tokens pair with **HYPE** (native; the pool uses **WHYPE**). **Launching is free** (gas only).
@@ -100,6 +139,12 @@ bonding curve: at /launch users choose "Launch yourself" (individual, unchanged)
 ### "Tokenize Yourself" (user, 2026-09-27): who can launch
 **Public headline renamed (user, 2026-09-28): "Tokenize Accounts"** (not "Tokenize Yourself", which reads as tokenizing a person).
 Message: grow your account, reach new audiences, stay relevant. "Tokenize Yourself" survives only in code comments / the migration name.
+**Second pitch (user, 2026-10-01): fair launches for real builders.** Companies building legit products launch through
+their company's X account (still one token per X account) and get liquidity without being vamped: no presale, no
+insider/team allocation, only the launchpad can create the pool (no sniping the opening price), and at graduation the
+LP is burned so the liquidity is locked forever. Say "fair launch" / "locked liquidity", never "raise money" (raised
+HYPE goes into the burned pool; the company earns creator fees) and never imply equity or a claim on the company.
+Promo video script has this beat (Appendix B at the end of this file).
 **Legal framing (decided 2026-09-27): tokens are MEMES, not investments.** "Thesis / why invest in me / proof" was renamed
 to a **creator profile** ("about" + "links" to their work) everywhere (contract `profileHash`, table `creator_profiles`,
 function body `{ category, profile: { about, links } }`). UI copy rules: say back / support / trade, never invest / returns;
@@ -230,7 +275,7 @@ each side ("a cash drawer in both countries") and we rebalance slowly.
 | 8b | Tokenize Yourself: X-only login, signed launch passes, Supabase (indexer, points), creator rewards (FeeVault) | ✅ testnet 2026-09-28 |
 | 8c | **Launch UI** `/launch` (intro → FTF line → 3-step flow) | ✅ done, user-approved 2026-09-28 |
 | 8d | **Explore page** (chart + details, handle search, top 25 by volume) | **next** (§10) |
-| paused | PropAMM (steps 2, 3, 6b): archived to `archive/propamm/` until capital | ⏸ |
+| paused | PropAMM (steps 2, 3, 6b): removed 2026-10-08, in git history at `9fcfe57` (`archive/propamm/`) until capital | ⏸ |
 | later | Subscription gating contract; ERC-4626 vault for outside capital | not started |
 
 ## 4. Live on Elysium testnet (`deployments/elysium-testnet.json`)
@@ -609,6 +654,10 @@ user accepted storing it in Railway) + `SUPABASE_URL=https://yviymgfgaepmtijgyyy
 (worker). Don't also run `./script/run-watcher.sh` on the Mac, or every trade is broadcast twice. Later hardening: a
 broadcast-only role/JWT instead of service_role.
 
+**LIVE TEST PASSED 2026-10-01 (user):** on the Railway site, launch + trading work end to end; Account panel Send
+(any token to any 0x address, commit `9fcfe57`) works. **NEXT (later, user's call): real posting on the Feed** (posts are
+still samples, not stored; when real, the Send recipient wallet must come from the `users` table, see the note further down).
+
 **RAILWAY LIVE (fixed 2026-10-01):** https://neuriio-production.up.railway.app serves `/`, `/launch`, `/feed`,
 `/explore` with 200 + security headers. Cause of the 502: the project (`lively-renewal`) had only ONE service, `Neuriio`,
 carrying `RAILWAY_DOCKERFILE_PATH=keeper/Dockerfile.watcher`, so the public domain pointed at the watcher (no web server).
@@ -633,6 +682,7 @@ only in Supabase secrets; private tables unreadable). Fixed: the `?check` page (
 (+ ABI-encoded constructor args; Launchpad uses the `size` profile, 200 runs). Guide: explorer -> Developers -> Verify contract.
 Plan: audit (crit/high/med) -> fix -> redeploy -> verify Launchpad, LaunchRegistry, FeeVault, LaunchToken, SwapRouter
 (+ our modified V2 factory/pair). WHYPE is out of scope (mainnet uses the canonical one).
+**RENAME DONE IN CODE 2026-10-08 (not yet redeployed): Launchpad -> NeuriioPad, LaunchRegistry -> NeuriioRegistry, FeeVault -> NeuriioFees, LaunchToken -> NeuriioToken, SwapRouter -> NeuriioSwap (user confirmed NeuriioSwap). Contract names only: functions/events/ABIs unchanged. Next: user runs `COMMUNITY_WALLET=0x10E9…EEC3 BUYBACK_WALLET=0x10E9…EEC3 ./script/deploy-core.sh burner` then `./script/supabase-deploy.sh`; then verify. The new core resets the testnet token list.** Original plan:
 **DO AFTER the Railway setup (user chose option B, 2026-09-30): rename to Neuriio names, redeploy testnet core, verify.**
 Renames: Launchpad -> `NeuriioPad`, LaunchRegistry -> `NeuriioRegistry`, FeeVault -> `NeuriioFees`,
 LaunchToken -> `NeuriioToken`, SwapRouter -> `NeuriiSwap` (**confirm with the user: typo for `NeuriioSwap`?**).
@@ -808,7 +858,7 @@ Redeploy flow (only when contracts change): `./script/deploy-launchpad.sh burner
 7. **REMIND THE USER:** formal security audit (Fable, TODO 6) + `docs/ARCHITECTURE.md` / `docs/SECURITY_AUDIT.md`;
    two quick sweeps done 2026-09-29 (see "Security review" and "Security sweep #2" below).
 8. **Now (2026-09-30): X banner for the Neuriio X page** (x.com/Neuriio). Later: promo video
-   (`notes/promo-video-higgsfield.md`), pitch deck, hosting for watcher/bots, Supabase Pro before mainnet, Realtime
+   (Appendix B at the end of this file), pitch deck, hosting for watcher/bots, Supabase Pro before mainnet, Realtime
    relies on Supabase *legacy* keys (re-test when Supabase retires them).
 9. Working preferences (see memory): build UI one element at a time in the user's order; don't ask "which box next";
    **don't commit/push unless the user says so, and don't ask about it**.
@@ -1137,7 +1187,7 @@ Data to build for it (Supabase, public-read):
 
 ### Also open (not tomorrow unless asked)
 - **Promo video "Tokenize Accounts" (Higgsfield): AFTER the Explore page.** Script, style block and shot prompts saved in
-  `notes/promo-video-higgsfield.md`.
+  Appendix B at the end of this file.
 - User to send **community + buyback wallet addresses** → `FeeVault.setWallets` (owner = burner).
 - DONE 2026-09-29: chart header shows **"Creator fees earned"** next to Profile (FeeVault.creatorEarned(token),
   lifetime, USD + HYPE, 15 s; the header wraps when short on room). Creator **Claim** in the Account panel ("Creator fees" box: claimable HYPE + USD, Claim ->
@@ -1160,3 +1210,95 @@ Data to build for it (Supabase, public-read):
   secrets. At the first commit the only key-like strings were the two public anvil test keys in `script/e2e-bridge.sh`.
   The burner key lives in `~/.foundry/keystores`, never in the repo. `logs/`, `cache/`, `.env` and `node_modules/` are gitignored;
   `docs/` is intentionally **not** ignored (the audit docs go there).
+
+## Appendix A. Removed in the 2026-10-08 repo cleanup (all recoverable from commit `9fcfe57`)
+- `archive/propamm/` (paused PropAMM code), `design/x-banner/` (X banner HTML + PNGs; restore with
+  `git checkout 9fcfe57 -- design/x-banner`), `notes/` (promo script, now Appendix B).
+- `broadcast/` is no longer tracked (gitignored); Foundry still writes deploy logs there locally.
+- **PropAMM-era stack** (user: remove, 2026-10-08): `src/{account,bridge,interfaces,libraries,oracle}`, their tests
+  (`FastBridge`, `HyperCoreOracle`, `NeuriioAccount`, `test/fork`, `test/mocks`), deploy scripts (FastBridge,
+  NeuriioAccount, Oracle, oneclick) and testnet scripts (`run-bots`, `apply-settings`, `bridge-fee-off`, `bridge-test`,
+  `journey-test`, `oneclick-test`, `privy-check`), keeper bots (`feed-bbo`, `hedger`, `relayer`, `sponsor`) and
+  `keeper/src/{bridge,exchange,oneclick,trade,hedger,planner,store}`, the dev `?check` page (`app/src/PrivyCheck.jsx`),
+  `supabase/snippets/`. Their deployments-file keys (oracle, propAMM, fastBridge, neuriioAccount, tKNTQ, propAMMKntq) were
+  dropped; those contracts are still on testnet, idle. Older sections of this file mention these scripts: history only.
+- Kept: `script/hype-to-elysium.sh` (now runs `keeper/tools/hype-to-elysium.mjs`). `src/swap/v2/` is excluded from
+  `forge fmt` (foundry.toml) so it still diffs cleanly against upstream v2-core.
+- README rewritten for the launchpad.
+
+## Appendix B. Promo video: "Tokenize Accounts" (Higgsfield) — work on AFTER the Explore page
+
+Saved 2026-09-28. Reference: Attestable's brand film (37 s, x.com video
+`video.twimg.com/amplify_video/2087222661504274432/...`): two-colour palette, line revealed a few words at a time,
+serif/sans mixed headlines ("**Imagine an** *AI future*"), scramble-in text, bracket frames around one key word,
+logo built from grid pieces, "Proof at attestable.com" end card. We borrow the STRUCTURE, not their look.
+
+**Headline: "Tokenize Accounts"** (replaces "Tokenize Yourself", which reads as tokenizing a person).
+Message: grow your account, reach new audiences, stay relevant. **Second beat (user, 2026-10-01): builders.** Companies
+building real products launch through their company's X account and get a **fair launch**: no presale, no insider
+or team allocation, nobody can open the pool first, and at graduation the liquidity is locked forever (LP burned), so
+nobody can pull it or drain it ("without being vamped"). Wording: "locked liquidity" / "fair launch", NOT "raise money" (the
+raised HYPE goes into the burned pool, not to the company; the company earns its creator-fee share). Never imply the
+token is equity, shares or a claim on the company. Legal copy rules still apply: back / support / trade,
+never invest / returns; small disclaimer on the end card.
+
+### Workflow
+Generate shots WITHOUT text in Higgsfield (AI video garbles lettering), add typography in an editor
+(CapCut / Premiere / After Effects). If trying text in-model: Veo 3 or Sora 2, one or two words per shot.
+Export 16:9 (X) and 9:16 (Reels/TikTok) separately. Reuse the seed; feed a good shot's last frame into the next
+shot (image-to-video) for consistency. Negative prompt: `text, letters, watermark, logos, faces, hands, clutter,
+bright colors, busy background`. Music: soft ambient synth, one hit on "Tokenize Accounts."
+
+### Script (~38 s)
+| Time | On-screen text |
+|---|---|
+| 0–3 s | Your account has a voice. |
+| 3–6 s | Now it has a **ticker.** |
+| 6–10 s | **Tokenize Accounts.** |
+| 10–14 s | Grow your account. |
+| 14–18 s | Reach **new audiences.** |
+| 18–22 s | Stay **relevant.** |
+| 22–26 s | Building something **real?** |
+| 26–30 s | Launch it **fair.** No presale. No insiders. |
+| 30–34 s | Liquidity **locked forever.** Nobody can drain it. |
+| 34–38 s | Neuriio logo + **Tokenize Accounts.** + neuriio.xyz; small: "Tokens are memes with no promise of value. Not equity." |
+
+The old 22–26 s line ("Your audience can back you. Launch free.") moves to a 15-second creator cut, or replaces 26–30 s
+in a creators-only version. Cut the 22–34 s builder beat for a creators-only 30 s version.
+
+Typography: lead-in words in a clean sans ("Grow your"), key word in a light serif ("account."), revealed word by
+word like the /launch intro.
+
+### Style block (paste at the start of every prompt)
+> Minimal premium brand film, 16:9, clean motion graphics. Deep purple background (#1b1428) with a subtle lavender
+> (#817298) dot grid, 20px spacing. Accents in soft cyan (#d8fffe) and pale lavender (#ecddff). Flat, elegant, lots of
+> negative space, slow smooth camera, soft glow, subtle film grain. No people's faces, no real logos, no text.
+
+### Shot prompts
+1. **Grid awakens (0–3 s):** Slow push-in on an empty dark purple dot grid. One dot in the center brightens to cyan
+   and pulses gently, then nearby dots light up one after another in a ripple outward.
+2. **Account becomes a ticker (3–10 s):** A minimal social profile card floats in the center: round blank avatar, a
+   few placeholder lines for a bio. The card flips smoothly in 3D and its back is a sleek token card with a glowing
+   cyan edge and a small rising line chart. Soft light sweep across the card.
+3. **Growth curve (10–14 s):** A smooth upward curve draws itself from the bottom-left corner toward the top-right,
+   glowing cyan. A bright dot rides along the curve, leaving a faint light trail. Grid dots twinkle as it passes.
+4. **New audiences (14–18 s):** The camera pulls back from one glowing profile card. Thin threads of cyan light reach
+   out from it to new clusters of small cards spread across the grid, like a constellation forming. Each cluster
+   lights up as it connects.
+5. **Relevance (18–22 s):** Many small profile cards drift slowly in the dark. One card gently rises forward,
+   brightens and becomes sharp in focus, while the others soften into bokeh behind it.
+6. **Backing (22–26 s):** Small particles of cyan light float up from the bottom of the frame and gather into a
+   glowing token card, which becomes brighter and steadier as they arrive. Calm, warm, supportive mood.
+7. **Building something real (22–26 s):** A small glowing structure assembles itself on the dot grid from clean
+   geometric blocks, one block at a time, like a minimal city or circuit coming online. Calm, steady, purposeful.
+8. **Fair launch (26–30 s):** A single token card stands in the center. A ring of identical small cards around it
+   all light up at the same moment, evenly, nobody first. No card is larger or closer than the others.
+9. **Locked liquidity (30–34 s):** A deep pool of soft cyan light settles beneath the token card. A thin glowing ring
+   closes over the pool and locks with a gentle pulse; faint shadowy tendrils reach toward it from the edges and fade
+   away without getting in.
+10. **Logo end card (34–38 s), image-to-video** with `app/public/brand/logo.png` on the purple background: Logo
+   assembles piece by piece from small grid squares, settles in the center with a soft cyan glow, then holds still.
+- Optional FTF teaser: Four glowing profile cards glide in from the four corners and lock together into one larger
+  card that pulses once.
+
+Possible follow-ups: a 9:16 version, a 15-second cut.
