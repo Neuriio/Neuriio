@@ -34,9 +34,9 @@ Check at phone width (375 px) with the dev preview (`.claude/launch.json` "app",
     **Passcode gate (built 2026-10-08, `app/serve.mjs`):** Railway variable `APP_PASSCODE` on the `Neuriio` service turns
     it on (unset = off). Every page and file needs the passcode (only `/brand/logo.png` is open); a correct code sets a
     30-day HttpOnly cookie (HMAC of the passcode: changing `APP_PASSCODE` signs everyone out); 10 wrong tries per visitor
-    / 200 overall per 15 min. Closes the railway.app URL and the skip-Cloudflare route. Remove the variable at launch.
-    **Do NOT make `/` open the Launch page yet** (user: only when going live). Possible **private beta with a
-    passcode** before launch: not decided, not built.
+    / 200 overall per 15 min. Closes the railway.app URL and the skip-Cloudflare route. **ON since 2026-10-08** (user set `APP_PASSCODE`; verified: railway.app URL and the skip-Cloudflare route both show
+    the "Private Beta" page, user confirmed the passcode lets them in). Remove the variable at launch.
+    **Do NOT make `/` open the Launch page yet** (user: only when going live).
 - **Repo cleaned 2026-10-08** (Appendix A): launchpad only; PropAMM-era code removed; README rewritten; CI green.
 - **Docs (13 pages in `docs/`):** written from the contracts; the user reviews/edits in GitBook. KNTQ named in the
   protocol buyback share. Points page has no rates (Points panel in the app is still a placeholder).
@@ -56,7 +56,7 @@ Check at phone width (375 px) with the dev preview (`.claude/launch.json` "app",
    on the old core (registry 0x4e16…) and no longer show in the app.
 
 ### Later (not for the soft launch)
-Private beta / passcode decision; `/` -> Launch at go-live; real posting on the Feed; Points panel + leaderboard;
+At go-live: delete the app redirect rule, remove `APP_PASSCODE`, `/` -> Launch; real posting on the Feed; Points panel + leaderboard;
 multisig ownership + formal audit before mainnet.
 
 ## 0. PIVOT 2026-09-27: token launchpad (pump.fun model); PropAMM PAUSED
