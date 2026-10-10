@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "dev:phone": "vite --mode phone --host 0.0.0.0 --port 5174"
   },
   "dependencies": {
     "@nktkas/hyperliquid": "^0.33.3",
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^5.9.3",
     "vite": "^8.3.1"

@@ -11,10 +11,7 @@ import { EASE_OUT } from "../lib/motion";
 import { Avatar } from "./Avatar";
 
 export function NotificationsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { getAccessToken } = usePrivy();
-  const { items, refresh } = useNotifications();
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { refresh } = useNotifications();
 
   useEffect(() => {
     if (!open) return;
@@ -23,21 +20,6 @@ export function NotificationsModal({ open, onClose }: { open: boolean; onClose: 
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   }, [open, onClose]);
-
-  const act = async (n: Notice, yes: boolean) => {
-    const key = `${n.kind}:${n.draftId}:${n.from.x_user_id}`;
-    setBusy(key);
-    setError(null);
-    try {
-      if (n.kind === "invite") await ftfCall(getAccessToken, yes ? "accept" : "decline", { draftId: n.draftId });
-      else await ftfCall(getAccessToken, yes ? "approve" : "remove", { draftId: n.draftId, xUserId: n.from.x_user_id });
-      refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(null);
-    }
-  };
 
   return createPortal(
     <AnimatePresence>
@@ -71,43 +53,73 @@ export function NotificationsModal({ open, onClose }: { open: boolean; onClose: 
               </button>
             </header>
 
-            {items.length === 0 ? (
-              <p className="nt-empty">Nothing new. FTF invites and requests show up here.</p>
-            ) : (
-              <ul className="nt-list">
-                {items.map((n) => {
-                  const key = `${n.kind}:${n.draftId}:${n.from.x_user_id}`;
-                  const who = n.from.x_handle ? `@${n.from.x_handle}` : "Someone";
-                  return (
-                    <li key={key} className="nt-item">
-                      <Avatar handle={n.from.x_handle ?? "?"} pfp={n.from.x_pfp_url ?? null} size={34} />
-                      <div className="nt-text">
-                        <span>
-                          <b>{who}</b> {n.kind === "invite" ? "invited you to" : "asked to join"} <b>{n.name}</b>{" "}
-                          <span className="nt-ticker">${n.ticker}</span>
-                        </span>
-                        <span className="nt-sub">
-                          {n.kind === "invite" ? "An FTF: 4 people, one token. Accepting isn't a transaction." : "You founded this FTF."}
-                        </span>
-                      </div>
-                      <div className="nt-actions">
-                        <button className="nt-yes" disabled={busy === key} onClick={() => act(n, true)}>
-                          <Check size={13} strokeWidth={3} /> {n.kind === "invite" ? "Accept" : "Approve"}
-                        </button>
-                        <button className="nt-no" disabled={busy === key} onClick={() => act(n, false)}>
-                          Decline
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {error && <p className="nt-error">{error}</p>}
+            <NotificationsList />
           </motion.div>
         </motion.div>
       )}
     </AnimatePresence>,
     document.body,
+  );
+}
+
+/** The notifications themselves with Accept / Approve / Decline: the window's body, also the mobile Feed's
+ *  Notifications tab. */
+export function NotificationsList() {
+  const { getAccessToken } = usePrivy();
+  const { items, refresh } = useNotifications();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const act = async (n: Notice, yes: boolean) => {
+    const key = `${n.kind}:${n.draftId}:${n.from.x_user_id}`;
+    setBusy(key);
+    setError(null);
+    try {
+      if (n.kind === "invite") await ftfCall(getAccessToken, yes ? "accept" : "decline", { draftId: n.draftId });
+      else await ftfCall(getAccessToken, yes ? "approve" : "remove", { draftId: n.draftId, xUserId: n.from.x_user_id });
+      refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <>
+      {items.length === 0 ? (
+        <p className="nt-empty">Nothing new. FTF invites and requests show up here.</p>
+      ) : (
+        <ul className="nt-list">
+          {items.map((n) => {
+            const key = `${n.kind}:${n.draftId}:${n.from.x_user_id}`;
+            const who = n.from.x_handle ? `@${n.from.x_handle}` : "Someone";
+            return (
+              <li key={key} className="nt-item">
+                <Avatar handle={n.from.x_handle ?? "?"} pfp={n.from.x_pfp_url ?? null} size={34} />
+                <div className="nt-text">
+                  <span>
+                    <b>{who}</b> {n.kind === "invite" ? "invited you to" : "asked to join"} <b>{n.name}</b>{" "}
+                    <span className="nt-ticker">${n.ticker}</span>
+                  </span>
+                  <span className="nt-sub">
+                    {n.kind === "invite" ? "An FTF: 4 people, one token. Accepting isn't a transaction." : "You founded this FTF."}
+                  </span>
+                </div>
+                <div className="nt-actions">
+                  <button className="nt-yes" disabled={busy === key} onClick={() => act(n, true)}>
+                    <Check size={13} strokeWidth={3} /> {n.kind === "invite" ? "Accept" : "Approve"}
+                  </button>
+                  <button className="nt-no" disabled={busy === key} onClick={() => act(n, false)}>
+                    Decline
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {error && <p className="nt-error">{error}</p>}
+    </>
   );
 }

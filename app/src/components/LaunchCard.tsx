@@ -2,7 +2,7 @@
 // (who you are -> profile -> launch). Launch = our backend signs a one-time pass for your X account, then your
 // Neuriio wallet sends Launchpad.launch (with an optional first buy). Your token is always "@handle" / HANDLE.
 // Tokens are memes: the copy says back / support / trade, never invest.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowLeft,
@@ -897,18 +897,32 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
  */
 const CURVE_W = 750;
 const CURVE_H = 350;
-const CURVE_PATH = (() => {
-  const pts = Array.from({ length: 61 }, (_, i) => {
-    const s = i / 60;
-    const p = (1_073 / (1_073 - s * 793.1)) ** 2; // 1 -> ~14.7 over the curve
-    return [s * CURVE_W, CURVE_H - 26 - ((p - 1) / 13.7) * (CURVE_H - 70)] as const;
-  });
-  return pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-})();
+const CURVE_PTS = Array.from({ length: 61 }, (_, i) => {
+  const s = i / 60;
+  const p = (1_073 / (1_073 - s * 793.1)) ** 2; // 1 -> ~14.7 over the curve
+  return [s * CURVE_W, CURVE_H - 26 - ((p - 1) / 13.7) * (CURVE_H - 70)] as const;
+});
+/** The curve as an SVG path, stretched by sx/sy (1/1 = the 750 x 350 viewBox). */
+const curvePath = (sx = 1, sy = 1) =>
+  CURVE_PTS.map(([x, y], i) => `${i ? "L" : "M"}${(x * sx).toFixed(1)},${(y * sy).toFixed(1)}`).join(" ");
+const CURVE_PATH = curvePath();
 
 function IntroCurve() {
+  // the line stretches with the card (preserveAspectRatio="none"); the dot's offset-path is in real pixels, so
+  // rebuild it at the card's actual size or it runs off the line wherever the card isn't 750 x 350 (phones)
+  const box = useRef<HTMLDivElement>(null);
+  const [dotPath, setDotPath] = useState(CURVE_PATH);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const fit = () => el.clientWidth && setDotPath(curvePath(el.clientWidth / CURVE_W, el.clientHeight / CURVE_H));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <div className="li-curve" aria-hidden>
+    <div className="li-curve" aria-hidden ref={box}>
       <span className="li-corner-glow" />
       <svg viewBox={`0 0 ${CURVE_W} ${CURVE_H}`} preserveAspectRatio="none">
         <defs>
@@ -925,7 +939,7 @@ function IntroCurve() {
         <path d={`${CURVE_PATH} L${CURVE_W},${CURVE_H} L0,${CURVE_H} Z`} fill="url(#li-curve-fill)" className="li-curve-area" />
         <path d={CURVE_PATH} pathLength={1} className="li-curve-line" stroke="url(#li-curve-stroke)" />
       </svg>
-      <span className="li-curve-dot" style={{ offsetPath: `path("${CURVE_PATH}")` }} />
+      <span className="li-curve-dot" style={{ offsetPath: `path("${dotPath}")` }} />
     </div>
   );
 }

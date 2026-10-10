@@ -10,12 +10,17 @@ import { useTickerLogos } from "./lib/tickers";
 import { LaunchCard } from "./components/LaunchCard";
 import { ExploreCard } from "./components/ExploreCard";
 import { FeedCard } from "./components/FeedCard";
+import { TrendingCard } from "./components/TrendingCard";
 import { DnaStrand } from "./components/DnaStrand";
 import { useRegisterOnLogin } from "./lib/register";
 import { useNotificationsPoller } from "./lib/ftf";
 
 // One layout for every page; the center card changes by path (app.neuriio.xyz/launch, ...).
-const PAGE = location.pathname.replace(/\/+$/, "") || "/";
+// Explore is home: "/" (and any unknown path) shows it, and the address bar is set to /explore.
+const ROUTES = ["/launch", "/feed", "/explore", "/trending"];
+const RAW = location.pathname.replace(/\/+$/, "") || "/";
+const PAGE = ROUTES.includes(RAW) ? RAW : "/explore";
+if (RAW !== PAGE) history.replaceState(null, "", "/explore" + location.search + location.hash);
 
 export function App() {
   const tickers = useTickerLogos();
@@ -55,15 +60,19 @@ export function App() {
             <FeedCard />
           </main>
         </>
-      ) : PAGE === "/explore" ? (
+      ) : PAGE === "/trending" ? (
+        // trending: the Top 25 between the launch page's dot strands (shown on phones too)
+        <>
+          <DnaStrand side="left" fixed phone />
+          <DnaStrand side="right" phase={1.3} fixed phone />
+          <main className="stage stage-trending">
+            <TrendingCard />
+          </main>
+        </>
+      ) : (
         // explore: search + top list beside the picked token's chart
         <main className="stage stage-explore">
           <ExploreCard />
-        </main>
-      ) : (
-        <main className="stage">
-          <div className="panel tabs-slot" />
-          <div className="panel card-slot" />
         </main>
       )}
 

@@ -10,8 +10,19 @@ const SPIN = 0.12; // radians per second
 
 type Dot = { v: number; a: number; s: number };
 
-/** fixed: pinned to the viewport instead of the page, for pages that scroll (the feed) */
-export function DnaStrand({ side, phase = 0, fixed = false }: { side: "left" | "right"; phase?: number; fixed?: boolean }) {
+/** fixed: pinned to the viewport instead of the page, for pages that scroll (the feed). phone: still shown on
+ *  narrow screens (trending), where the others hide. */
+export function DnaStrand({
+  side,
+  phase = 0,
+  fixed = false,
+  phone = false,
+}: {
+  side: "left" | "right";
+  phase?: number;
+  fixed?: boolean;
+  phone?: boolean;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -82,5 +93,5 @@ export function DnaStrand({ side, phase = 0, fixed = false }: { side: "left" | "
     };
   }, [phase]);
 
-  return <canvas ref={ref} className={`dna-strand dna-${side}${fixed ? " dna-fixed" : ""}`} aria-hidden="true" />;
+  return <canvas ref={ref} className={`dna-strand dna-${side}${fixed ? " dna-fixed" : ""}${phone ? " dna-phone" : ""}`} aria-hidden="true" />;
 }

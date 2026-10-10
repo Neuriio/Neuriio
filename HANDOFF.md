@@ -1,18 +1,78 @@
-# Handoff — Neuriio (state as of 2026-10-08: docs live at neuriio.xyz, soft launch Mon 10-12; NEXT CHAT: mobile design, see "NEXT CHAT STARTS HERE")
+# Handoff — Neuriio (state as of 2026-10-10: EVERYTHING DONE, READY TO LAUNCH; launch video DONE (local, 4K); mobile DONE; soft launch Mon 10-12; NEXT CHAT: post content for next week, see "NEXT CHAT STARTS HERE")
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
 **Project name: Neuriio.** Local folder `/Users/von/Neuriio` (renamed from `elysium`); code lives in the
 **private** GitHub repo **https://github.com/finding-agi/Neuriio** (renamed from `finding-agi/elysium`; old URL redirects).
 
-## NEXT CHAT STARTS HERE (written 2026-10-08)
+## NEXT CHAT STARTS HERE (written 2026-10-10)
 
-**NEXT CHAT, IN THIS ORDER (user, 2026-10-08):**
-1. **Content first (needed immediately):** finish the Higgsfield motion-design prompts for the announcement video
-   (Appendix C, at the end of this file: drafted shot by shot, ready to paste) and help the user generate + edit.
-2. **Mobile design: fixed and LIVE by Wed 2026-10-14.** Ask the user which screens / what looks wrong on mobile,
-   then work one element at a time in their order (memory "UI pacing"). Check at 375 px with the dev preview
-   (`.claude/launch.json` "app", `?demo` for sample data). "Live" = deployed to Railway (still behind the passcode).
+**Everything is built: we are ready to launch (user, 2026-10-10).** The only work left is content.
+
+**NEXT CHAT: post content for next week.** The soft-launch posts (Mon 10-12, Wed 10-14, Fri 10-16): drafts are in
+the content doc below (Claude Doc "Neuriio launch content: Oct 12–16"). Post 1's text still fits; its video is the
+Remotion one below (the doc's 45 s script and Appendix C are superseded). Build all copy from the thesis (memory
+"neuriio-thesis").
+
+**Go-live switches (when the user says launch; the user flips these):** delete the Cloudflare redirect rule that sends
+`app.neuriio.xyz` to the docs; remove `APP_PASSCODE` on Railway; switch the `neuriio.xyz` redirect to the app;
+**remove `https://192.168.0.64:5174` from Privy's allowed origins** (added 2026-10-10 for phone testing). `/` already
+opens Explore (no change needed).
+
+### Mobile: DONE 2026-10-10 (committed + pushed)
+Phone layout = `max-width: 860px` (CSS) and `useIsMobile()` (`app/src/lib/media.ts`, same breakpoint). Desktop unchanged
+unless noted.
+- **`/` opens Explore** (desktop too): `/` and any unknown path render Explore and the address bar becomes `/explore`
+  (`App.tsx`). The blank placeholder page is gone.
+- **Explore (phones):** search, chart card (name + ticker + price on one row, sector/category chips on the row under
+  it, timeframes; no Profile / Log / Reset / "Market cap (USD)"), then one card with tabs **About** (creator, X link,
+  bio, links, creator fees, stats, curve progress, disclaimer) / **Trade** (order card) / **Positions**. Top 25 moved
+  to /trending. Chart on touch: drag pans both axes (price axis leaves auto-fit when touched), double-tap resets,
+  timeframe switch re-fits; vertical swipes on the chart no longer scroll the page.
+- **New `/trending` page** (desktop + phones; designed for phones): Top 25 by total volume, live prices, rows open the
+  token on /explore; dot strands on both sides (`DnaStrand phone`, shown on narrow screens too).
+- **Menu (desktop + phones):** Feed (New), Launch, Trending, Explore, Perps/Spot/Outcome (Coming soon).
+- **Launch (phones):** flow stacks (preview on top, steps full width), page scrolls; only the current step shows its
+  label; option grids 2 per row. Intro curve dot now follows the line at any card size (desktop too).
+- **Feed (phones):** no left column (profile, wallet, Top 25); one card with tabs **Feed** / **Notifications** (same
+  list as the Account bell, via shared `NotificationsList`).
+- **Points (desktop + phones):** the Points card shows your real total from the `leaderboard` view, refreshed every
+  minute (`app/src/lib/points.ts`, by Privy `user.twitter.subject` = `x_user_id`). Totals are inflated by testnet
+  redeploys (see "Points" under Later).
+- **Phone testing without deploying:** `npm --prefix app run dev:phone` (or `.claude/launch.json` "app-phone") serves
+  HTTPS on the Wi-Fi address, port 5174 (`@vitejs/plugin-basic-ssl`, phone mode only; Privy refuses plain http). Open
+  `https://192.168.0.64:5174/explore?demo` on the phone (same Wi-Fi), accept the self-signed certificate warning once.
+  X login works there because that origin is in Privy (remove at launch). On phones X login goes through x.com in the
+  browser and returns to the app (tested 2026-10-10).
+
+### Launch video: DONE 2026-10-09/10 (LOCAL ONLY, never commit)
+- **Final file to post:** `/Users/von/Neuriio/video/out/neuriio-launch-4k.mp4` (3840x2160, 16:9, 60 fps, H.264,
+  ~14.3 s, 22 MB). Backup if X rejects/slows the 4K upload: `video/out/neuriio-launch-1080p.mp4`.
+- **`video/` is local only (user, 2026-10-10): never commit or push it.** It's listed in `.git/info/exclude` (git's
+  local ignore, not in the repo), so `git status` stays clean and `git add .` can't pick it up. It exists only on
+  this Mac.
+- **Tool: Remotion** (React/TS video from code, free licence: Neuriio is <= 3 people). Higgsfield, Jitter and Figma
+  were dropped: the UI was built in code (no Figma source) and the Figma seat is View/Starter. Memory
+  "launch-video-remotion" + "plan-video-before-building" (agree each beat with the user before building/rendering).
+- **Project:** `video/` (own `package.json`; `cd video && npm run studio` to preview, or
+  `npx remotion render Cards out/x.mp4 --scale=1.5 --crf=16` for 4K, `--scale=0.75` for 1080p). The final video is
+  the composition **"Cards"** (`video/src/scenes/Cards.tsx`, base 2560x1440 @ 60 fps, rendered at 1.5x for 4K).
+  Other compositions are earlier drafts: "Launch" (DNA helix opening), "Storyline" (first 12 s storyline).
+- **What "Cards" shows:** dot grid with random ripples -> they gather into a cluster that pops five X profile
+  cards into an arc (real banners from the user's screenshots, placeholder names/handles, the Neuriio logo as the
+  profile picture, 3px #ECDDFF stroke) -> "tokenize" / "accounts" types under the arc (dots light up under it,
+  logo tile bottom centre) -> backspace -> cards stack and merge into the real /launch card; the app header
+  (logo + menu, scrolling ticker marquee, Account / Points) slides in; slow light pulses on the grid -> one
+  click on Login, one on Launch -> the card morphs into a caret -> "create **social** markets" types (dots lit
+  under it) -> everything collapses into the middle and becomes the logo tile (no glow/shadow) with two rings of
+  dots circling it. Colours: #ECDDFF highlights, #a99bbd for the other words, font Lilex, bg #463764.
+- **Real app captures** (headless Chrome via DevTools, 3x = 4K sharp; need the app dev server on :5173):
+  `node video/scripts/capture-launch.mjs` (Login/Launch cards -> `video/public/app/flow/`) and
+  `node video/scripts/capture-header.mjs` (header + marquee strip -> `video/public/app/`). Re-run them if the
+  app's header or launch card changes, then re-render. Marquee prices are frozen at capture time.
+- The user's five X profile screenshots are in `video/public/x/` (real accounts' banners kept on purpose; names,
+  handles and profile pictures replaced). The logo file is only 256px: a larger logo (1024px/SVG) would sharpen
+  the 4K ending.
 
 ### State at end of 2026-10-08 (soft-launch setup is DONE)
 - **Soft launch Mon 2026-10-12** = the first X post (announcement video on the user's "social exposure" thesis), then
@@ -39,7 +99,7 @@ Read this first in a new session. `README.md` has per-step detail; this file is 
     30-day HttpOnly cookie (HMAC of the passcode: changing `APP_PASSCODE` signs everyone out); 10 wrong tries per visitor
     / 200 overall per 15 min. Closes the railway.app URL and the skip-Cloudflare route. **ON since 2026-10-08** (user set `APP_PASSCODE`; verified: railway.app URL and the skip-Cloudflare route both show
     the "Private Beta" page, user confirmed the passcode lets them in). Remove the variable at launch.
-    **Do NOT make `/` open the Launch page yet** (user: only when going live).
+    `/` opens Explore (user, 2026-10-10).
 - **Repo cleaned 2026-10-08** (Appendix A): launchpad only; PropAMM-era code removed; README rewritten; CI green.
 - **Docs (13 pages in `docs/`):** written from the contracts; the user reviews/edits in GitBook. KNTQ named in the
   protocol buyback share. Points page has no rates (Points panel in the app is still a placeholder).
@@ -63,8 +123,8 @@ Read this first in a new session. `README.md` has per-step detail; this file is 
 75/$1M HL, 50 per launch). Catch: launch points are keyed per TOKEN, so testnet redeploys credited @von_hl 4x and
 @__HLOS 2x. Decide: make launch points once per X account ever, and/or reset `points_ledger` at the beta start and
 at mainnet (all points so far are the user's tests).
-At go-live: delete the app redirect rule, remove `APP_PASSCODE`, `/` -> Launch; real posting on the Feed; Points panel + leaderboard;
-multisig ownership + formal audit before mainnet.
+At go-live: see "Go-live switches" at the top (`/` already opens Explore). Later: real posting on the Feed; Points
+panel boxes + leaderboard page; multisig ownership + formal audit before mainnet.
 
 ## 0. PIVOT 2026-09-27: token launchpad (pump.fun model); PropAMM PAUSED
 
@@ -1329,6 +1389,9 @@ word like the /launch intro.
 Possible follow-ups: a 9:16 version, a 15-second cut.
 
 ## Appendix C. Higgsfield prompts: announcement video "Social exposure" (drafted 2026-10-08)
+
+**SUPERSEDED 2026-10-10:** the announcement video was made in Remotion instead (see "Launch video: DONE" at the top).
+Kept for reference only.
 
 Script (45 s, 10 beats) = Post 1 in the content doc. Generate each shot WITHOUT text (typography goes on in the
 editor: CapCut / Premiere / After Effects), 5 s clips, 16:9 first then 9:16 re-generations. Keep one seed for the set;

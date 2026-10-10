@@ -19,7 +19,8 @@ import { compactUsd } from "../lib/format";
 import { tradeId, useLivePrices, useLiveTrades } from "../lib/live";
 import { Avatar } from "./Avatar";
 
-export function PositionsCard({ hypeUsd, onPick }: { hypeUsd: number; onPick: (address: string) => void }) {
+/** `bare`: no "Positions" title (the mobile tab card already names it). */
+export function PositionsCard({ hypeUsd, onPick, bare = false }: { hypeUsd: number; onPick: (address: string) => void; bare?: boolean }) {
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
   const wallet = wallets.find((w) => w.walletClientType === "privy")?.address?.toLowerCase();
@@ -82,11 +83,13 @@ export function PositionsCard({ hypeUsd, onPick }: { hypeUsd: number; onPick: (a
 
   return (
     <div className="ex-positions">
-      <div className="ex-tabs">
-        <span className="ex-tab is-on">
-          Positions{rows && rows.length > 0 ? <span className="ex-tab-count">{rows.length}</span> : null}
-        </span>
-      </div>
+      {!bare && (
+        <div className="ex-tabs">
+          <span className="ex-tab is-on">
+            Positions{rows && rows.length > 0 ? <span className="ex-tab-count">{rows.length}</span> : null}
+          </span>
+        </div>
+      )}
 
       {!loggedIn ? (
         <p className="ex-empty">

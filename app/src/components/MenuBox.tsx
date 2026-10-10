@@ -1,6 +1,6 @@
 // Menu button (just three bold lines, no box) next to the logo: same click-to-morph spring panel as
 // Account/Points, opening from the top-left. Lists the app's sections as plain line items (no boxes).
-// Feed (new page, being built), Launch and Explore are links; trading (Perps, Spot, Outcome on one line, the future
+// Feed (new page, being built), Launch, Trending (Top 25) and Explore are links; trading (Perps, Spot, Outcome on one line, the future
 // /trade page) is greyed out as "Coming soon".
 import { Menu } from "lucide-react";
 import { Morph } from "./Morph";
@@ -8,6 +8,7 @@ import { Morph } from "./Morph";
 const PAGES = [
   { label: "Feed", href: "/feed", isNew: true },
   { label: "Launch", href: "/launch" },
+  { label: "Trending", href: "/trending" },
   { label: "Explore", href: "/explore" },
 ];
 

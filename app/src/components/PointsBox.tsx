@@ -1,9 +1,10 @@
-// Points button: morphs into the points panel. There is no points system yet (no contract or
-// backend), so it shows 0.0 and 8 blank boxes to be designed. Logged out, the boxes are blurred
+// Points button: morphs into the points panel. The head shows your points total (the leaderboard: trading volume +
+// launches, awarded every minute by the indexer); the 8 boxes below are still blank, to be designed. Logged out, the boxes are blurred
 // behind a small "Login to Account" card (text only: logging in happens from the Account button).
 import { motion, useReducedMotion } from "motion/react";
 import { usePrivy } from "@privy-io/react-auth";
 import { Morph } from "./Morph";
+import { usePoints } from "../lib/points";
 
 const SLOTS = Array.from({ length: 8 }, (_, i) => i);
 
@@ -11,6 +12,8 @@ export function PointsBox() {
   const { ready, authenticated } = usePrivy();
   const reduce = useReducedMotion();
   const locked = !(ready && authenticated);
+  const mine = usePoints();
+  const total = mine ? mine.points.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : "…";
 
   return (
     <Morph
@@ -20,7 +23,7 @@ export function PointsBox() {
       head={
         <span className="points-head">
           <span>Points</span>
-          <span>0.0</span>
+          <span>{locked ? "0.0" : total}</span>
         </span>
       }
       bodyClassName={`points-body${locked ? " panel-body-locked" : ""}`}

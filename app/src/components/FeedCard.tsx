@@ -3,6 +3,8 @@
 // top 25 trending by 24h volume) beside the posts. Every post has Like, Comment (opens the thread in a window to
 // read) and Send $ (a window: pick one of your Elysium tokens + amount, sent to the poster's wallet). Posts, likes
 // and comments are samples for now (nothing stored); sample posts have no wallet, so Send can't complete on them.
+// Phones (<= 860px): no left column; one card with two tabs, Feed (the posts) and Notifications (the same list as
+// the Account panel's bell).
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
@@ -10,7 +12,8 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { formatEther, type Address } from "viem";
 import { Bell, Heart, MessageCircle, Search, X } from "lucide-react";
 import { Avatar } from "./Avatar";
-import { NotificationsModal } from "./NotificationsModal";
+import { NotificationsList, NotificationsModal } from "./NotificationsModal";
+import { useIsMobile } from "../lib/media";
 import { SendModal, type SendTarget } from "./SendModal";
 import { useNotifications } from "../lib/ftf";
 import { EASE_OUT } from "../lib/motion";
@@ -98,26 +101,51 @@ export function FeedCard() {
   const hypeUsd = useHypeUsd();
   const [reading, setReading] = useState<Post | null>(null);
   const [sendTo, setSendTo] = useState<SendTarget | null>(null);
+  const mobile = useIsMobile();
+  const [tab, setTab] = useState<"feed" | "notifications">("feed");
+  const { items } = useNotifications();
+  const posts = (
+    <ol className="feed-list">
+      {TEST_POSTS.map((p) => (
+        <PostRow
+          key={p.id}
+          p={p}
+          onComments={() => setReading(p)}
+          onSend={() => setSendTo({ handle: p.handle, name: p.name, pfp: p.pfp, wallet: p.wallet })}
+        />
+      ))}
+    </ol>
+  );
   return (
     <>
       <FeedSearch hypeUsd={hypeUsd} />
       <section className="panel ex-card feed-card" aria-label="Feed">
-        <div className="feed-grid">
-          <aside className="feed-side">
-            <Me />
-            <Trending />
-          </aside>
-          <ol className="feed-list">
-            {TEST_POSTS.map((p) => (
-              <PostRow
-                key={p.id}
-                p={p}
-                onComments={() => setReading(p)}
-                onSend={() => setSendTo({ handle: p.handle, name: p.name, pfp: p.pfp, wallet: p.wallet })}
-              />
-            ))}
-          </ol>
-        </div>
+        {mobile ? (
+          <div className="feed-mobile">
+            <div className="ex-mtabs feed-mtabs" role="tablist">
+              <button role="tab" aria-selected={tab === "feed"} className={`ex-mtab${tab === "feed" ? " is-on" : ""}`} onClick={() => setTab("feed")}>
+                Feed
+              </button>
+              <button
+                role="tab"
+                aria-selected={tab === "notifications"}
+                className={`ex-mtab${tab === "notifications" ? " is-on" : ""}`}
+                onClick={() => setTab("notifications")}
+              >
+                Notifications{items.length > 0 && <span className="notif-count feed-mtab-count">{items.length}</span>}
+              </button>
+            </div>
+            {tab === "feed" ? posts : <MobileNotices />}
+          </div>
+        ) : (
+          <div className="feed-grid">
+            <aside className="feed-side">
+              <Me />
+              <Trending />
+            </aside>
+            {posts}
+          </div>
+        )}
       </section>
       <CommentsModal post={reading} onClose={() => setReading(null)} />
       <SendModal target={sendTo} onClose={() => setSendTo(null)} />
@@ -303,6 +331,25 @@ function Me() {
         ))}
       </div>
     </>
+  );
+}
+
+/** Mobile Notifications tab: the Account panel's list, or a login prompt. */
+function MobileNotices() {
+  const { ready, authenticated, login } = usePrivy();
+  if (!DEMO && !(ready && authenticated))
+    return (
+      <p className="nt-empty">
+        <button className="link-btn" onClick={login}>
+          Log in
+        </button>{" "}
+        to see your notifications.
+      </p>
+    );
+  return (
+    <div className="feed-mnotices">
+      <NotificationsList />
+    </div>
   );
 }
 

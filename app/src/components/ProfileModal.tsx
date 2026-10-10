@@ -9,13 +9,19 @@ import { CATEGORIES } from "../lib/launch";
 import { EASE_OUT } from "../lib/motion";
 import { Avatar } from "./Avatar";
 
-export function ProfileModal({ t, onClose }: { t: TokenStat; onClose: () => void }) {
+/** The creator's bio + links (and an FTF's members), loaded once per token. undefined = loading. */
+export function useCreatorProfile(t: TokenStat) {
   const [profile, setProfile] = useState<CreatorProfile | null | undefined>(undefined);
   const [members, setMembers] = useState<MemberCard[] | null>(null);
   useEffect(() => {
     getProfile(t.address).then(setProfile, () => setProfile(null));
     if (t.kind === "ftf" && t.member_x_user_ids) ftfMembers(t.member_x_user_ids).then(setMembers, () => setMembers([]));
   }, [t.address, t.kind, t.member_x_user_ids]);
+  return { profile, members };
+}
+
+export function ProfileModal({ t, onClose }: { t: TokenStat; onClose: () => void }) {
+  const { profile, members } = useCreatorProfile(t);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     addEventListener("keydown", onKey);
@@ -61,57 +67,74 @@ export function ProfileModal({ t, onClose }: { t: TokenStat; onClose: () => void
           <span className={`lp-chip${t.kind === "ftf" ? " ex-ftf-chip" : ""}`}>{t.kind === "ftf" ? "FTF" : cat}</span>
         </header>
 
-        {t.kind === "ftf" && (
-          <section className="ex-modal-section">
-            <h3 className="ex-modal-label">Members</h3>
-            <ul className="ex-modal-members">
-              {(members ?? []).map((m, i) => (
-                <li key={m.x_user_id}>
-                  <a href={`https://x.com/${m.x_handle}`} target="_blank" rel="noreferrer">
-                    <Avatar handle={m.x_handle} pfp={m.x_pfp_url} size={28} />
-                    <span className="ex-modal-member-names">
-                      <span>{m.x_name || `@${m.x_handle}`}</span>
-                      <span className="ex-modal-host">@{m.x_handle}{i === 0 ? " · founder" : ""}</span>
-                    </span>
-                    <ExternalLink size={11} />
-                  </a>
-                </li>
-              ))}
-              {!members && <li className="ex-modal-host">Loading…</li>}
-            </ul>
-          </section>
-        )}
-
-        <section className="ex-modal-section">
-          <h3 className="ex-modal-label">About</h3>
-          <p className="ex-modal-about">
-            {profile === undefined ? "Loading…" : profile?.about || (t.kind === "ftf" ? "No description yet." : "This creator hasn't written a bio.")}
-          </p>
-        </section>
-
-        {profile && profile.links.length > 0 && (
-          <section className="ex-modal-section">
-            <h3 className="ex-modal-label">Links</h3>
-            <ul className="ex-modal-links">
-              {profile.links.map((l) => (
-                <li key={l.url}>
-                  <a href={l.url} target="_blank" rel="noreferrer noopener">
-                    <span>{l.label || hostOf(l.url)}</span>
-                    <span className="ex-modal-host">
-                      {hostOf(l.url)} <ExternalLink size={11} />
-                    </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        <ProfileBody t={t} profile={profile} members={members} />
 
         <p className="ex-order-note">
           ${t.symbol} is a meme with no promise of value. {t.kind === "ftf" ? "Its members owe" : `@${t.handle} owes`} holders nothing.
         </p>
       </motion.div>
     </motion.div>
+  );
+}
+
+/** Members (FTF), About and Links sections: the modal's body, also the mobile About tab's. */
+export function ProfileBody({
+  t,
+  profile,
+  members,
+}: {
+  t: TokenStat;
+  profile: CreatorProfile | null | undefined;
+  members: MemberCard[] | null;
+}) {
+  return (
+    <>
+      {t.kind === "ftf" && (
+        <section className="ex-modal-section">
+          <h3 className="ex-modal-label">Members</h3>
+          <ul className="ex-modal-members">
+            {(members ?? []).map((m, i) => (
+              <li key={m.x_user_id}>
+                <a href={`https://x.com/${m.x_handle}`} target="_blank" rel="noreferrer">
+                  <Avatar handle={m.x_handle} pfp={m.x_pfp_url} size={28} />
+                  <span className="ex-modal-member-names">
+                    <span>{m.x_name || `@${m.x_handle}`}</span>
+                    <span className="ex-modal-host">@{m.x_handle}{i === 0 ? " · founder" : ""}</span>
+                  </span>
+                  <ExternalLink size={11} />
+                </a>
+              </li>
+            ))}
+            {!members && <li className="ex-modal-host">Loading…</li>}
+          </ul>
+        </section>
+      )}
+
+      <section className="ex-modal-section">
+        <h3 className="ex-modal-label">About</h3>
+        <p className="ex-modal-about">
+          {profile === undefined ? "Loading…" : profile?.about || (t.kind === "ftf" ? "No description yet." : "This creator hasn't written a bio.")}
+        </p>
+      </section>
+
+      {profile && profile.links.length > 0 && (
+        <section className="ex-modal-section">
+          <h3 className="ex-modal-label">Links</h3>
+          <ul className="ex-modal-links">
+            {profile.links.map((l) => (
+              <li key={l.url}>
+                <a href={l.url} target="_blank" rel="noreferrer noopener">
+                  <span>{l.label || hostOf(l.url)}</span>
+                  <span className="ex-modal-host">
+                    {hostOf(l.url)} <ExternalLink size={11} />
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
 }
 
