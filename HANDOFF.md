@@ -8,6 +8,10 @@ Read this first in a new session. `README.md` has per-step detail; this file is 
 ## NEXT CHAT STARTS HERE (written 2026-10-10)
 
 **Everything is built: we are ready to launch (user, 2026-10-10).** The only work left is content.
+**"Launch" = public launch on Elysium TESTNET.** Mainnet is a few weeks out and only if the idea shows users and demand;
+testnet feedback gets built in first. Multisig + formal audit are mainnet work, not launch blockers.
+**Feedback channel:** the user's personal X and the company X (@Neuriio) for now (posts should invite replies/DMs there);
+a community (Telegram) opens once demand shows, so the footer Telegram icon stays "coming soon".
 
 **NEXT CHAT: post content for next week.** The soft-launch posts (Mon 10-12, Wed 10-14, Fri 10-16): drafts are in
 the content doc below (Claude Doc "Neuriio launch content: Oct 12–16"). Post 1's text still fits; its video is the
@@ -18,6 +22,17 @@ Remotion one below (the doc's 45 s script and Appendix C are superseded). Build 
 `app.neuriio.xyz` to the docs; remove `APP_PASSCODE` on Railway; switch the `neuriio.xyz` redirect to the app;
 **remove `https://192.168.0.64:5174` from Privy's allowed origins** (added 2026-10-10 for phone testing). `/` already
 opens Explore (no change needed).
+
+### Multisig transfer script: READY for mainnet (written + fork-tested 2026-10-10)
+`./script/transfer-ownership.sh <safe> [account]` (current owner = `burner`) starts `transferOwnership(safe)` on
+NeuriioRegistry, every NeuriioPad and every NeuriioFees (Ownable2Step: the Safe must accept) and sets the factory's
+`feeToSetter` to the Safe (immediate, irreversible, so it runs last and only if the address is a deployed Safe with
+threshold >= 2). Writes `deployments/accept-ownership.json` (Safe Transaction Builder batch of `acceptOwnership()`).
+`./script/transfer-ownership.sh check <safe>` = read-only owner report. Fork test (anvil, stand-in 2-of-3 Safe): all four
+moved, burner's `pause()` / `setFeeVault` then revert, a non-Safe address is refused. **Blocker for mainnet: Safe is not
+deployed on Elysium** (canonical addresses empty on testnet; mainnet unchecked; Arachnid deployer exists). Ask Kinetiq
+whether Safe will be on Elysium mainnet, else self-deploy Safe and sign via safe-cli. Not moved by the script: the launch
+signer (backend key) and the fee wallets (receive only).
 
 ### Mobile: DONE 2026-10-10 (committed + pushed)
 Phone layout = `max-width: 860px` (CSS) and `useIsMobile()` (`app/src/lib/media.ts`, same breakpoint). Desktop unchanged

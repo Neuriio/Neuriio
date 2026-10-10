@@ -4,7 +4,7 @@ type Social = { label: string; icon: string; href?: string };
 
 const SOCIALS: Social[] = [
   { label: "Neuriio on X", icon: "/social/x.svg", href: "https://x.com/Neuriio" },
-  { label: "Docs", icon: "/social/gitbook.svg" }, // docs site not published yet
+  { label: "Docs", icon: "/social/gitbook.svg", href: "https://docs.neuriio.xyz" },
   { label: "Telegram", icon: "/social/telegram.svg" }, // group not set up yet
 ];
 
