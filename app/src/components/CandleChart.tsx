@@ -132,8 +132,11 @@ export function CandleChart({
       setLog: (on) => c.priceScale("right").applyOptions({ mode: on ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal }),
       applyTrade: (t) => {
         const { interval: s, hypeUsd: usd, basePriceHype: base } = cfg.current;
-        if (t.priceHype == null || !usd) return;
-        const mcap = t.priceHype * SUPPLY * usd;
+        if (!usd) return;
+        // no spot price in the message (shouldn't happen since the watcher fix): use the trade's own average price
+        const priceHype = t.priceHype ?? (t.tokens > 0 ? t.hype / t.tokens : null);
+        if (priceHype == null) return;
+        const mcap = priceHype * SUPPLY * usd;
         const time = (Math.floor(t.ts / 1000 / s) * s) as UTCTimestamp;
         if (drawn.current.size === 0) {
           // no stored candles yet (brand-new token): the first live trade draws the first candle

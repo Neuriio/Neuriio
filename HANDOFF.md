@@ -60,6 +60,16 @@ unless noted.
   X login works there because that origin is in Privy (remove at launch). On phones X login goes through x.com in the
   browser and returns to the app (tested 2026-10-10).
 
+### Video A "How a launch works": RENDERED 2026-10-10, second cut (for Wed 10-14; LOCAL ONLY, never commit)
+`video/out/how-a-launch-works-4k.mp4` (3840x2160, 60 fps), composition **"HowItWorks"** (`video/src/scenes/HowItWorks.tsx`,
+render `npx remotion render HowItWorks out/x.mp4 --scale=1.5 --crf=16`). Background (user): purple on the left with random
+dots lighting up there only, smooth gradient into lavender (#ECDDFF) on the right, dim dots everywhere, visuals centred.
+No typed text. Beats: Neuriio X profile card (the user's banner, `video/public/x/neuriio-banner.png`) drops in -> morphs
+into a token (logo in a circle, lavender stroke, no shadow/glow) -> lands at the foot of the bonding curve as it draws ->
+climbs with "buy" chips + progress bar; camera zooms from halfway up and is centred on the token at the top -> token
+morphs into a lock (shackle draws, snaps shut) -> lock morphs into the logo tile with two rings of dots.
+App opens to the public **Fri 10-16** (user); Video B "Live on testnet" is next, for that day.
+
 ### Launch video: DONE 2026-10-09/10 (LOCAL ONLY, never commit)
 - **Final file to post:** `/Users/von/Neuriio/video/out/neuriio-launch-4k.mp4` (3840x2160, 16:9, 60 fps, H.264,
   ~14.3 s, 22 MB). Backup if X rejects/slows the 4K upload: `video/out/neuriio-launch-1080p.mp4`.

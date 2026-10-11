@@ -45,7 +45,11 @@ const factoryAbi = parseAbi([
   "function allPairsLength() view returns (uint256)",
   "function allPairs(uint256) view returns (address)",
 ]);
-const pairAbi = parseAbi(["function token0() view returns (address)", "function token1() view returns (address)"]);
+const pairAbi = parseAbi([
+  "function token0() view returns (address)",
+  "function token1() view returns (address)",
+  "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+]);
 
 async function loadPairs() {
   const n = Number(await http.readContract({ address: dep.swapFactory, abi: factoryAbi, functionName: "allPairsLength" }));
@@ -161,6 +165,7 @@ async function handle(logs, source) {
   for (const [n, group] of [...byBlock].sort((a, b) => Number(a[0] - b[0]))) {
     const received = Date.now();
     const { trades, graduated } = liveTrades(group, ctx, timestampOf(group));
+    await priceMissing(trades, n);
     await broadcast(trades);
     await broadcast(graduated, "graduated"); // after its trades, so charts already show the last curve buy
     if (trades.length) log("trades", { block: Number(n), n: trades.length, source, ms: Date.now() - received });
@@ -168,6 +173,27 @@ async function handle(logs, source) {
       ctx.pairToken.set(g.pair, g.token);
       log("graduated", g);
       resubscribe(); // watch the new pool too
+    }
+  }
+}
+
+// A pool trade's price comes from the pair's Sync in the same tx, but the websocket can deliver the Sync and the Swap
+// in separate batches; then the trade has no price and the charts skipped it (found 2026-10-10). Fill it from the
+// pair's reserves at that block (one RPC read, ~0.2 s).
+async function priceMissing(trades, blockNumber) {
+  for (const t of trades) {
+    if (t.venue !== "pool" || t.priceHype != null) continue;
+    const pair = [...ctx.pairToken].find(([, tok]) => tok === t.token)?.[0];
+    if (!pair) continue;
+    try {
+      const [[r0, r1], t0] = await Promise.all([
+        http.readContract({ address: pair, abi: pairAbi, functionName: "getReserves", blockNumber }),
+        http.readContract({ address: pair, abi: pairAbi, functionName: "token0" }),
+      ]);
+      const [hype, tok] = lc(t0) === ctx.whype ? [r0, r1] : [r1, r0];
+      t.priceHype = tok === 0n ? null : Number(hype * 10n ** 18n / tok) / 1e18;
+    } catch (e) {
+      log("price_error", { token: t.token, error: e.shortMessage ?? e.message });
     }
   }
 }

@@ -65,7 +65,13 @@ export const launchpadAbi = parseAbi([
   "function ftf(address) view returns ((string name, bytes32 profileHash, uint64[4] memberXIds, address[4] members))",
 ]);
 
-export const pub = createPublicClient({ chain: elysiumTestnet, transport: fallback(ELYSIUM_RPCS.map((u) => http(u))) });
+// pollingInterval: Elysium makes a block every ~0.16 s; viem's default without a known block time polls every 4 s, which
+// held every "confirmed" (and the balance refresh after a trade) back by up to 4 s
+export const pub = createPublicClient({
+  chain: elysiumTestnet,
+  transport: fallback(ELYSIUM_RPCS.map((u) => http(u))),
+  pollingInterval: 300,
+});
 
 export type CurveParams = { virtualHype: number; feeBps: number };
 
