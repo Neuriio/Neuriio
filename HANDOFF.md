@@ -144,7 +144,7 @@ App opens to the public **Fri 10-16** (user); Video B "Live on testnet" is next,
    on the old core (registry 0x4e16…) and no longer show in the app.
 
 ### Later (not for the soft launch)
-**Points (checked 2026-10-08):** tracking works (indexer every minute; rates in `points_rules` = 100 pts/$1M curve+pool,
+**Points (checked 2026-10-08):** tracking works (indexer every minute; rates in `points_rules` = 100 pts/$100k curve+pool (raised from 100/$1M on 2026-10-10, new trades only),
 75/$1M HL, 50 per launch). Catch: launch points are keyed per TOKEN, so testnet redeploys credited @von_hl 4x and
 @__HLOS 2x. Decide: make launch points once per X account ever, and/or reset `points_ledger` at the beta start and
 at mainnet (all points so far are the user's tests).
@@ -297,7 +297,7 @@ also turn off other methods in the Privy dashboard). Every user who logs in with
   deployments, asks the Privy app secret hidden, deploys). Then `./script/deploy-launchpad.sh burner` (fresh launchpad with
   that signer; updates the LAUNCHPAD_ADDRESS secret).
 - **Indexer + points: LIVE 2026-09-27** (migration `20260927010000_points.sql`, functions `indexer` + `register`):
-  - **Points rules (user):** launched tokens (curve + pool) **100 pts per $1M** traded; Hyperliquid perps/spot/outcomes via
+  - **Points rules (user):** launched tokens (curve + pool) **100 pts per $100k** traded (was 100 per $1M until 2026-10-10); Hyperliquid perps/spot/outcomes via
     Neuriio **75 pts per $1M**; **50 pts** for launching yourself; raw volume (no anti-wash rules); live public leaderboard.
     Holding points: planned, math TBD. Rates live in `points_rules` (points per $1; changes apply going forward only).
   - `award_points()` (SQL): links trades to users by wallet, writes one ledger row per trade / launch (idempotent via the
