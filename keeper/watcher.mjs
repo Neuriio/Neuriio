@@ -15,7 +15,7 @@
 //      WS_URL, RPC_URL ("primary,fallback"), POLL_MS (default 500), DEPLOYMENTS (default ../deployments/elysium-testnet.json)
 import { readFileSync } from "node:fs";
 import { RealtimeClient } from "@supabase/realtime-js";
-import { createPublicClient, parseAbi, webSocket } from "viem";
+import { createPublicClient, parseAbi, parseEventLogs, webSocket } from "viem";
 import { makeTransport } from "./src/rpc.mjs";
 import { liveTrades, watchEvents } from "./src/watch/trades.mjs";
 
@@ -164,7 +164,9 @@ async function handle(logs, source) {
   const byBlock = Map.groupBy(fresh, (l) => l.blockNumber);
   for (const [n, group] of [...byBlock].sort((a, b) => Number(a[0] - b[0]))) {
     const received = Date.now();
-    const { trades, graduated } = liveTrades(group, ctx, timestampOf(group));
+    const ts = timestampOf(group);
+    const { trades: raw, graduated } = liveTrades(group, ctx, ts);
+    const trades = await completePoolTrades(raw, ts);
     await priceMissing(trades, n);
     await broadcast(trades);
     await broadcast(graduated, "graduated"); // after its trades, so charts already show the last curve buy
@@ -177,6 +179,32 @@ async function handle(logs, source) {
   }
 }
 
+// A pool trade needs three logs of its tx: the pair's Sync (price), Swap (amounts) and our router's Swapped (trader, and
+// the id the indexer stores it under). The websocket can split one tx's logs across batches; then the trade went out
+// with no price and/or no trader, so charts skipped it and Positions (which match the trader) missed it until the
+// stored data caught up, and its id didn't match the stored copy (found 2026-10-10). Rebuild such trades from the tx
+// receipt, which has every log (one RPC read, ~0.2 s). Aggregator trades legitimately have no router log: they stay
+// trader-less after the rebuild.
+async function completePoolTrades(trades, ts) {
+  const partial = new Set(trades.filter((t) => t.venue === "pool" && (t.priceHype == null || t.trader == null)).map((t) => t.tx));
+  if (!partial.size) return trades;
+  const rebuilt = new Map();
+  await Promise.all(
+    [...partial].map(async (hash) => {
+      try {
+        const receipt = await http.getTransactionReceipt({ hash });
+        const logs = parseEventLogs({ abi: watchEvents, logs: receipt.logs, strict: false }).filter((l) => l.eventName);
+        for (const l of logs) seen.add(`${l.transactionHash}:${l.logIndex}`); // its other logs arriving later stay quiet
+        rebuilt.set(hash, liveTrades(logs, ctx, ts).trades.filter((t) => t.venue === "pool"));
+      } catch (e) {
+        log("receipt_error", { tx: hash, error: e.shortMessage ?? e.message });
+      }
+    }),
+  );
+  return trades.flatMap((t) => (t.venue === "pool" && rebuilt.has(t.tx) ? [] : [t])).concat([...rebuilt.values()].flat());
+}
+
+// Last resort if a pool trade still has no price: read the pair's reserves at that block.
 // A pool trade's price comes from the pair's Sync in the same tx, but the websocket can deliver the Sync and the Swap
 // in separate batches; then the trade has no price and the charts skipped it (found 2026-10-10). Fill it from the
 // pair's reserves at that block (one RPC read, ~0.2 s).
