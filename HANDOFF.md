@@ -1,4 +1,4 @@
-# Handoff — Neuriio (state as of 2026-10-10: EVERYTHING DONE, READY TO LAUNCH; launch video DONE (local, 4K); mobile DONE; soft launch Mon 10-12; NEXT CHAT: post content for next week, see "NEXT CHAT STARTS HERE")
+# Handoff — Neuriio (state as of 2026-10-10 late: READY TO LAUNCH; soft launch Mon 10-12, app opens to the public on testnet Fri 10-16; videos DONE: launch, "How a launch works", FTF (local, 4K); live updates fixed; NEXT CHAT: Video B "Live on testnet" + post copy, see "NEXT CHAT STARTS HERE")
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 
@@ -13,12 +13,19 @@ testnet feedback gets built in first. Multisig + formal audit are mainnet work, 
 **Feedback channel:** the user's personal X and the company X (@Neuriio) for now (posts should invite replies/DMs there);
 a community (Telegram) opens once demand shows, so the footer Telegram icon stays "coming soon".
 
-**NEXT CHAT: post content for next week.** The soft-launch posts (Mon 10-12, Wed 10-14, Fri 10-16): drafts are in
-the content doc below (Claude Doc "Neuriio launch content: Oct 12–16"). Post 1's text still fits; its video is the
-Remotion one below (the doc's 45 s script and Appendix C are superseded). Build all copy from the thesis (memory
-"neuriio-thesis").
+**Schedule (user, 2026-10-10):** Mon 10-12 = launch video + thesis post (docs only); Wed 10-14 = "How a launch works"
+video; **Fri 10-16 = the app opens to the public on testnet** (do the go-live switches below that day). The FTF video
+can go out any day. Posts come from @Neuriio; the user quotes them from their personal X. The feedback ask ("try it,
+tell us what's broken") starts only in the post that opens the app.
 
-**Go-live switches (when the user says launch; the user flips these):** delete the Cloudflare redirect rule that sends
+**NEXT CHAT, IN THIS ORDER:**
+1. **Video B "Live on testnet"** for Fri 10-16 (the app opening): plan it second by second with the user before building
+   (memory "plan-video-before-building"); same style as the others (Remotion in `video/`, 16:9 4K, lots of motion).
+2. **Post copy** for the week if the user wants it: drafts in the content doc (Claude Doc "Neuriio launch content:
+   Oct 12–16", link below). The user said they mainly want video content, not post text. Build copy from the thesis
+   (memory "neuriio-thesis"). The doc's 45 s script and Appendix C are superseded by the Remotion videos.
+
+**Go-live switches (Fri 10-16, when the user says go; the user flips these):** delete the Cloudflare redirect rule that sends
 `app.neuriio.xyz` to the docs; remove `APP_PASSCODE` on Railway; switch the `neuriio.xyz` redirect to the app;
 **remove `https://192.168.0.64:5174` from Privy's allowed origins** (added 2026-10-10 for phone testing). `/` already
 opens Explore (no change needed).
@@ -57,13 +64,30 @@ unless noted.
 - **Points (desktop + phones):** the Points card shows your real total from the `leaderboard` view, refreshed every
   minute (`app/src/lib/points.ts`, by Privy `user.twitter.subject` = `x_user_id`). Totals are inflated by testnet
   redeploys (see "Points" under Later).
-- **Phone testing without deploying:** `npm --prefix app run dev:phone` (or `.claude/launch.json` "app-phone") serves
-  HTTPS on the Wi-Fi address, port 5174 (`@vitejs/plugin-basic-ssl`, phone mode only; Privy refuses plain http). Open
-  `https://192.168.0.64:5174/explore?demo` on the phone (same Wi-Fi), accept the self-signed certificate warning once.
-  X login works there because that origin is in Privy (remove at launch). On phones X login goes through x.com in the
+- **Phone testing: the user turned the phone dev server OFF (2026-10-10) and wants mobile checked by pushing to git and
+  opening the main link.** Don't start it again unless asked. (It still exists: `npm --prefix app run dev:phone` /
+  `.claude/launch.json` "app-phone", HTTPS on the Wi-Fi address, port 5174.) On phones X login goes through x.com in the
   browser and returns to the app (tested 2026-10-10).
 
-### FTF video: 11.5 s built 2026-10-10 (LOCAL ONLY, never commit)
+### Live updates: FIXED 2026-10-10 (committed + pushed + deployed)
+Chart and Positions now update ~1-2 s after a trade for every token, curve and pool. What was wrong (not mobile-related,
+it was there since the watcher was written; it only shows on graduated tokens):
+- **Pool trades arrived split.** The watcher's websocket can deliver one tx's logs (pair `Sync` = price, `Swap` =
+  amounts, router `Swapped` = trader + the id the indexer stores) in separate batches. Pool trades then went out with no
+  price (chart skipped them) and no trader (Positions missed them, ~5 s until the stored data caught up), and their id
+  didn't match the stored copy. Fix (`keeper/watcher.mjs`): `completePoolTrades` rebuilds incomplete pool trades from
+  the tx receipt (one RPC read); `priceMissing` reads the pair's reserves as a last resort. The chart also falls back
+  to the trade's own average price instead of skipping (`CandleChart.tsx`).
+- **Receipt polling was 4 s** (viem's default without a block time; Elysium blocks are ~0.16 s): `pub` in
+  `app/src/lib/launch.ts` now polls every 300 ms (the "Bought …" message and the balance refresh).
+- **How it was found (reuse if updates lag again):** `railway logs -s watcher` (every trade logs `ev="trades"` with its
+  block and source ws/poll); a small Node listener joined `trades:all` / `trades:<token>` with the anon key like the app
+  does (`@supabase/realtime-js` from `keeper/node_modules`); then a temporary readout of what the chart did with each
+  live trade showed "skipped: no price". The watcher, Supabase Realtime and the app's subscriptions were all fine.
+- Railway redeploys BOTH services (app + watcher) on every push to `main`; the watcher restarts each time (that's the
+  "uptime" in its logs, not Supabase's).
+
+### FTF video: DONE 2026-10-10, 11.5 s (user: "this is perfect"; LOCAL ONLY, never commit)
 Composition **"Ftf"** (`video/src/scenes/Ftf.tsx`), render `video/out/ftf-4k.mp4` (11.5 s, 3840x2160, 60 fps; the plain
 background is `out/ftf-background-4k.mp4`). Background: Video A's gradient turned vertical and mirrored (dark purple top and
 bottom with random dots lighting up there only, one smooth blend into lavender through the middle, faint dots). Story so
@@ -77,13 +101,14 @@ glow), squeezes into the caret, and "create an FTF," / "put everyone onchain" ty
 the light band, FTF + onchain highlighted, dots under the text darken). Plan any new beat second by second first. Low-res check: render with `--scale=0.25` (0.35 gives a fractional height)
 and pull frames with ffmpeg; much faster than many `remotion still` calls.
 
-### Video A "How a launch works": RENDERED 2026-10-10, second cut (for Wed 10-14; LOCAL ONLY, never commit)
-`video/out/how-a-launch-works-4k.mp4` (3840x2160, 60 fps), composition **"HowItWorks"** (`video/src/scenes/HowItWorks.tsx`,
+### Video A "How a launch works": DONE 2026-10-10 (for Wed 10-14; LOCAL ONLY, never commit)
+`video/out/how-a-launch-works-4k.mp4` (3840x2160, 60 fps, 9.6 s; user: "I like this a lot"), composition **"HowItWorks"** (`video/src/scenes/HowItWorks.tsx`,
 render `npx remotion render HowItWorks out/x.mp4 --scale=1.5 --crf=16`). Background (user): purple on the left with random
 dots lighting up there only, smooth gradient into lavender (#ECDDFF) on the right, dim dots everywhere, visuals centred.
 No typed text. Beats: Neuriio X profile card (the user's banner, `video/public/x/neuriio-banner.png`) drops in -> morphs
 into a token (logo in a circle, lavender stroke, no shadow/glow) -> lands at the foot of the bonding curve as it draws ->
-climbs with "buy" chips + progress bar; camera zooms from halfway up and is centred on the token at the top -> token
+climbs fast the moment it lands (~1.9 s, 100 px token) with a few calm "buy" chips, then a wild shaking burst only near
+the top, progress bar filling; camera zooms from halfway up and is centred on the token at the top -> token
 morphs into a lock (shackle draws, snaps shut) -> lock morphs into the logo tile with two rings of dots.
 App opens to the public **Fri 10-16** (user); Video B "Live on testnet" is next, for that day.
 
