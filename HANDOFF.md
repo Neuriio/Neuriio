@@ -44,8 +44,11 @@ unless noted.
   bio, links, creator fees, stats, curve progress, disclaimer) / **Trade** (order card) / **Positions**. Top 25 moved
   to /trending. Chart on touch: drag pans both axes (price axis leaves auto-fit when touched), double-tap resets,
   timeframe switch re-fits; vertical swipes on the chart no longer scroll the page.
-- **New `/trending` page** (desktop + phones; designed for phones): Top 25 by total volume, live prices, rows open the
-  token on /explore; dot strands on both sides (`DnaStrand phone`, shown on narrow screens too).
+- **`/trending` page** (rebuilt 2026-10-10, user's idea): three lists, each a card like Explore's Top 25 (live prices,
+  refreshed every 20 s, rows open the token on /explore): **Bonding** (top 25 by total volume still on the curve),
+  **Recently graduated** (graduated, newest first; shows how long ago), **Trending** (top 25 by 3-day volume, database
+  function `trending_tokens(p_days, p_limit)`, migration `20261011031701_trending_tokens.sql`, applied). Desktop: three
+  columns scrolling inside their cards; phones: one card with the three as tabs. Dot strands on both sides.
 - **Menu (desktop + phones):** Feed (New), Launch, Trending, Explore, Perps/Spot/Outcome (Coming soon).
 - **Launch (phones):** flow stacks (preview on top, steps full width), page scrolls; only the current step shows its
   label; option grids 2 per row. Intro curve dot now follows the line at any card size (desktop too).
@@ -59,6 +62,20 @@ unless noted.
   `https://192.168.0.64:5174/explore?demo` on the phone (same Wi-Fi), accept the self-signed certificate warning once.
   X login works there because that origin is in Privy (remove at launch). On phones X login goes through x.com in the
   browser and returns to the app (tested 2026-10-10).
+
+### FTF video: 11.5 s built 2026-10-10 (LOCAL ONLY, never commit)
+Composition **"Ftf"** (`video/src/scenes/Ftf.tsx`), render `video/out/ftf-4k.mp4` (11.5 s, 3840x2160, 60 fps; the plain
+background is `out/ftf-background-4k.mp4`). Background: Video A's gradient turned vertical and mirrored (dark purple top and
+bottom with random dots lighting up there only, one smooth blend into lavender through the middle, faint dots). Story so
+far: the logo tile springs in at the centre; one at a time, clockwise from the top left, a liquid blob (light purple
+#d6c7f0, the gradient's centre colour, with a lavender rim; SVG goo filter: blur + alpha threshold, erode for the rim)
+bulges out of each corner, stretches on a neck that thins and snaps like a dividing cell, springs to its spot and wobbles
+into an X profile card carrying one of the user's four Neuriio banners (`video/public/x/ftf-banner-1..4.png`); then the
+logo shrinks away and the four cards spring together into a 2x2 grid in the centre; at 5.0 s the faces melt into the
+liquid, the gaps close and the grid runs into one blob, which rounds into the token (logo in a circle, lavender stroke, no
+glow), squeezes into the caret, and "create an FTF," / "put everyone onchain" types in (dark purple #1b1428 / #6b5a8e on
+the light band, FTF + onchain highlighted, dots under the text darken). Plan any new beat second by second first. Low-res check: render with `--scale=0.25` (0.35 gives a fractional height)
+and pull frames with ffmpeg; much faster than many `remotion still` calls.
 
 ### Video A "How a launch works": RENDERED 2026-10-10, second cut (for Wed 10-14; LOCAL ONLY, never commit)
 `video/out/how-a-launch-works-4k.mp4` (3840x2160, 60 fps), composition **"HowItWorks"** (`video/src/scenes/HowItWorks.tsx`,

@@ -2676,18 +2676,48 @@ body {
   padding-top: 10px;
 }
 
-/* ---- /trending: the Top 25, one card between the dot strands (phone-first, 2026-10-10) ---- */
+/* ---- /trending: Bonding / Recently graduated / Trending, three cards between the dot strands (2026-10-10) ---- */
 .stage-trending {
-  position: relative; /* in the page flow: 25 rows are taller than a phone, so the page scrolls */
+  position: relative; /* in the page flow, so phones scroll */
   top: auto;
   left: auto;
   transform: none;
-  width: min(560px, calc(100vw - 32px));
+  width: min(1480px, calc(100vw - 32px));
   margin: 176px auto 0;
   padding-bottom: 110px; /* room for the footer links */
 }
-.tr-list {
-  overflow: visible;
+/* desktop: three equal columns, each as tall as the window allows, its list scrolling inside (like Explore's Top 25) */
+.tr-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap);
+}
+.tr-col {
+  height: min(760px, calc(100dvh - 300px));
+  min-height: 420px;
+}
+.tr-col .tr-list {
+  overflow-y: auto;
+}
+.tr-title {
+  color: var(--text);
+  font-weight: 600;
+}
+/* headings stay on one line in narrower columns */
+.tr-card .ex-list-head {
+  gap: 12px;
+  white-space: nowrap;
+}
+.tr-card .ex-list-head > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.tr-mtabs {
+  margin: 16px 16px 0;
+}
+.tr-card:not(.tr-col) .tr-list {
+  overflow: visible; /* phones: the page scrolls, not the list */
 }
 .tr-list .ex-row {
   text-decoration: none;

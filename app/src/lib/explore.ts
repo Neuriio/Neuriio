@@ -101,6 +101,34 @@ export async function topByTotalVolume(): Promise<{ tokens: TokenStat[]; snapsho
   return { tokens: rows.map(toStat), snapshotAt: rows[0] ? String(rows[0].snapshot_at) : null };
 }
 
+/** /trending "Bonding": the top `limit` tokens still on their bonding curve, by total volume. */
+export async function bondingTokens(limit = 25): Promise<TokenStat[]> {
+  if (DEMO) return demoTokens().filter((t) => !t.graduated).sort((a, b) => b.volume_usd - a.volume_usd).slice(0, limit);
+  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&graduated=eq.false&order=volume_usd.desc.nullslast&limit=${limit}`);
+  return rows.map(toStat);
+}
+
+/** /trending "Recently graduated": graduated tokens, newest graduation first. */
+export async function recentlyGraduated(limit = 25): Promise<TokenStat[]> {
+  if (DEMO)
+    return demoTokens()
+      .filter((t) => t.graduated)
+      .sort((a, b) => Date.parse(b.graduated_at ?? "") - Date.parse(a.graduated_at ?? ""))
+      .slice(0, limit);
+  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&graduated=eq.true&order=graduated_at.desc.nullslast&limit=${limit}`);
+  return rows.map(toStat);
+}
+
+/** /trending "Trending": the top `limit` tokens by volume over the last `days` days (database function trending_tokens). */
+export async function trendingTokens(days = 3, limit = 25): Promise<TokenStat[]> {
+  if (DEMO) return [...demoTokens()].sort((a, b) => b.volume_usd_24h - a.volume_usd_24h).slice(0, limit); // demo: 24h stands in
+  const rows = await rest<Record<string, unknown>[]>("rpc/trending_tokens", {
+    method: "POST",
+    body: JSON.stringify({ p_days: days, p_limit: limit }),
+  });
+  return rows.map(toStat);
+}
+
 /** Search by handle, or by an FTF's name or ticker (case-insensitive, "@" optional), best volume first. */
 export async function searchTokens(query: string, limit = 10): Promise<TokenStat[]> {
   const q = query.trim().replace(/^@/, "").replace(/[^A-Za-z0-9_ ]/g, "").trim();
