@@ -12,12 +12,13 @@ import { ExploreCard } from "./components/ExploreCard";
 import { FeedCard } from "./components/FeedCard";
 import { TrendingCard } from "./components/TrendingCard";
 import { DnaStrand } from "./components/DnaStrand";
+import { LandingBg, LandingFrame, LandingHero } from "./components/Landing";
 import { useRegisterOnLogin } from "./lib/register";
 import { useNotificationsPoller } from "./lib/ftf";
 
 // One layout for every page; the center card changes by path (app.neuriio.xyz/launch, ...).
-// Explore is home: "/" (and any unknown path) shows it, and the address bar is set to /explore.
-const ROUTES = ["/launch", "/feed", "/explore", "/trending"];
+// "/" is the landing page (no menu; Explore inside a frame); any unknown path shows Explore and the address bar is set to /explore.
+const ROUTES = ["/", "/launch", "/feed", "/explore", "/trending"];
 const RAW = location.pathname.replace(/\/+$/, "") || "/";
 const PAGE = ROUTES.includes(RAW) ? RAW : "/explore";
 if (RAW !== PAGE) history.replaceState(null, "", "/explore" + location.search + location.hash);
@@ -27,13 +28,14 @@ export function App() {
   useRegisterOnLogin();
   useNotificationsPoller();
   return (
-    <div className="app">
+    <div className={PAGE === "/" ? "app app-landing" : "app"}>
+      {PAGE === "/" && <LandingBg />}
       <header className="top">
         <div className="top-left">
           <a className="logo" href="/" aria-label="Neuriio home">
             <img src="/brand/logo.png" alt="Neuriio" width={52} height={52} />
           </a>
-          <MenuBox />
+          {PAGE !== "/" && <MenuBox />}
         </div>
         <LogoMarquee logos={tickers} className="top-marquee" />
         <CardStack>
@@ -42,7 +44,13 @@ export function App() {
         </CardStack>
       </header>
 
-      {PAGE === "/launch" ? (
+      {PAGE === "/" ? (
+        // landing: hero + the live Explore card in a glowing frame, one screen
+        <main className="ld-stage">
+          <LandingHero />
+          <LandingFrame />
+        </main>
+      ) : PAGE === "/launch" ? (
         // launch: one bigger card, no tabs bar
         <>
           <DnaStrand side="left" />
@@ -76,7 +84,7 @@ export function App() {
         </main>
       )}
 
-      <SocialLinks />
+      {PAGE !== "/" && <SocialLinks />}
     </div>
   );
 }

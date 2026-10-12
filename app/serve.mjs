@@ -1,7 +1,7 @@
 // Static server for the built app (app/dist) on Railway: SPA fallback so /launch, /explore, /feed load directly,
 // plus security headers (no framing: stops clickjacking of wallet actions). No dependencies.
-// Optional passcode gate (private beta): with APP_PASSCODE set, every page and file sits behind a passcode page
-// (except the logo it shows); a correct code sets a 30-day HttpOnly cookie derived from the passcode, so changing
+// Optional passcode gate (private beta): with APP_PASSCODE set, the app's pages (/explore, /launch, ...) sit behind a
+// passcode page; the landing page "/" and the built files it loads stay open. A correct code sets a 30-day HttpOnly cookie derived from the passcode, so changing
 // APP_PASSCODE signs everyone out. Wrong codes are rate limited per visitor and overall.
 //   node app/serve.mjs    (PORT from the environment, default 8080; APP_PASSCODE optional)
 
@@ -65,7 +65,9 @@ async function fileAt(path) {
 const COOKIE = "neuriio_gate";
 const COOKIE_DAYS = 30;
 const GATE_PATH = "/__gate";
-const OPEN_PATHS = new Set(["/brand/logo.png"]); // what the passcode page itself shows
+/** Open without the passcode: the landing page "/" and every file (the landing loads the same bundle). App routes
+ *  (paths without an extension) and index.html by any spelling (it would boot straight into Explore) need the passcode. */
+const isOpen = (path) => path === "/" || (extname(path) !== "" && resolve(path) !== join(DIST, "index.html"));
 const WINDOW_MS = 15 * 60_000;
 const MAX_FAILS_PER_VISITOR = 10;
 const MAX_FAILS_TOTAL = 200; // backstop if someone rotates addresses
@@ -178,7 +180,7 @@ createServer(async (req, res) => {
   const path = (req.url ?? "/").split("?")[0];
   if (PASSCODE) {
     if (path === GATE_PATH && req.method === "POST") return handleGate(req, res);
-    if (!OPEN_PATHS.has(path) && !hasPass(req)) {
+    if (!isOpen(path) && !hasPass(req)) {
       if (req.method !== "GET" && req.method !== "HEAD") return res.writeHead(405, { ...SECURITY, Allow: "GET, HEAD" }).end();
       return sendGate(res, safeNext(req.url));
     }

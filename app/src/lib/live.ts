@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from "react";
 import { RealtimeClient } from "@supabase/realtime-js";
 import { SUPABASE_ANON_JWT, SUPABASE_URL } from "./config";
-import { DEMO, topByTotalVolume } from "./explore";
+import { DEMO, LANDING, topByTotalVolume } from "./explore";
 
 /** keeper/src/watch/trades.mjs LiveTrade */
 export type LiveTrade = {
@@ -40,6 +40,7 @@ export function subscribeTrades(
   startPriceHype?: number,
   onGraduated?: (g: LiveGraduation) => void,
 ): () => void {
+  if (LANDING) return () => {}; // the landing's showcase chart stays still
   if (DEMO) return demoFeed(token, onTrade, startPriceHype ?? 1e-7);
   const seen = new Set<string>();
   const channel = rt().channel(`trades:${token.toLowerCase()}`, { config: { private: true } });
@@ -106,6 +107,10 @@ function onAnyTrade(t: LiveTrade) {
 }
 
 function startAll() {
+  if (LANDING) {
+    stopAll = () => {}; // showcase prices stay as set
+    return;
+  }
   if (DEMO) {
     stopAll = demoAllFeed(onAnyTrade);
     return;

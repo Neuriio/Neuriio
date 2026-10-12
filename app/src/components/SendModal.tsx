@@ -11,7 +11,7 @@ import { Check, ExternalLink, LoaderCircle, X } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { EASE_OUT } from "../lib/motion";
 import { amount as fmt, shortAddress } from "../lib/format";
-import { DEMO } from "../lib/explore";
+import { DEV_DEMO as DEMO } from "../lib/explore";
 import { elysiumProvider } from "../lib/tx";
 import { elysiumTestnet } from "../chain";
 import { GAS_RESERVE, sendableTokens, sendToken, type SendToken } from "../lib/send";

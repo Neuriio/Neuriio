@@ -29,6 +29,8 @@ import {
   candles,
   change24h,
   DEMO,
+  LANDING,
+  SHOW_HYPE_USD,
   displayName,
   getToken,
   INTERVALS,
@@ -41,7 +43,8 @@ import {
 const START = new URLSearchParams(location.search).get("t");
 
 export function ExploreCard() {
-  const hypeUsd = useHypeUsd();
+  const realHypeUsd = useHypeUsd();
+  const hypeUsd = LANDING ? SHOW_HYPE_USD : realHypeUsd;
   const [top, setTop] = useState<TokenStat[] | null>(null);
   const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
   const live = useLivePrices(); // every token's latest price from the live feed
@@ -309,7 +312,7 @@ function AboutTab({ t, hypeUsd, price }: { t: TokenStat; hypeUsd: number; price:
 function useCreatorEarned(t: TokenStat) {
   const [earned, setEarned] = useState<number | null>(null);
   useEffect(() => {
-    if (DEMO) return setEarned(t.volume_usd / 90 * 0.0075 * 0.2); // demo: ~20% of the curve's 0.75%, in HYPE
+    if (DEMO) return setEarned(t.volume_usd / (LANDING ? SHOW_HYPE_USD : 90) * 0.0075 * 0.2); // demo: ~20% of the curve's 0.75%, in HYPE
     let alive = true;
     const load = () => tokenCreatorEarned(t.address as Address).then((w) => alive && setEarned(Number(formatEther(w))), () => {});
     load();
@@ -462,7 +465,7 @@ function TokenDetail({
         )}
       </div>
       <div className="ex-chart">
-        <CandleChart candles={data} interval={interval} hypeUsd={chartUsd} basePriceHype={t.price_hype} onControls={setControls} />
+        <CandleChart candles={data} interval={interval} hypeUsd={chartUsd} basePriceHype={t.price_hype} onControls={setControls} fit={LANDING} />
         {data && data.length === 0 && liveTrades === 0 && <p className="ex-empty ex-chart-empty">No trades yet.</p>}
       </div>
 

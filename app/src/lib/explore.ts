@@ -51,7 +51,16 @@ export type Candle = {
 /** Lists the page can rank by (the view's columns). */
 export type Ranking = "volume_usd_24h" | "volume_usd" | "launched_at" | "curve_progress" | "mcap_hype";
 
-export const DEMO = import.meta.env.DEV && new URLSearchParams(location.search).has("demo");
+/** ?demo in dev: every page runs on fake data. */
+export const DEV_DEMO = import.meta.env.DEV && new URLSearchParams(location.search).has("demo");
+/** Fake data for the token lists, chart, live feed and trade box: dev ?demo, and always on the landing page "/"
+ *  (its Explore card is a showcase; the signed-in account, Send and Points stay real). */
+export const DEMO = DEV_DEMO || location.pathname === "/";
+/** The landing page "/": the demo data is a fixed showcase (no live trades; the top token shows set numbers). */
+export const LANDING = location.pathname === "/";
+/** The showcase's fixed HYPE price, so its USD numbers read exactly as set (the real price moves). */
+export const SHOW_HYPE_USD = 40;
+const SHOWCASE = "kntqkid"; // the landing's #1 token
 
 const NUMERIC: (keyof TokenStat)[] = [
   "price_hype", "mcap_hype", "price_hype_24h_ago", "curve_progress", "trades", "trades_24h", "volume_usd",
@@ -391,7 +400,7 @@ function rankValue(t: TokenStat, by: Ranking) {
   return by === "launched_at" ? Date.parse(t.launched_at) : t[by];
 }
 
-// ------------------------------------------------------------------ demo data (dev only)
+// ------------------------------------------------------------------ demo data (dev ?demo, and the landing page)
 
 const DEMO_HANDLES = [
   "von_hl", "degenharbor", "chartwizard", "hypeanalyst", "onchainolivia", "perpsmaxi", "mememonk", "builderbee",
@@ -457,12 +466,92 @@ function demoTokens(): TokenStat[] {
   // one demo FTF: "Degen Den" ($DEN)
   const den = demoCache[5];
   Object.assign(den, { kind: "ftf", name: "Degen Den", handle: "den", symbol: "DEN", x_name: null, x_pfp_url: null, member_x_user_ids: ["1001", "1002", "1003", "1004"] });
+  // the landing's #1: $7.8M market cap, $1.4M 24h volume, $41.3M all-time, 353 trades today, launched 28 days ago
+  if (LANDING) {
+    // the rest: $1M-$28M market caps, $2M-$30M all-time volume (all under the #1's)
+    for (const t of demoCache) {
+      const r = rng(hash(t.handle) + 99);
+      const price = (1_000_000 + r() * 27_000_000) / 1e9 / SHOW_HYPE_USD;
+      const vol = Math.round(2_000_000 + r() ** 1.5 * 28_000_000);
+      Object.assign(t, {
+        graduated: true,
+        pair: t.address,
+        curve_progress: 1,
+        price_hype: price,
+        mcap_hype: price * 1e9,
+        price_hype_24h_ago: price / (0.7 + r() * 0.9),
+        volume_usd: vol,
+        volume_usd_24h: Math.round(vol * (0.02 + r() * 0.06)),
+        volume_hype: vol / SHOW_HYPE_USD,
+      });
+    }
+    const s = demoCache.find((t) => t.handle === SHOWCASE)!;
+    const price = 7_800_000 / 1e9 / SHOW_HYPE_USD;
+    Object.assign(s, {
+      graduated: true,
+      pair: s.address,
+      curve_progress: 1,
+      launched_at: new Date(now - 28 * 86_400_000).toISOString(),
+      graduated_at: new Date(now - 26 * 86_400_000).toISOString(),
+      price_hype: price,
+      mcap_hype: price * 1e9,
+      price_hype_24h_ago: price / 1.184,
+      volume_usd: 41_300_000,
+      volume_usd_24h: 1_400_000,
+      volume_hype: 41_300_000 / SHOW_HYPE_USD,
+      trades: 48_210,
+      trades_24h: 353,
+      last_trade_at: new Date(now - 40_000).toISOString(),
+    });
+  }
   return demoCache;
+}
+
+/** Landing avatars: each token's colour, by its rank in the Top 25, so neighbouring rows always differ. */
+export const LANDING_TONES = 7;
+export function landingTone(handle: string) {
+  const ranked = [...demoTokens()].sort((a, b) => b.volume_usd - a.volume_usd);
+  return Math.max(0, ranked.findIndex((t) => t.handle === handle)) % LANDING_TONES;
+}
+
+/** Landing chart: 32 candles climbing to the current price with a few pullbacks (same shape at every timeframe). */
+function showcaseCandles(t: TokenStat, interval: number): Candle[] {
+  const r = rng(hash(t.address) + 7);
+  const N = 32;
+  const step = interval * 1000;
+  const start = Math.floor(Date.now() / step) * step - (N - 1) * step;
+  const pullback = (i: number) => (i >= 8 && i <= 10) || (i >= 18 && i <= 20) || i === 26;
+  const xs: number[] = [];
+  let x = 0;
+  for (let i = 0; i < N; i++) {
+    const dip = !pullback(i) && r() < 0.14; // the odd small red candle inside a leg up
+    x += pullback(i) ? -(0.035 + r() * 0.035) : dip ? -0.012 : 0.05 + r() * 0.045;
+    xs.push(x);
+  }
+  const px = xs.map((v) => t.price_hype * Math.exp(v - xs[N - 1]));
+  let prev = px[0] * Math.exp(-0.05);
+  return px.map((close, i) => {
+    const open = prev;
+    prev = close;
+    const bounce = i === 11 || i === 21 || i === 27; // volume jumps as each leg restarts
+    const volUsd = (close >= open ? 38_000 + r() * 46_000 : 16_000 + r() * 22_000) * (1 + i / N) * (bounce ? 1.9 : 1);
+    return {
+      bucket: new Date(start + i * step).toISOString(),
+      open,
+      close,
+      high: Math.max(open, close) * (1 + r() * 0.022),
+      low: Math.min(open, close) / (1 + r() * 0.022),
+      volume_hype: volUsd / SHOW_HYPE_USD,
+      volume_usd: volUsd,
+      trades: 4 + Math.floor(r() * 20),
+    };
+  });
 }
 
 function demoCandles(address: string, interval: number, limit: number): Candle[] {
   const t = demoTokens().find((x) => x.address === address.toLowerCase());
   if (!t) return [];
+  if (LANDING) return showcaseCandles(t, interval);
   const r = rng(hash(address) + interval);
   const step = interval * 1000;
   const end = Math.floor(Date.now() / step) * step;

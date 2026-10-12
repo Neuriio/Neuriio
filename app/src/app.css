@@ -3748,3 +3748,220 @@ body {
     animation: none;
   }
 }
+
+/* ---- / landing: one screen, no scroll (phones scroll). FTF video background (canvas), hero, framed Explore ---- */
+.app-landing {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  background: #3d2f5c;
+}
+.app-landing::before {
+  display: none; /* the canvas is the whole background */
+}
+.ld-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.ld-stage {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 122px 32px 24px;
+}
+.ld-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: #f3efff; /* light on the dark top band, fading into the lavender middle */
+  text-shadow: 0 1px 10px rgba(42, 31, 64, 0.35);
+}
+.ld-name {
+  margin: 0;
+  font-size: clamp(34px, 4.2vh, 48px);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+.ld-tag {
+  margin: clamp(18px, 3.2vh, 36px) 0 0;
+  font-size: clamp(17px, 2.3vh, 24px);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+}
+.ld-sub {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+  color: #f3efff;
+}
+.ld-ctas {
+  display: flex;
+  gap: 24px;
+  margin-top: clamp(20px, 3.4vh, 36px);
+}
+.ld-cta {
+  display: grid;
+  place-items: center;
+  width: 160px;
+  height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  border-radius: var(--radius);
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.ld-cta:hover {
+  transform: translateY(-1px);
+}
+.ld-cta-app {
+  color: #ecddff;
+  background: #2a1f40;
+  box-shadow: 0 10px 28px rgba(42, 31, 64, 0.35);
+}
+.ld-cta-app:hover {
+  box-shadow: 0 12px 32px rgba(42, 31, 64, 0.5);
+}
+.ld-cta-docs {
+  color: #2a1f40;
+  background: rgba(236, 221, 255, 0.45);
+  border: 1px solid rgba(42, 31, 64, 0.35);
+}
+.ld-cta-docs:hover {
+  background: rgba(236, 221, 255, 0.7);
+}
+
+/* the frame: #ECDDFF stroke, a light running around just inside it, Explore filling it (Positions row hidden) */
+@property --ld-a {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+.ld-frame {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin-bottom: -104px; /* the bottom ~80 px runs off the screen, like the mockup; the stats stay in view */
+  width: min(1528px, 100%);
+  margin-top: clamp(24px, 4.4vh, 48px);
+  border: 1px solid #ecddff;
+  border-radius: 12px;
+  background: rgba(27, 20, 40, 0.55);
+  box-shadow: 0 30px 90px rgba(7, 2, 12, 0.45), 0 0 24px rgba(236, 221, 255, 0.12);
+}
+.ld-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: 11px;
+  pointer-events: none;
+  padding: 3px; /* ring width, inside the stroke */
+  background: conic-gradient(
+    from var(--ld-a),
+    transparent 0deg 285deg,
+    rgba(236, 221, 255, 0.35) 320deg,
+    #ffffff 352deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  filter: drop-shadow(0 0 4px #ecddff);
+  animation: ld-spin 16s linear infinite;
+}
+@keyframes ld-spin {
+  to {
+    --ld-a: 360deg;
+  }
+}
+.ld-frame-in {
+  height: 100%;
+  overflow: hidden;
+  border-radius: 11px;
+  padding: 72px 24px 24px; /* room for the search bar above the chart */
+}
+.ld-frame .ex-grid {
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "list chart order";
+}
+.ld-frame .ex-positions-card {
+  display: none;
+}
+.ld-frame .ex-search-top {
+  bottom: calc(100% + 18px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ld-glow {
+    animation: none;
+  }
+}
+@media (max-width: 860px) {
+  .app-landing {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .ld-bg {
+    position: fixed;
+  }
+  .ld-stage {
+    height: auto;
+    padding: 112px 16px 32px;
+  }
+  .ld-frame {
+    height: auto;
+  }
+  .ld-frame-in {
+    height: auto;
+    padding: 16px 12px;
+  }
+  .ld-frame .ex-grid {
+    height: auto;
+    grid-template-rows: none;
+    grid-template-areas: "chart" "order" "positions" "list";
+  }
+  .ld-frame .ex-search-top {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    transform: none;
+    width: 100%;
+  }
+}
+
+/* landing avatars: the Neuriio mark in white on one of seven gradients */
+.ex-avatar-mark::after {
+  content: "";
+  width: 66%;
+  height: 41%;
+  background: #fff;
+  -webkit-mask: url(/brand/mark.png) center / contain no-repeat;
+  mask: url(/brand/mark.png) center / contain no-repeat;
+}
+.ex-avatar-mark.tone-0 { background: linear-gradient(135deg, #0f766e, #6ee7a0); } /* the #1 token: green */
+.ex-avatar-mark.tone-1 { background: linear-gradient(135deg, #3d2f5c, #ff8ad8); }
+.ex-avatar-mark.tone-2 { background: linear-gradient(135deg, #817298, #d8fffe); }
+.ex-avatar-mark.tone-3 { background: linear-gradient(135deg, #f97316, #fcd34d); }
+.ex-avatar-mark.tone-4 { background: linear-gradient(135deg, #1e3a8a, #60a5fa); }
+.ex-avatar-mark.tone-5 { background: linear-gradient(135deg, #a21caf, #7c3aed); }
+.ex-avatar-mark.tone-6 { background: linear-gradient(135deg, #be123c, #fb7185); }
+/* landing: the chart card's glow and dots a step brighter */
+.ld-frame .ex-bg-center .li-tint {
+  background:
+    radial-gradient(ellipse 45% 80% at 50% 55%, rgba(170, 150, 225, 0.4), transparent 72%),
+    radial-gradient(ellipse 70% 60% at 50% 50%, rgba(150, 132, 200, 0.18), transparent 80%);
+}
+.ld-frame .ex-bg-center .li-dots {
+  background: radial-gradient(circle, rgba(236, 221, 255, 0.38) 1px, transparent 1.4px) 0 0 / 20px 20px;
+}

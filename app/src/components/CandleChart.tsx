@@ -1,5 +1,5 @@
 // Candle chart for one launched token, on TradingView's Lightweight Charts (open source, Apache-2.0; its attribution
-// logo stays on). Shows MARKET CAP in USD (HYPE price x 1B supply x HYPE/USD): launched-token prices are ~1e-6 USD,
+// logo stays on in the app, off on the landing page). Shows MARKET CAP in USD (HYPE price x 1B supply x HYPE/USD): launched-token prices are ~1e-6 USD,
 // too small for readable axes, and mcap is what launchpad traders read. Users zoom/pan both axes: wheel or pinch zooms
 // time, drag pans, dragging the price or time axis rescales it, double-clicking an axis resets it.
 // Touch screens: a drag on the chart pans both ways (it holds the gesture instead of scrolling the page, and the
@@ -47,12 +47,14 @@ export function CandleChart({
   hypeUsd,
   basePriceHype,
   onControls,
+  fit = false,
 }: {
   candles: Candle[] | null;
   interval: number; // seconds per candle
   hypeUsd: number; // frozen by the parent per token, so bars don't shift as HYPE's price moves
   basePriceHype: number; // price before any live trade (a brand-new token's first candle opens here)
   onControls?: (c: ChartControls) => void;
+  fit?: boolean; // spread the bars across the whole width (the landing's short showcase history)
 }) {
   const box = useRef<HTMLDivElement>(null);
   const bars = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -79,7 +81,7 @@ export function CandleChart({
         textColor: "#8c7d9f",
         fontFamily: '"Lilex", ui-monospace, monospace',
         fontSize: 11,
-        attributionLogo: true,
+        attributionLogo: location.pathname !== "/", // off on the landing page's showcase chart
       },
       grid: {
         vertLines: { color: "rgba(236, 221, 255, 0.05)" },
@@ -199,6 +201,7 @@ export function CandleChart({
       v.setData(next.map((d) => ({ time: d.time, value: d.volume, color: d.close >= d.open ? VOL_UP : VOL_DOWN })));
       map.clear();
       for (const d of next) map.set(d.time, d);
+      if (fit) chart.current?.timeScale().fitContent();
       return;
     }
     const lastShown = Math.max(...map.keys());
