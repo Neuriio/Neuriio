@@ -45,18 +45,19 @@ export function LandingFrame() {
   );
 }
 
-const DESIGN_W = 1180; // the card before it's shrunk: wide enough for the desktop layout
-const DESIGN_H = 700; // the desktop proportions (search + 560 px cards + padding)
+const DESIGN_W = 1320; // the card before it's shrunk: desktop layout, with a wide chart between the 300 px columns
+const DESIGN_H = 860; // a little taller than desktop's 700, so the card fills the phone's screen
+const VIEW_W = 860; // the centred slice phones show: the whole chart, the inner part of Top 25 and the trade box
 
 /** Phones: the desktop card, shrunk. /showcase in a DESIGN_W x DESIGN_H frame (so its media queries pick the
- *  desktop layout), scaled down to the box's width; the box takes the scaled height. */
+ *  desktop layout), scaled so its centred VIEW_W slice fills the box; the side columns run off both edges. */
 function ShowcaseFrame() {
   const box = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState<{ scale: number; h: number } | null>(null);
   useEffect(() => {
     const el = box.current!;
     const ro = new ResizeObserver(() => {
-      const scale = el.clientWidth / DESIGN_W;
+      const scale = el.clientWidth / VIEW_W;
       if (scale > 0) setFit({ scale, h: DESIGN_H });
     });
     ro.observe(el);
@@ -70,7 +71,11 @@ function ShowcaseFrame() {
           title="Neuriio Explore"
           tabIndex={-1}
           aria-hidden
-          style={{ width: DESIGN_W, height: fit.h, transform: `scale(${fit.scale})` }}
+          style={{
+            width: DESIGN_W,
+            height: fit.h,
+            transform: `translateX(${(-(DESIGN_W - VIEW_W) / 2) * fit.scale}px) scale(${fit.scale})`,
+          }}
         />
       )}
     </div>
@@ -97,7 +102,9 @@ export function Showcase() {
 const DARK: [number, number, number] = [61, 47, 92];
 const LIGHT: [number, number, number] = [214, 199, 240];
 const GAP = 30; // dot grid (the video's 40 px at 2560 wide, scaled for screens)
-const CENTER = 0.5; // the light line runs across the middle of the page, as in the video
+// the light line runs across the middle of the page, as in the video; on phones it sits behind the hero (dark text)
+const centerFor = (w: number) => (w <= 860 ? 0.3 : 0.5);
+let CENTER = 0.5;
 
 function bgAt(t: number): [number, number, number] {
   const k = Math.min(1, Math.max(0, (t - 0.12) / 0.88));
@@ -128,6 +135,7 @@ export function LandingBg() {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       w = window.innerWidth;
       h = window.innerHeight;
+      CENTER = centerFor(w);
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

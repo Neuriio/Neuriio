@@ -10,6 +10,10 @@
     <link href="https://fonts.googleapis.com/css2?family=Lilex:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
+    <!-- /showcase is framed into the landing on phones: transparent from the first paint -->
+    <script>
+      if (location.pathname === "/showcase") document.documentElement.classList.add("is-showcase");
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

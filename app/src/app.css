@@ -3901,8 +3901,18 @@ body {
    1180 px wide frame (so it gets the desktop layout) scaled down to the card's width (see ShowcaseFrame) */
 @media (max-width: 860px) {
   .ld-stage {
-    justify-content: center; /* hero + card centered in the space under the header */
-    padding: 72px 16px 24px;
+    padding: 112px 16px 24px; /* hero right under the header, card below it */
+  }
+  .ld-hero {
+    color: #2a1f40; /* darker text on phones */
+    text-shadow: none;
+  }
+  .ld-sub {
+    color: #3d2f5c;
+  }
+  .ld-name {
+    color: #f3efff; /* the title stays white, like the header */
+    text-shadow: 0 1px 10px rgba(42, 31, 64, 0.35);
   }
   .ld-name {
     font-size: 34px;
