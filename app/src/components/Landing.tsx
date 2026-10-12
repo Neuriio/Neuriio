@@ -45,19 +45,18 @@ export function LandingFrame() {
   );
 }
 
-const DESIGN_W = 1320; // the card before it's shrunk: desktop layout, with a wide chart between the 300 px columns
-const DESIGN_H = 860; // a little taller than desktop's 700, so the card fills the phone's screen
-const VIEW_W = 860; // the centred slice phones show: the whole chart, the inner part of Top 25 and the trade box
+const DESIGN_W = 1180; // the card before it's shrunk: wide enough for the desktop layout
+const DESIGN_H = 700; // the desktop proportions (search + 560 px cards + padding): wide, not tall
 
-/** Phones: the desktop card, shrunk. /showcase in a DESIGN_W x DESIGN_H frame (so its media queries pick the
- *  desktop layout), scaled so its centred VIEW_W slice fills the box; the side columns run off both edges. */
+/** Phones: the whole desktop card, shrunk. /showcase in a DESIGN_W x DESIGN_H frame (so its media queries pick
+ *  the desktop layout), scaled down to the box's width; the box takes the scaled height. */
 function ShowcaseFrame() {
   const box = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState<{ scale: number; h: number } | null>(null);
   useEffect(() => {
     const el = box.current!;
     const ro = new ResizeObserver(() => {
-      const scale = el.clientWidth / VIEW_W;
+      const scale = el.clientWidth / DESIGN_W;
       if (scale > 0) setFit({ scale, h: DESIGN_H });
     });
     ro.observe(el);
@@ -71,11 +70,7 @@ function ShowcaseFrame() {
           title="Neuriio Explore"
           tabIndex={-1}
           aria-hidden
-          style={{
-            width: DESIGN_W,
-            height: fit.h,
-            transform: `translateX(${(-(DESIGN_W - VIEW_W) / 2) * fit.scale}px) scale(${fit.scale})`,
-          }}
+          style={{ width: DESIGN_W, height: fit.h, transform: `scale(${fit.scale})` }}
         />
       )}
     </div>
