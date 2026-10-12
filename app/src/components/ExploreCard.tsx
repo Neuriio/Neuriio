@@ -468,6 +468,11 @@ function TokenDetail({
         <CandleChart candles={data} interval={interval} hypeUsd={chartUsd} basePriceHype={t.price_hype} onControls={setControls} fit={LANDING} />
         {data && data.length === 0 && liveTrades === 0 && <p className="ex-empty ex-chart-empty">No trades yet.</p>}
       </div>
+      <p className="ex-chart-credit">
+        <a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">
+          Charts by TradingView
+        </a>
+      </p>
 
       {!compact && (
         <>

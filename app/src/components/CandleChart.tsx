@@ -1,5 +1,5 @@
-// Candle chart for one launched token, on TradingView's Lightweight Charts (open source, Apache-2.0; its attribution
-// logo stays on in the app, off on the landing page). Shows MARKET CAP in USD (HYPE price x 1B supply x HYPE/USD): launched-token prices are ~1e-6 USD,
+// Candle chart for one launched token, on TradingView's Lightweight Charts (open source, Apache-2.0; its logo is off,
+// and the page credits it with a "Charts by TradingView" link under the chart). Shows MARKET CAP in USD (HYPE price x 1B supply x HYPE/USD): launched-token prices are ~1e-6 USD,
 // too small for readable axes, and mcap is what launchpad traders read. Users zoom/pan both axes: wheel or pinch zooms
 // time, drag pans, dragging the price or time axis rescales it, double-clicking an axis resets it.
 // Touch screens: a drag on the chart pans both ways (it holds the gesture instead of scrolling the page, and the
@@ -23,7 +23,7 @@ import {
   PriceScaleMode,
   type UTCTimestamp,
 } from "lightweight-charts";
-import { LANDING, type Candle } from "../lib/explore";
+import type { Candle } from "../lib/explore";
 import type { LiveTrade } from "../lib/live";
 import { compactUsd } from "../lib/format";
 
@@ -81,7 +81,7 @@ export function CandleChart({
         textColor: "#8c7d9f",
         fontFamily: '"Lilex", ui-monospace, monospace',
         fontSize: 11,
-        attributionLogo: !LANDING, // off on the landing page's showcase chart
+        attributionLogo: false, // credited as "Charts by TradingView" under the chart instead (ExploreCard)
       },
       grid: {
         vertLines: { color: "rgba(236, 221, 255, 0.05)" },
