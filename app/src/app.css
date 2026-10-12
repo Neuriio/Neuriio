@@ -3890,15 +3890,15 @@ body {
   border-radius: 11px;
   padding: 72px 24px 24px; /* room for the search bar above the chart */
 }
-.ld-frame .ex-grid {
+:is(.ld-frame, .ld-show) .ex-grid {
   height: 100%;
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas: "list chart order";
 }
-.ld-frame .ex-positions-card {
+:is(.ld-frame, .ld-show) .ex-positions-card {
   display: none;
 }
-.ld-frame .ex-search-top {
+:is(.ld-frame, .ld-show) .ex-search-top {
   bottom: calc(100% + 18px);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -3906,38 +3906,115 @@ body {
     animation: none;
   }
 }
+/* phones: still one screen, no scroll. The Explore card is the desktop card, shrunk to fit: it loads /showcase in a
+   1180 px wide frame (so it gets the desktop layout) scaled down to the card's width (see ShowcaseFrame) */
 @media (max-width: 860px) {
-  .app-landing {
-    height: auto;
-    min-height: 100dvh;
-    overflow: visible;
-  }
-  .ld-bg {
-    position: fixed;
-  }
   .ld-stage {
-    height: auto;
-    padding: 112px 16px 32px;
+    justify-content: center; /* hero + card centered in the space under the header */
+    padding: 72px 16px 24px;
+  }
+  .ld-name {
+    font-size: 34px;
+  }
+  .ld-tag {
+    margin-top: 16px;
+    font-size: 16px;
+  }
+  .ld-sub {
+    font-size: 11.5px;
+  }
+  .ld-ctas {
+    gap: 14px;
+    margin-top: 22px;
+  }
+  .ld-cta {
+    width: 136px;
+    height: 40px;
+    font-size: 13px;
   }
   .ld-frame {
-    height: auto;
+    flex: none;
+    margin-top: 28px;
+    margin-bottom: 0;
+    border-radius: 8px;
   }
   .ld-frame-in {
     height: auto;
-    padding: 16px 12px;
+    padding: 0;
+    border-radius: 7px;
   }
-  .ld-frame .ex-grid {
-    height: auto;
-    grid-template-rows: none;
-    grid-template-areas: "chart" "order" "positions" "list";
+  /* header: smaller Account / Points, and a small marquee between them and the logo */
+  .app-landing .top-box {
+    height: 28px;
+    padding: 0 7px;
   }
-  .ld-frame .ex-search-top {
-    position: relative;
-    bottom: auto;
-    left: auto;
-    transform: none;
-    width: 100%;
+  .app-landing .top-value,
+  .app-landing .login-text {
+    font-size: 11px;
   }
+  .app-landing .card-stack {
+    width: 128px;
+    height: 28px;
+  }
+  .app-landing .card-stack > .top-box-slot {
+    width: 74px;
+    height: 28px;
+  }
+  .app-landing .card-stack > [data-card="Points"] {
+    left: 54px;
+  }
+  .app-landing .card-stack > [data-card="Points"] .morph-trigger {
+    padding-right: 8px;
+  }
+  .app-landing .top-marquee {
+    display: block;
+    left: 50px;
+    right: 136px; /* clear of Account + Points */
+    width: auto;
+    transform: translateY(-50%);
+  }
+  .app-landing .marquee {
+    padding: 4px 0;
+    mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
+  }
+  .app-landing .marquee-item {
+    width: 46px;
+    gap: 3px;
+  }
+  .app-landing .marquee-logo {
+    width: 16px;
+    height: 16px;
+  }
+  .app-landing .marquee-price {
+    font-size: 8.5px;
+  }
+}
+.ld-iframe-box {
+  overflow: hidden;
+}
+.ld-iframe-box iframe {
+  display: block;
+  border: 0;
+  background: transparent;
+  transform-origin: 0 0;
+  pointer-events: none; /* a picture of the app on phones: the page never scrolls or zooms through it */
+}
+/* the landing's card is a picture of the app: nothing inside it can be clicked, focused or selected */
+.ld-frame-in {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* /showcase (inside that frame): just the card, on a transparent page */
+.is-showcase,
+.is-showcase body {
+  background: transparent;
+}
+.ld-show {
+  height: 100vh;
+}
+.ld-show .ld-frame-in {
+  height: 100%;
 }
 
 /* landing avatars: the Neuriio mark in white on one of seven gradients */
@@ -3956,12 +4033,12 @@ body {
 .ex-avatar-mark.tone-4 { background: linear-gradient(135deg, #1e3a8a, #60a5fa); }
 .ex-avatar-mark.tone-5 { background: linear-gradient(135deg, #a21caf, #7c3aed); }
 .ex-avatar-mark.tone-6 { background: linear-gradient(135deg, #be123c, #fb7185); }
-/* landing: the chart card's glow and dots a step brighter */
-.ld-frame .ex-bg-center .li-tint {
+/* landing: the chart card's glow and dots kept faint, so the candles stand out */
+:is(.ld-frame, .ld-show) .ex-bg-center .li-tint {
   background:
-    radial-gradient(ellipse 45% 80% at 50% 55%, rgba(170, 150, 225, 0.4), transparent 72%),
-    radial-gradient(ellipse 70% 60% at 50% 50%, rgba(150, 132, 200, 0.18), transparent 80%);
+    radial-gradient(ellipse 45% 80% at 50% 55%, rgba(150, 132, 200, 0.12), transparent 72%),
+    radial-gradient(ellipse 70% 60% at 50% 50%, rgba(129, 114, 152, 0.05), transparent 80%);
 }
-.ld-frame .ex-bg-center .li-dots {
-  background: radial-gradient(circle, rgba(236, 221, 255, 0.38) 1px, transparent 1.4px) 0 0 / 20px 20px;
+:is(.ld-frame, .ld-show) .ex-bg-center .li-dots {
+  background: radial-gradient(circle, rgba(236, 221, 255, 0.1) 1px, transparent 1.4px) 0 0 / 20px 20px;
 }

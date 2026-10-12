@@ -53,11 +53,12 @@ export type Ranking = "volume_usd_24h" | "volume_usd" | "launched_at" | "curve_p
 
 /** ?demo in dev: every page runs on fake data. */
 export const DEV_DEMO = import.meta.env.DEV && new URLSearchParams(location.search).has("demo");
-/** Fake data for the token lists, chart, live feed and trade box: dev ?demo, and always on the landing page "/"
+/** The landing page "/" and /showcase (its Explore card, framed on phones): the demo data is a fixed showcase
+ *  (no live trades; the top token shows set numbers). */
+export const LANDING = location.pathname === "/" || location.pathname === "/showcase";
+/** Fake data for the token lists, chart, live feed and trade box: dev ?demo, and always on the landing
  *  (its Explore card is a showcase; the signed-in account, Send and Points stay real). */
-export const DEMO = DEV_DEMO || location.pathname === "/";
-/** The landing page "/": the demo data is a fixed showcase (no live trades; the top token shows set numbers). */
-export const LANDING = location.pathname === "/";
+export const DEMO = DEV_DEMO || LANDING;
 /** The showcase's fixed HYPE price, so its USD numbers read exactly as set (the real price moves). */
 export const SHOW_HYPE_USD = 40;
 const SHOWCASE = "kntqkid"; // the landing's #1 token

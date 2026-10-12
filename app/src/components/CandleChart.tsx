@@ -23,7 +23,7 @@ import {
   PriceScaleMode,
   type UTCTimestamp,
 } from "lightweight-charts";
-import type { Candle } from "../lib/explore";
+import { LANDING, type Candle } from "../lib/explore";
 import type { LiveTrade } from "../lib/live";
 import { compactUsd } from "../lib/format";
 
@@ -81,7 +81,7 @@ export function CandleChart({
         textColor: "#8c7d9f",
         fontFamily: '"Lilex", ui-monospace, monospace',
         fontSize: 11,
-        attributionLogo: location.pathname !== "/", // off on the landing page's showcase chart
+        attributionLogo: !LANDING, // off on the landing page's showcase chart
       },
       grid: {
         vertLines: { color: "rgba(236, 221, 255, 0.05)" },

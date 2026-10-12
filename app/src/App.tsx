@@ -12,18 +12,23 @@ import { ExploreCard } from "./components/ExploreCard";
 import { FeedCard } from "./components/FeedCard";
 import { TrendingCard } from "./components/TrendingCard";
 import { DnaStrand } from "./components/DnaStrand";
-import { LandingBg, LandingFrame, LandingHero } from "./components/Landing";
+import { LandingBg, LandingFrame, LandingHero, Showcase } from "./components/Landing";
 import { useRegisterOnLogin } from "./lib/register";
 import { useNotificationsPoller } from "./lib/ftf";
 
 // One layout for every page; the center card changes by path (app.neuriio.xyz/launch, ...).
 // "/" is the landing page (no menu; Explore inside a frame); any unknown path shows Explore and the address bar is set to /explore.
-const ROUTES = ["/", "/launch", "/feed", "/explore", "/trending"];
+const ROUTES = ["/", "/showcase", "/launch", "/feed", "/explore", "/trending"];
 const RAW = location.pathname.replace(/\/+$/, "") || "/";
 const PAGE = ROUTES.includes(RAW) ? RAW : "/explore";
 if (RAW !== PAGE) history.replaceState(null, "", "/explore" + location.search + location.hash);
 
 export function App() {
+  // /showcase: the landing's Explore card alone (framed into the landing on phones); no header, no account hooks
+  return PAGE === "/showcase" ? <Showcase /> : <Page />;
+}
+
+function Page() {
   const tickers = useTickerLogos();
   useRegisterOnLogin();
   useNotificationsPoller();

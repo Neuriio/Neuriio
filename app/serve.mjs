@@ -67,7 +67,12 @@ const COOKIE_DAYS = 30;
 const GATE_PATH = "/__gate";
 /** Open without the passcode: the landing page "/" and every file (the landing loads the same bundle). App routes
  *  (paths without an extension) and index.html by any spelling (it would boot straight into Explore) need the passcode. */
-const isOpen = (path) => path === "/" || (extname(path) !== "" && resolve(path) !== join(DIST, "index.html"));
+const isOpen = (path) =>
+  path === "/" || path === SHOWCASE || (extname(path) !== "" && resolve(path) !== join(DIST, "index.html"));
+/** The landing's Explore card alone (fake showcase data), framed into the landing on phones: the one page our own
+ *  pages may frame. */
+const SHOWCASE = "/showcase";
+const FRAMEABLE = { "X-Frame-Options": "SAMEORIGIN", "Content-Security-Policy": "frame-ancestors 'self'" };
 const WINDOW_MS = 15 * 60_000;
 const MAX_FAILS_PER_VISITOR = 10;
 const MAX_FAILS_TOTAL = 200; // backstop if someone rotates addresses
@@ -120,7 +125,8 @@ function gatePage(next, message) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Neuriio</title><meta name="robots" content="noindex">
 <style>
-*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:#120c1d;
+*{box-sizing:border-box}html,body{height:100%;overflow:hidden}
+body{margin:0;height:100vh;height:100dvh;display:grid;place-items:center;padding:16px;background:#120c1d;
 background-image:radial-gradient(rgba(129,114,152,.35) 1px,transparent 1px);background-size:20px 20px;
 font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#ecddff}
 form{width:min(340px,100%);display:flex;flex-direction:column;gap:14px;padding:28px 24px;background:rgba(27,20,40,.92);
@@ -200,6 +206,7 @@ createServer(async (req, res) => {
   const body = await readFile(file);
   res.writeHead(200, {
     ...SECURITY,
+    ...(path === SHOWCASE ? FRAMEABLE : {}),
     "Content-Type": TYPES[extname(file)] ?? "application/octet-stream",
     // hashed build assets never change; everything else (index.html, public files) is revalidated
     "Cache-Control": file.startsWith(join(DIST, "assets") + sep) ? "public, max-age=31536000, immutable" : "no-cache",

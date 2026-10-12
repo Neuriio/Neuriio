@@ -2,8 +2,9 @@
 // randomly twinkling dots behind the header (logo, marquee, Points + Account), the hero (name, tagline, App + Docs)
 // and a showcase Explore card (fake tokens, candles and trades) in a lavender frame with a glow running around inside its stroke.
 // Signing in here stays here; "App" goes to /explore (behind the passcode page while APP_PASSCODE is set).
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExploreCard } from "./ExploreCard";
+import { useIsMobile } from "../lib/media";
 
 export function LandingHero() {
   return (
@@ -32,9 +33,57 @@ export function LandingHero() {
 }
 
 export function LandingFrame() {
+  const mobile = useIsMobile();
   return (
     <div className="ld-frame">
       <span className="ld-glow" aria-hidden />
+      {/* inert: a picture of the app, nothing inside takes clicks, taps or keyboard focus */}
+      <div className="ld-frame-in" ref={(el) => el?.setAttribute("inert", "")}>
+        {mobile ? <ShowcaseFrame /> : <ExploreCard />}
+      </div>
+    </div>
+  );
+}
+
+const DESIGN_W = 1180; // the card before it's shrunk: wide enough for the desktop layout
+const DESIGN_H = 700; // the desktop proportions (search + 560 px cards + padding)
+
+/** Phones: the desktop card, shrunk. /showcase in a DESIGN_W x DESIGN_H frame (so its media queries pick the
+ *  desktop layout), scaled down to the box's width; the box takes the scaled height. */
+function ShowcaseFrame() {
+  const box = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ scale: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = box.current!;
+    const ro = new ResizeObserver(() => {
+      const scale = el.clientWidth / DESIGN_W;
+      if (scale > 0) setFit({ scale, h: DESIGN_H });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={box} className="ld-iframe-box" style={fit ? { height: DESIGN_H * fit.scale } : undefined}>
+      {fit && (
+        <iframe
+          src="/showcase"
+          title="Neuriio Explore"
+          tabIndex={-1}
+          aria-hidden
+          style={{ width: DESIGN_W, height: fit.h, transform: `scale(${fit.scale})` }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** /showcase: only the landing's Explore card, on a transparent page (shown inside ShowcaseFrame). */
+export function Showcase() {
+  useEffect(() => {
+    document.documentElement.classList.add("is-showcase");
+  }, []);
+  return (
+    <div className="ld-show">
       <div className="ld-frame-in">
         <ExploreCard />
       </div>
@@ -69,6 +118,7 @@ export function LandingBg() {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.body.style.background = "rgb(61,47,92)"; // the gradient's top colour, so Safari's bar matches it
     let w = 0;
     let h = 0;
     let grad: CanvasGradient | null = null;
