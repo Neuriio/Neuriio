@@ -3881,15 +3881,15 @@ body {
   border-radius: 11px;
   padding: 72px 24px 24px; /* room for the search bar above the chart */
 }
-:is(.ld-frame, .ld-show) .ex-grid {
+.ld-frame .ex-grid {
   height: 100%;
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas: "list chart order";
 }
-:is(.ld-frame, .ld-show) .ex-positions-card {
+.ld-frame .ex-positions-card {
   display: none;
 }
-:is(.ld-frame, .ld-show) .ex-search-top {
+.ld-frame .ex-search-top {
   bottom: calc(100% + 18px);
 }
 @media (prefers-reduced-motion: reduce) {
@@ -4011,11 +4011,16 @@ body {
 .is-showcase body {
   background: transparent;
 }
-.ld-show {
+/* the picture holds still: the marquee doesn't scroll */
+.ld-shot .slider-track {
+  transform: none !important;
+}
+/* one desktop screen: the footer links sit at its bottom (Positions, below the fold on a real screen, left out) */
+.ld-shot {
   height: 100vh;
 }
-.ld-show .ld-frame-in {
-  height: 100%;
+.ld-shot .ex-positions-card {
+  display: none;
 }
 
 /* landing avatars: the Neuriio mark in white on one of seven gradients */

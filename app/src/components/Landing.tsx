@@ -4,6 +4,10 @@
 // Signing in here stays here; "App" goes to /explore (behind the passcode page while APP_PASSCODE is set).
 import { useEffect, useRef, useState } from "react";
 import { ExploreCard } from "./ExploreCard";
+import { LogoMarquee } from "./LogoMarquee";
+import { MenuBox } from "./MenuBox";
+import { SocialLinks } from "./SocialLinks";
+import { useTickerLogos } from "../lib/tickers";
 import { useIsMobile } from "../lib/media";
 
 export function LandingHero() {
@@ -45,11 +49,11 @@ export function LandingFrame() {
   );
 }
 
-const DESIGN_W = 1180; // the card before it's shrunk: wide enough for the desktop layout
-const DESIGN_H = 700; // the desktop proportions (search + 560 px cards + padding): wide, not tall
+const DESIGN_W = 1440; // a desktop screen: the whole Explore page (header, cards, footer links)
+const DESIGN_H = 900;
 
-/** Phones: the whole desktop card, shrunk. /showcase in a DESIGN_W x DESIGN_H frame (so its media queries pick
- *  the desktop layout), scaled down to the box's width; the box takes the scaled height. */
+/** Phones: a picture of the whole desktop Explore page, shrunk. /showcase in a DESIGN_W x DESIGN_H frame (so its
+ *  media queries pick the desktop layout), scaled down to the box's width; the box takes the scaled height. */
 function ShowcaseFrame() {
   const box = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState<{ scale: number; h: number } | null>(null);
@@ -77,16 +81,42 @@ function ShowcaseFrame() {
   );
 }
 
-/** /showcase: only the landing's Explore card, on a transparent page (shown inside ShowcaseFrame). */
+/** /showcase: the desktop Explore page as a still picture (shown inside ShowcaseFrame on phones): logo + menu,
+ *  marquee (held still), Account + Points as signed out, the showcase Explore card, the footer links. */
 export function Showcase() {
-  useEffect(() => {
-    document.documentElement.classList.add("is-showcase");
-  }, []);
+  const tickers = useTickerLogos();
   return (
-    <div className="ld-show">
-      <div className="ld-frame-in">
+    <div className="app ld-shot">
+      <header className="top">
+        <div className="top-left">
+          <span className="logo">
+            <img src="/brand/logo.png" alt="" width={52} height={52} />
+          </span>
+          <MenuBox />
+        </div>
+        <LogoMarquee logos={tickers} className="top-marquee" />
+        {/* Account + Points as a signed-out visitor sees them (never the viewer's own account) */}
+        <div className="top-right card-stack">
+          <div className="top-box-slot" data-card="Account">
+            <span className="panel top-box morph-trigger account-trigger-locked">
+              <span className="morph-trigger-content">
+                <span className="login-text">Account</span>
+              </span>
+            </span>
+          </div>
+          <div className="top-box-slot" data-card="Points">
+            <span className="panel top-box morph-trigger points">
+              <span className="morph-trigger-content">
+                <span className="top-value">Points</span>
+              </span>
+            </span>
+          </div>
+        </div>
+      </header>
+      <main className="stage stage-explore">
         <ExploreCard />
-      </div>
+      </main>
+      <SocialLinks />
     </div>
   );
 }
