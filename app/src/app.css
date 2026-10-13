@@ -4116,6 +4116,10 @@ body {
 .ex-avatar-mark.tone-4 { background: linear-gradient(135deg, #1e3a8a, #60a5fa); }
 .ex-avatar-mark.tone-5 { background: linear-gradient(135deg, #a21caf, #7c3aed); }
 .ex-avatar-mark.tone-6 { background: linear-gradient(135deg, #be123c, #fb7185); }
+/* the feed's sample posters: the mark on green / orange / teal */
+.ex-avatar-mark.tone-green { background: linear-gradient(135deg, #0f766e, #6ee7a0); }
+.ex-avatar-mark.tone-orange { background: linear-gradient(135deg, #f97316, #fcd34d); }
+.ex-avatar-mark.tone-teal { background: linear-gradient(135deg, #0e7490, #5eead4); }
 
 /* "Charts by TradingView" under the chart's right corner (the library's licence asks for a credit + link) */
 .ex-chart-credit {

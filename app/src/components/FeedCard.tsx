@@ -40,6 +40,17 @@ type Post = {
   comments: Comment[];
 };
 
+/** Sample posters (and commenters) show the Neuriio mark on green / orange / teal instead of an initial. */
+const SAMPLE_TONES: Record<string, string> = {
+  kntqkid: "green",
+  the_liquidator: "orange",
+  vaultvera: "teal",
+  wagmiwes: "orange",
+  mememonk: "teal",
+  chartwizard: "green",
+  onchainoliver: "orange",
+};
+
 const NOW = Date.now();
 const TEST_POSTS: Post[] = [
   {
@@ -443,7 +454,7 @@ function PostRow({ p, onComments, onSend }: { p: Post; onComments: () => void; o
   const [liked, setLiked] = useState(false);
   return (
     <li className="feed-post">
-      <Avatar handle={p.handle} pfp={p.pfp} size={42} />
+      <Avatar handle={p.handle} pfp={p.pfp} size={42} tone={SAMPLE_TONES[p.handle]} />
       <div className="feed-body">
         <PostHead p={p} />
         <p className="feed-text">{p.text}</p>
@@ -517,7 +528,7 @@ function CommentsModal({ post, onClose }: { post: Post | null; onClose: () => vo
               </button>
             </header>
             <div className="feed-thread-post">
-              <Avatar handle={post.handle} pfp={post.pfp} size={38} />
+              <Avatar handle={post.handle} pfp={post.pfp} size={38} tone={SAMPLE_TONES[post.handle]} />
               <div className="feed-body">
                 <PostHead p={post} />
                 <p className="feed-text">{post.text}</p>
@@ -526,7 +537,7 @@ function CommentsModal({ post, onClose }: { post: Post | null; onClose: () => vo
             <ol className="feed-thread-list">
               {post.comments.map((c, i) => (
                 <li key={i} className="feed-comment">
-                  <Avatar handle={c.handle} pfp={null} size={30} />
+                  <Avatar handle={c.handle} pfp={null} size={30} tone={SAMPLE_TONES[c.handle]} />
                   <div className="feed-body">
                     <header className="feed-meta">
                       <span className="feed-name">{c.name}</span>
