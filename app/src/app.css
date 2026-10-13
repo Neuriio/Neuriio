@@ -1416,6 +1416,29 @@ body {
   right: 22px;
   bottom: 20px;
 }
+/* short windows (laptops with a small browser window, tablets in landscape): the centered card would rise under the
+   header and the HYPE button onto the footer links, so the card flows below the header and the page scrolls, like on
+   phones. The flow card + HYPE button need ~800px of window; the intro ~680px (user's report, 2026-10-13) */
+@media (max-height: 820px) {
+  .stage-launch:has(.launch-flow) {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    margin: 120px auto 0;
+    padding-bottom: 110px; /* room for the footer links */
+  }
+}
+@media (max-height: 680px) {
+  .stage-launch {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    margin: 120px auto 0;
+    padding-bottom: 110px;
+  }
+}
 /* phones: the launch flow stacks (preview on top, steps full width under it) and flows below the header so the
    page scrolls; the logged-out intro card stays centered (2026-10-10) */
 @media (max-width: 860px) {
