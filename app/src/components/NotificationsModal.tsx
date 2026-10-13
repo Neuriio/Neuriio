@@ -1,11 +1,12 @@
 // Notifications window, opened from the bell next to your name in the Account panel: FTF invites to you (Accept /
-// Decline: an off-chain "yes", no transaction) and people asking to join FTFs you founded (Approve / Decline).
+// Decline: an off-chain "yes", no transaction) and people asking to join FTFs you founded (Approve / Decline). Admins also
+// see testnet HYPE requests (who + the wallet to send to, with Copy; Sent / Dismiss).
 // Rendered over the page with the background blurred; Escape, × or a click outside closes it.
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { usePrivy } from "@privy-io/react-auth";
-import { Bell, Check, X } from "lucide-react";
+import { Bell, Check, Copy, X } from "lucide-react";
 import { ftfCall, type Notice, useNotifications } from "../lib/ftf";
 import { EASE_OUT } from "../lib/motion";
 import { Avatar } from "./Avatar";
@@ -70,12 +71,16 @@ export function NotificationsList() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [copied, setCopied] = useState<number | null>(null);
+  const keyOf = (n: Notice) => (n.kind === "hype" ? `hype:${n.id}` : `${n.kind}:${n.draftId}:${n.from.x_user_id}`);
+
   const act = async (n: Notice, yes: boolean) => {
-    const key = `${n.kind}:${n.draftId}:${n.from.x_user_id}`;
+    const key = keyOf(n);
     setBusy(key);
     setError(null);
     try {
-      if (n.kind === "invite") await ftfCall(getAccessToken, yes ? "accept" : "decline", { draftId: n.draftId });
+      if (n.kind === "hype") await ftfCall(getAccessToken, "hypeDone", { id: n.id, sent: yes });
+      else if (n.kind === "invite") await ftfCall(getAccessToken, yes ? "accept" : "decline", { draftId: n.draftId });
       else await ftfCall(getAccessToken, yes ? "approve" : "remove", { draftId: n.draftId, xUserId: n.from.x_user_id });
       refresh();
     } catch (e) {
@@ -92,8 +97,37 @@ export function NotificationsList() {
       ) : (
         <ul className="nt-list">
           {items.map((n) => {
-            const key = `${n.kind}:${n.draftId}:${n.from.x_user_id}`;
+            const key = keyOf(n);
             const who = n.from.x_handle ? `@${n.from.x_handle}` : "Someone";
+            if (n.kind === "hype") {
+              const copy = () =>
+                navigator.clipboard.writeText(n.wallet).then(() => {
+                  setCopied(n.id);
+                  setTimeout(() => setCopied((c) => (c === n.id ? null : c)), 1500);
+                });
+              return (
+                <li key={key} className="nt-item">
+                  <Avatar handle={n.from.x_handle ?? "?"} pfp={n.from.x_pfp_url ?? null} size={34} />
+                  <div className="nt-text">
+                    <span>
+                      <b>{who}</b> asked for testnet HYPE
+                    </span>
+                    <button className="nt-wallet" onClick={copy} title="Copy wallet">
+                      {n.wallet.slice(0, 6)}…{n.wallet.slice(-4)}
+                      {copied === n.id ? <Check size={11} strokeWidth={3} /> : <Copy size={11} />}
+                    </button>
+                  </div>
+                  <div className="nt-actions">
+                    <button className="nt-yes" disabled={busy === key} onClick={() => act(n, true)}>
+                      <Check size={13} strokeWidth={3} /> Sent
+                    </button>
+                    <button className="nt-no" disabled={busy === key} onClick={() => act(n, false)}>
+                      Dismiss
+                    </button>
+                  </div>
+                </li>
+              );
+            }
             return (
               <li key={key} className="nt-item">
                 <Avatar handle={n.from.x_handle ?? "?"} pfp={n.from.x_pfp_url ?? null} size={34} />

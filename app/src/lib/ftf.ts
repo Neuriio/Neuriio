@@ -42,14 +42,13 @@ export type FtfPassResponse = {
   };
   signature: `0x${string}`;
 };
-export type Notice = {
-  kind: "invite" | "request";
-  draftId: string;
-  name: string;
-  ticker: string;
-  from: { x_user_id: string; x_handle?: string; x_name?: string | null; x_pfp_url?: string | null };
-  at: string;
-};
+type NoticeFrom = { x_user_id: string; x_handle?: string; x_name?: string | null; x_pfp_url?: string | null };
+export type Notice =
+  | { kind: "invite" | "request"; draftId: string; name: string; ticker: string; from: NoticeFrom; at: string }
+  /** admins only: someone asked for testnet HYPE (HypeButton) */
+  | { kind: "hype"; id: number; wallet: string; from: NoticeFrom; at: string };
+
+export type HypeStatus = { status: "none" | "pending" | "sent" | "dismissed"; at: string | null };
 
 export const FTF_NAME_RE = /^[A-Za-z0-9_.&'-]+( [A-Za-z0-9_.&'-]+)*$/;
 export const FTF_TICKER_RE = /^[A-Z0-9]{2,10}$/;
@@ -144,6 +143,10 @@ function demoCall(action: string, body: Record<string, unknown>): unknown {
   switch (action) {
     case "inbox":
       return { items: demoNotices };
+    case "hypeStatus":
+      return { status: "none", at: null };
+    case "hype":
+      return { status: "pending", at: new Date().toISOString() };
     case "mine":
       return snapshot();
     case "create":
@@ -171,7 +174,7 @@ function demoCall(action: string, body: Record<string, unknown>): unknown {
     case "accept":
     case "decline":
     case "approve":
-      demoNotices = demoNotices.filter((n) => n.draftId !== body.draftId || (body.xUserId && n.from.x_user_id !== body.xUserId));
+      demoNotices = demoNotices.filter((n) => n.kind === "hype" || n.draftId !== body.draftId || (body.xUserId && n.from.x_user_id !== body.xUserId));
       return snapshot();
     case "cancel":
       demo.view = { draft: null, members: [] };

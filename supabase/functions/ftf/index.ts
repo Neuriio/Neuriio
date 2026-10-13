@@ -17,6 +17,11 @@
 //   cancel  { draftId }                founder cancels the draft
 //   pass    { draftId }                founder, with exactly 4 accepted: a signed FtfPass for Launchpad.launchFtf
 //
+// Testnet HYPE requests (the header button; admins = app_config.hype_admins, they see requests in their inbox):
+//   hypeStatus {}                      your latest request: { status: none | pending | sent | dismissed, at }
+//   hype       {}                      ask for testnet HYPE to your Neuriio wallet (one open request; again 24 h after sent)
+//   hypeDone   { id, sent }            admin: mark a request sent (or dismissed)
+//
 // Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET, LAUNCH_SIGNER_KEY, LAUNCHPAD_ADDRESS, CHAIN_ID, RPC_URL
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -206,7 +211,8 @@ async function inbox(who: XUser) {
     const d = byId.get(r.draft_id)!;
     return { kind: "request", draftId: d.id, name: d.name, ticker: d.ticker, from: { x_user_id: r.x_user_id, ...cards.get(r.x_user_id) }, at: r.created_at };
   });
-  return { items: [...invites, ...requests].sort((a, b) => String(b.at).localeCompare(String(a.at))) };
+  const hype = await hypeNotices(who);
+  return { items: [...invites, ...requests, ...hype].sort((a, b) => String(b.at).localeCompare(String(a.at))) };
 }
 
 /** Founder, once all 4 accepted: sector + category + about + links (the picture comes from `pfp`). */
@@ -421,8 +427,62 @@ async function pass(who: XUser, body: Body) {
   };
 }
 
+// ------------------------------------------------------------------ testnet HYPE requests
+
+const HYPE_AGAIN_MS = 24 * 60 * 60 * 1000; // after a request was sent
+
+async function isHypeAdmin(who: XUser) {
+  const { data, error } = await db.from("app_config").select("value").eq("key", "hype_admins").maybeSingle();
+  if (error) dbError("hype admins", error.message);
+  return String(data?.value ?? "").split(",").map((s) => s.trim()).includes(who.xUserId);
+}
+
+async function latestHype(who: XUser) {
+  const { data, error } = await db.from("hype_requests").select("status, created_at, done_at").eq("x_user_id", who.xUserId)
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (error) dbError("hype latest", error.message);
+  return data;
+}
+
+async function hypeStatus(who: XUser) {
+  const r = await latestHype(who);
+  return { status: r?.status ?? "none", at: r ? (r.done_at ?? r.created_at) : null };
+}
+
+async function hype(who: XUser) {
+  const r = await latestHype(who);
+  if (r?.status === "pending") return hypeStatus(who);
+  if (r?.status === "sent" && Date.now() - Date.parse(r.done_at) < HYPE_AGAIN_MS) fail(429, "HYPE was sent to you in the last 24 hours");
+  const { error } = await db.from("hype_requests").insert({ x_user_id: who.xUserId, wallet: who.wallet.toLowerCase() });
+  if (error && error.code !== "23505") dbError("hype insert", error.message); // 23505: a pending one already exists
+  return hypeStatus(who);
+}
+
+async function hypeDone(who: XUser, body: Body) {
+  if (!(await isHypeAdmin(who))) fail(403, "Only an admin can do that");
+  const id = Number(body.id);
+  if (!Number.isSafeInteger(id)) fail(400, "Unknown request");
+  const { error } = await db.from("hype_requests").update({ status: body.sent ? "sent" : "dismissed", done_at: new Date().toISOString() })
+    .eq("id", id).eq("status", "pending");
+  if (error) dbError("hype done", error.message);
+  return { ok: true };
+}
+
+/** Admins only: open HYPE requests, as inbox items. */
+async function hypeNotices(who: XUser) {
+  if (!(await isHypeAdmin(who))) return [];
+  const { data, error } = await db.from("hype_requests").select("id, x_user_id, wallet, created_at").eq("status", "pending")
+    .order("created_at", { ascending: false }).limit(50);
+  if (error) dbError("hype inbox", error.message);
+  const cards = await cardsOf((data ?? []).map((r) => r.x_user_id as string));
+  return (data ?? []).map((r) => ({
+    kind: "hype", id: r.id, wallet: r.wallet, from: { x_user_id: r.x_user_id, ...cards.get(r.x_user_id) }, at: r.created_at,
+  }));
+}
+
 const ACTIONS: Record<string, (who: XUser, body: Body) => Promise<unknown>> = {
   create, mine, inbox, profile, pfp, invite, request, approve, accept, decline, leave, remove, cancel, pass,
+  hypeStatus, hype, hypeDone,
 };
 
 // ------------------------------------------------------------------ entry

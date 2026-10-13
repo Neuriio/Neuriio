@@ -337,6 +337,41 @@ body {
   box-shadow: 0 2px 8px rgba(7, 2, 12, 0.45);
 }
 
+/* /launch: the "Request testnet HYPE" button, centered right under the launch card */
+.launch-hype {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+.hype-btn {
+  flex: none;
+  gap: 7px;
+  padding: 0 12px;
+  color: #ffffff;
+  background: linear-gradient(160deg, #463764, #40315d);
+  border: 0.75px solid #8c7d9f;
+  border-radius: 7px;
+  box-shadow: 0 2px 8px rgba(7, 2, 12, 0.45);
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.hype-btn:hover:not(:disabled) {
+  border-color: rgba(204, 236, 236, 0.7);
+  transform: translateY(-2px);
+}
+.hype-btn:disabled {
+  cursor: default;
+}
+.hype-btn-done {
+  color: #6ee7a0;
+}
+.hype-btn-done .top-value {
+  color: #6ee7a0;
+}
+.hype-btn-error .top-value {
+  color: #ff8a8a;
+}
+
 /* layered deck: Account in front on the left, Points behind it on the right; the hovered card
    comes to the front (and springs up, see Morph) */
 .card-stack {
@@ -1692,6 +1727,7 @@ body {
   .top-marquee {
     display: none; /* no room between logo and buttons on phones */
   }
+
 }
 
 /* ---- /feed: posts like X (like, comment, send). First pass, 2026-09-30 ---- */
@@ -3412,6 +3448,24 @@ body {
 .nt-no:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.nt-wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 2px 7px;
+  font: inherit;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-2);
+  background: rgba(236, 221, 255, 0.06);
+  border: 1px solid rgba(236, 221, 255, 0.16);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.nt-wallet:hover {
+  color: #ffffff;
 }
 .nt-error {
   margin: 0;

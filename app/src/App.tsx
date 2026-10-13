@@ -4,6 +4,7 @@ import { AccountBox } from "./components/AccountBox";
 import { PointsBox } from "./components/PointsBox";
 import { CardStack } from "./components/CardStack";
 import { MenuBox } from "./components/MenuBox";
+import { HypeButton } from "./components/HypeButton";
 import { SocialLinks } from "./components/SocialLinks";
 import { LogoMarquee } from "./components/LogoMarquee";
 import { useTickerLogos } from "./lib/tickers";
@@ -62,6 +63,9 @@ function Page() {
           <DnaStrand side="right" phase={1.3} />
           <main className="stage stage-launch">
             <LaunchCard />
+            <div className="launch-hype">
+              <HypeButton />
+            </div>
           </main>
         </>
       ) : PAGE === "/feed" ? (

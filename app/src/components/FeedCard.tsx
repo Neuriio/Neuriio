@@ -369,10 +369,17 @@ function NoticesBox() {
         <span className="feed-muted feed-notices-empty">Nothing new.</span>
       ) : (
         items.slice(0, 2).map((n) => (
-          <button key={`${n.kind}:${n.draftId}:${n.from.x_user_id}`} className="feed-notice" onClick={() => setOpen(true)}>
+          <button key={n.kind === "hype" ? `hype:${n.id}` : `${n.kind}:${n.draftId}:${n.from.x_user_id}`} className="feed-notice" onClick={() => setOpen(true)}>
             <Avatar handle={n.from.x_handle ?? "?"} pfp={n.from.x_pfp_url ?? null} size={22} />
             <span className="feed-notice-text">
-              <b>@{n.from.x_handle ?? "someone"}</b> {n.kind === "invite" ? "invited you to" : "asked to join"} <b>{n.name}</b>
+              <b>@{n.from.x_handle ?? "someone"}</b>{" "}
+              {n.kind === "hype" ? (
+                "asked for testnet HYPE"
+              ) : (
+                <>
+                  {n.kind === "invite" ? "invited you to" : "asked to join"} <b>{n.name}</b>
+                </>
+              )}
             </span>
           </button>
         ))
