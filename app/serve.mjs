@@ -1,8 +1,10 @@
 // Static server for the built app (app/dist) on Railway: SPA fallback so /launch, /explore, /feed load directly,
 // plus security headers (no framing: stops clickjacking of wallet actions). No dependencies.
 // Optional passcode gate (private beta): with APP_PASSCODE set, the app's pages (/explore, /launch, ...) sit behind a
-// passcode page; the landing page "/" and the built files it loads stay open. A correct code sets a 30-day HttpOnly cookie derived from the passcode, so changing
-// APP_PASSCODE signs everyone out. Wrong codes are rate limited per visitor and overall.
+// passcode page; the landing page "/" and the built files it loads stay open. APP_PASSCODE can hold several codes,
+// comma-separated (one per group you hand them to, e.g. "main-code,ASCEND!!"). A correct code sets a 30-day HttpOnly
+// cookie derived from that code, so removing a code from the list signs out only the people who used it. Wrong codes are
+// rate limited per visitor and overall. Each sign-in logs which code was used, by its position in the list (never the code).
 //   node app/serve.mjs    (PORT from the environment, default 8080; APP_PASSCODE optional)
 
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -13,7 +15,7 @@ import { fileURLToPath } from "node:url";
 
 const DIST = fileURLToPath(new URL("./dist", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8080);
-const PASSCODE = process.env.APP_PASSCODE ?? "";
+const PASSCODES = (process.env.APP_PASSCODE ?? "").split(",").map((c) => c.trim()).filter(Boolean);
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -77,8 +79,9 @@ const WINDOW_MS = 15 * 60_000;
 const MAX_FAILS_PER_VISITOR = 10;
 const MAX_FAILS_TOTAL = 200; // backstop if someone rotates addresses
 
-/** The cookie value: an HMAC of the passcode, so it can't be forged and dies when the passcode changes. */
-const token = () => createHmac("sha256", PASSCODE).update("neuriio-gate-v1").digest("hex");
+/** The cookie value for a code: an HMAC of it, so it can't be forged and dies when that code is removed. */
+const token = (code) => createHmac("sha256", code).update("neuriio-gate-v1").digest("hex");
+const TOKENS = PASSCODES.map(token);
 
 function sameSecret(a, b) {
   const x = createHmac("sha256", "cmp").update(a).digest();
@@ -90,7 +93,8 @@ function hasPass(req) {
   const cookies = Object.fromEntries(
     (req.headers.cookie ?? "").split(";").map((c) => c.trim().split("=")).filter((kv) => kv.length === 2),
   );
-  return typeof cookies[COOKIE] === "string" && sameSecret(cookies[COOKIE], token());
+  const c = cookies[COOKIE];
+  return typeof c === "string" && TOKENS.some((t) => sameSecret(c, t));
 }
 
 const fails = new Map(); // visitor -> timestamps of wrong codes
@@ -166,14 +170,17 @@ async function handleGate(req, res) {
   const next = safeNext(form?.get("next"));
   const who = visitor(req);
   if (limited(who)) return sendGate(res, next, "Too many tries. Wait 15 minutes and try again.", 429);
-  if (!form || !sameSecret(form.get("code") ?? "", PASSCODE)) {
+  const code = form?.get("code") ?? "";
+  const n = PASSCODES.findIndex((p) => sameSecret(code, p));
+  if (n < 0) {
     recordFail(who);
     return sendGate(res, next, "Wrong passcode.");
   }
+  console.log(`gate: signed in with code #${n + 1}`);
   const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
   res.writeHead(303, {
     ...SECURITY,
-    "Set-Cookie": `${COOKIE}=${token()}; Path=/; Max-Age=${COOKIE_DAYS * 86400}; HttpOnly; SameSite=Lax${secure}`,
+    "Set-Cookie": `${COOKIE}=${TOKENS[n]}; Path=/; Max-Age=${COOKIE_DAYS * 86400}; HttpOnly; SameSite=Lax${secure}`,
     Location: next,
     "Cache-Control": "no-store",
   });
@@ -184,7 +191,7 @@ async function handleGate(req, res) {
 
 createServer(async (req, res) => {
   const path = (req.url ?? "/").split("?")[0];
-  if (PASSCODE) {
+  if (PASSCODES.length) {
     if (path === GATE_PATH && req.method === "POST") return handleGate(req, res);
     if (!isOpen(path) && !hasPass(req)) {
       if (req.method !== "GET" && req.method !== "HEAD") return res.writeHead(405, { ...SECURITY, Allow: "GET, HEAD" }).end();
