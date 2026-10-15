@@ -368,6 +368,30 @@ body {
 .hype-btn-done .top-value {
   color: #6ee7a0;
 }
+.hype-modal {
+  width: min(380px, 100%);
+}
+.hype-modal-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.hype-modal-tx {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.hype-modal-tx:hover {
+  color: #ffffff;
+}
+.hype-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
 .hype-btn-error .top-value {
   color: #ff8a8a;
 }

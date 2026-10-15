@@ -18,14 +18,18 @@
 //   pass    { draftId }                founder, with exactly 4 accepted: a signed FtfPass for Launchpad.launchFtf
 //
 // Testnet HYPE requests (the header button; admins = app_config.hype_admins, they see requests in their inbox):
-//   hypeStatus {}                      your latest request: { status: none | pending | sent | dismissed, at }
+//   hypeStatus {}                      your latest request: { status: none | pending | sent | dismissed, at, claimed }
+//   claimHype  {}                      the faucet: 0.2 HYPE to your Neuriio wallet, once per X account ever
+//                                      -> { status: "sent", tx } | { status: "claimed" } | { status: "fallback" } (faucet
+//                                      can't pay: the app files a manual request instead)
 //   hype       {}                      ask for testnet HYPE to your Neuriio wallet (one open request; again 24 h after sent)
 //   hypeDone   { id, sent }            admin: mark a request sent (or dismissed)
 //
-// Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET, LAUNCH_SIGNER_KEY, LAUNCHPAD_ADDRESS, CHAIN_ID, RPC_URL
+// Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET, LAUNCH_SIGNER_KEY, LAUNCHPAD_ADDRESS, CHAIN_ID, RPC_URL; optional FAUCET_KEY
+// (the faucet wallet's key: its own wallet, never the deployer/owner key; without it every claim falls back)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { createPublicClient, getAddress, http, keccak256, parseAbi, toBytes, zeroAddress } from "npm:viem@2";
+import { createPublicClient, createWalletClient, defineChain, getAddress, http, keccak256, parseAbi, parseEther, toBytes, zeroAddress } from "npm:viem@2";
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import {
   CATEGORIES,
@@ -431,6 +435,63 @@ async function pass(who: XUser, body: Body) {
 
 const HYPE_AGAIN_MS = 24 * 60 * 60 * 1000; // after a request was sent
 
+// the faucet: its own wallet (FAUCET_KEY), 0.2 HYPE per X account, once
+const FAUCET_AMOUNT = parseEther("0.2");
+const FAUCET_GAS_RESERVE = parseEther("0.01"); // keep this much for gas; below amount + reserve, claims fall back
+const faucetKey = Deno.env.get("FAUCET_KEY");
+const faucet = faucetKey
+  ? createWalletClient({
+    account: privateKeyToAccount(faucetKey as `0x${string}`),
+    chain: defineChain({ id: CHAIN_ID, name: "Elysium", nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 }, rpcUrls: { default: { http: [env("RPC_URL")] } } }),
+    transport: http(env("RPC_URL")),
+  })
+  : null;
+
+async function claimed(who: XUser) {
+  const { data, error } = await db.from("hype_claims").select("status").eq("x_user_id", who.xUserId).maybeSingle();
+  if (error) dbError("claim status", error.message);
+  return !!data;
+}
+
+async function claimHype(who: XUser) {
+  if (!faucet) return { status: "fallback" };
+  // the insert is the lock: one row per X account, ever (a second click, or a second tab, hits the primary key)
+  const { error } = await db.from("hype_claims")
+    .insert({ x_user_id: who.xUserId, wallet: who.wallet.toLowerCase(), amount: "0.2", status: "sending" });
+  if (error) {
+    if (error.code === "23505") return { status: "claimed" };
+    dbError("claim insert", error.message);
+  }
+  const release = () => db.from("hype_claims").delete().eq("x_user_id", who.xUserId).eq("status", "sending");
+  try {
+    const balance = await chain.getBalance({ address: faucet.account.address });
+    if (balance < FAUCET_AMOUNT + FAUCET_GAS_RESERVE) {
+      console.error(`ftf: faucet low: ${balance} wei`);
+      await release();
+      return { status: "fallback" };
+    }
+    // many claims at once share one sender: on a nonce clash, try again with a fresh nonce
+    let tx: `0x${string}` | null = null;
+    for (let i = 0; i < 4 && !tx; i++) {
+      try {
+        const nonce = await chain.getTransactionCount({ address: faucet.account.address, blockTag: "pending" });
+        tx = await faucet.sendTransaction({ to: who.wallet, value: FAUCET_AMOUNT, nonce });
+      } catch (e) {
+        const m = (e as Error).message.toLowerCase();
+        if (!/nonce|replacement|already known/.test(m) || i === 3) throw e;
+        await new Promise((r) => setTimeout(r, 150 + Math.random() * 400));
+      }
+    }
+    const { error: e2 } = await db.from("hype_claims").update({ status: "sent", tx_hash: tx }).eq("x_user_id", who.xUserId);
+    if (e2) console.error(`ftf: claim update: ${e2.message}`); // the HYPE went out; the row still blocks a second claim
+    return { status: "sent", tx };
+  } catch (e) {
+    console.error(`ftf: faucet send: ${(e as Error).message}`);
+    await release();
+    return { status: "fallback" };
+  }
+}
+
 async function isHypeAdmin(who: XUser) {
   const { data, error } = await db.from("app_config").select("value").eq("key", "hype_admins").maybeSingle();
   if (error) dbError("hype admins", error.message);
@@ -446,7 +507,7 @@ async function latestHype(who: XUser) {
 
 async function hypeStatus(who: XUser) {
   const r = await latestHype(who);
-  return { status: r?.status ?? "none", at: r ? (r.done_at ?? r.created_at) : null };
+  return { status: r?.status ?? "none", at: r ? (r.done_at ?? r.created_at) : null, claimed: await claimed(who) };
 }
 
 async function hype(who: XUser) {
@@ -482,7 +543,7 @@ async function hypeNotices(who: XUser) {
 
 const ACTIONS: Record<string, (who: XUser, body: Body) => Promise<unknown>> = {
   create, mine, inbox, profile, pfp, invite, request, approve, accept, decline, leave, remove, cancel, pass,
-  hypeStatus, hype, hypeDone,
+  hypeStatus, hype, hypeDone, claimHype,
 };
 
 // ------------------------------------------------------------------ entry
