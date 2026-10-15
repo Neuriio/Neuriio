@@ -1,6 +1,8 @@
 // POST /functions/v1/register    headers: Authorization: Bearer <Privy access token>
 // Call after every X login: creates/refreshes the user's row (X handle, pfp, Neuriio wallet) so their trades earn
 // points even if they never launch. Returns the profile, their token (if launched) and their points.
+//   body (optional): { accessCode } = the passcode they came in with (the passcode page's `neuriio_code` cookie); the
+//   first one seen per user is kept in access_code_users, to count users per code.
 //
 // Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are provided by Supabase.)
 
@@ -19,6 +21,17 @@ Deno.serve(async (req) => {
     const who = await xUserFromRequest(req);
     const { error } = await db.from("users").upsert(userRow(who), { onConflict: "privy_id" });
     if (error) internalError("register", "users upsert", error.message);
+
+    // which passcode they came in with (first one seen wins); never fails the login
+    const body = await req.json().catch(() => ({}));
+    const code = typeof body?.accessCode === "string" ? body.accessCode.trim() : "";
+    if (code && code.length <= 64) {
+      const { error: e2 } = await db.from("access_code_users").upsert(
+        { x_user_id: who.xUserId, code },
+        { onConflict: "x_user_id", ignoreDuplicates: true },
+      );
+      if (e2) console.error(`register: access code: ${e2.message}`);
+    }
 
     const [{ data: token }, { data: points }] = await Promise.all([
       db.from("tokens").select("*").eq("x_user_id", who.xUserId).maybeSingle(),

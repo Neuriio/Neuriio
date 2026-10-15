@@ -4,7 +4,9 @@
 // passcode page; the landing page "/" and the built files it loads stay open. APP_PASSCODE can hold several codes,
 // comma-separated (one per group you hand them to, e.g. "main-code,ASCEND!!"). A correct code sets a 30-day HttpOnly
 // cookie derived from that code, so removing a code from the list signs out only the people who used it. Wrong codes are
-// rate limited per visitor and overall. Each sign-in logs which code was used, by its position in the list (never the code).
+// rate limited per visitor and overall. Each sign-in logs which code was used, by its position in the list (never the code),
+// and leaves the code in a readable `neuriio_code` cookie: the app sends it on the user's X login (register function) so
+// users can be counted per code (Supabase table access_code_users).
 //   node app/serve.mjs    (PORT from the environment, default 8080; APP_PASSCODE optional)
 
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -180,7 +182,11 @@ async function handleGate(req, res) {
   const secure = req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
   res.writeHead(303, {
     ...SECURITY,
-    "Set-Cookie": `${COOKIE}=${TOKENS[n]}; Path=/; Max-Age=${COOKIE_DAYS * 86400}; HttpOnly; SameSite=Lax${secure}`,
+    "Set-Cookie": [
+      `${COOKIE}=${TOKENS[n]}; Path=/; Max-Age=${COOKIE_DAYS * 86400}; HttpOnly; SameSite=Lax${secure}`,
+      // not secret to this visitor (they just typed it); the app reads it to record which code they came in with
+      `neuriio_code=${encodeURIComponent(PASSCODES[n])}; Path=/; Max-Age=${COOKIE_DAYS * 86400}; SameSite=Lax${secure}`,
+    ],
     Location: next,
     "Cache-Control": "no-store",
   });
