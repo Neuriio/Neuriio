@@ -21,7 +21,9 @@ Creators earn a share of their token's trading fees in HYPE (20% of curve fees, 
 | Path | What |
 | --- | --- |
 | `src/launch/` | `NeuriioPad` (curve + graduation), `NeuriioRegistry` (permanent identity and versions), `NeuriioFees` (fee vault), `NeuriioToken` |
-| `src/swap/` | `NeuriioSwap` (router), `WHYPE`, and `v2/`: the Uniswap v2-core fork that holds graduated pools |
+| `src/swap/` | `NeuriioRouter` (every app trade, curve or pool, in USDC) and `v2/`: the Uniswap v2-core fork that holds graduated pools |
+| `src/stake/` | `NeuriioStaking` (stake graduated tokens or $NEURIIO for a share of fees), `NeuriioMinter` and `NeuriioPlatformToken` ($NEURIIO) |
+| `src/testnet/` | `TestUSDC` (testnet only; mintable by the faucet) |
 | `test/` | Foundry tests, including a solvency fuzz |
 | `script/` | Deploy scripts (Foundry + shell) and testnet tooling |
 | `app/` | Web app (React + Vite, Privy login), served by `app/serve.mjs` |
@@ -43,8 +45,9 @@ npm --prefix app install && npm --prefix app run dev   # needs VITE_PRIVY_APP_ID
 ## Deployment
 
 Testnet (Elysium, chain 99801): `script/deploy-core.sh` deploys the permanent core and the first `NeuriioPad`;
-`script/deploy-launchpad.sh` ships a new `NeuriioPad` version on the existing core; `script/supabase-deploy.sh`
-points the backend at the current addresses. The web app and the watcher run on Railway from `Dockerfile` and
+`script/deploy-launchpad.sh` ships a new `NeuriioPad` version on the existing core; `script/replace-feevault.sh`
+swaps in a new `NeuriioFees`; `script/verify-world.sh` verifies everything on the explorer;
+`script/supabase-deploy.sh` points the backend at the current addresses. The web app and the watcher run on Railway from `Dockerfile` and
 `keeper/Dockerfile.watcher`.
 
 ## Disclaimer

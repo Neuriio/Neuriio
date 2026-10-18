@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { formatEther, type Address } from "viem";
+import { formatUnits, type Address } from "viem";
 import { Bell, Heart, MessageCircle, Search, X } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { NotificationsList, NotificationsModal } from "./NotificationsModal";
@@ -18,13 +18,13 @@ import { SendModal, type SendTarget } from "./SendModal";
 import { useNotifications } from "../lib/ftf";
 import { EASE_OUT } from "../lib/motion";
 import { amount, compactUsd, usd } from "../lib/format";
-import { useHypeUsd } from "../lib/tickers";
+import { QUOTE } from "../lib/config";
 import { useBalances } from "../lib/useBalances";
 import type { Balances } from "../lib/balances";
 import { profileOf, type Profile } from "../lib/profile";
 import { tokenCreatorEarned } from "../lib/fees";
 import { CATEGORIES, launchedTokenOf, SECTORS } from "../lib/launch";
-import { change24h, DEMO, displayName, getToken, searchTokens, topTokens, type TokenStat } from "../lib/explore";
+import { change24h, DEMO, displayName, getToken, handleOf, searchTokens, tickerOf, topTokens, type TokenStat } from "../lib/explore";
 
 type Comment = { handle: string; name: string; text: string; at: number };
 type Post = {
@@ -109,7 +109,7 @@ function ago(ms: number) {
 const exploreHref = (t: TokenStat) => `/explore?t=${t.address}${DEMO ? "&demo" : ""}`;
 
 export function FeedCard() {
-  const hypeUsd = useHypeUsd();
+  const hypeUsd = QUOTE.usd; // launched tokens are priced in USDC
   const [reading, setReading] = useState<Post | null>(null);
   const [sendTo, setSendTo] = useState<SendTarget | null>(null);
   const mobile = useIsMobile();
@@ -238,7 +238,7 @@ function Me() {
   const { wallets } = useWallets();
   const address = (DEMO ? undefined : wallets.find((w) => w.walletClientType === "privy")?.address) as Address | undefined;
   const { balances } = useBalances(address);
-  const hypeUsd = useHypeUsd();
+  const hypeUsd = QUOTE.usd; // launched tokens are priced in USDC
   const [token, setToken] = useState<TokenStat | null | undefined>(undefined); // undefined = loading, null = none
   const [earned, setEarned] = useState<number | null>(null);
 
@@ -258,7 +258,7 @@ function Me() {
         const [t, w] = await Promise.all([getToken(a), tokenCreatorEarned(a)]);
         if (!alive) return;
         setToken(t);
-        setEarned(Number(formatEther(w)));
+        setEarned(Number(formatUnits(w, QUOTE.decimals)));
       })
       .catch(() => alive && setToken(null));
     return () => {
@@ -294,7 +294,7 @@ function Me() {
           <Avatar handle={me.initial} pfp={me.avatar} size={44} />
           <div className="feed-me-names">
             <span className="feed-name">{me.name}</span>
-            {token && <span className="feed-ticker">${token.symbol}</span>}
+            {token && <span className="feed-ticker">{tickerOf(token.symbol)}</span>}
           </div>
         </div>
         {token ? (
@@ -303,11 +303,10 @@ function Me() {
               {sector && <span className="lp-chip ex-sector-chip">{sector}</span>}
               {cat && <span className={`lp-chip${token.kind === "ftf" ? " ex-ftf-chip" : ""}`}>{cat}</span>}
             </div>
-            <div className="feed-me-fees" title="Lifetime creator fees: 20% of the curve's trading fees before graduation, 80% of the pool's after, paid in HYPE">
+            <div className="feed-me-fees" title="Lifetime creator fees: 10% of the pool's trading fees once the token graduates, paid in USDC">
               <span className="feed-side-title">Creator fees earned</span>
               <span className="feed-me-fees-value">
-                {earned === null ? "…" : hypeUsd ? compactUsd(earned * hypeUsd) : `${earned.toFixed(4)} HYPE`}
-                {earned !== null && <span className="feed-muted"> · {earned.toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE</span>}
+                {earned === null ? "…" : compactUsd(earned * hypeUsd)}
               </span>
             </div>
           </>
@@ -383,7 +382,7 @@ function NoticesBox() {
           <button key={n.kind === "hype" ? `hype:${n.id}` : `${n.kind}:${n.draftId}:${n.from.x_user_id}`} className="feed-notice" onClick={() => setOpen(true)}>
             <Avatar handle={n.from.x_handle ?? "?"} pfp={n.from.x_pfp_url ?? null} size={22} />
             <span className="feed-notice-text">
-              <b>@{n.from.x_handle ?? "someone"}</b>{" "}
+              <b>{n.from.x_handle ? handleOf(n.from.x_handle) : "someone"}</b>{" "}
               {n.kind === "hype" ? (
                 "asked for testnet HYPE"
               ) : (
@@ -478,8 +477,8 @@ function PostHead({ p }: { p: Post }) {
   return (
     <header className="feed-meta">
       <span className="feed-name">{p.name}</span>
-      <span className="feed-handle">@{p.handle}</span>
-      {p.ticker && <span className="feed-ticker">${p.ticker}</span>}
+      <span className="feed-handle">{handleOf(p.handle)}</span>
+      {p.ticker && <span className="feed-ticker">{tickerOf(p.ticker)}</span>}
       <span className="feed-dot">·</span>
       <time className="feed-time" dateTime={new Date(p.at).toISOString()}>
         {ago(p.at)}
@@ -541,7 +540,7 @@ function CommentsModal({ post, onClose }: { post: Post | null; onClose: () => vo
                   <div className="feed-body">
                     <header className="feed-meta">
                       <span className="feed-name">{c.name}</span>
-                      <span className="feed-handle">@{c.handle}</span>
+                      <span className="feed-handle">{handleOf(c.handle)}</span>
                       <span className="feed-dot">·</span>
                       <span className="feed-time">{ago(c.at)}</span>
                     </header>

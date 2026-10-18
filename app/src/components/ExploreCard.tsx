@@ -1,8 +1,9 @@
 // /explore — launched tokens. Three columns, the chart dead-center (side cards are equal width):
-//   left card:  Top 25 by total volume (order re-ranked every minute by the database; numbers live)
+//   left card:  platform fees (lifetime, every token; not on the landing), then Top 25 by total volume (order re-ranked
+//               every minute by the database; numbers live)
 //   above the chart: search @handle (FTF names later)
 //   center:     the picked token (header, price + 24h change, market-cap candle chart 5m-4H, stats, curve progress)
-//   right card: order card (buy/sell)
+//   right card: order card (buy/sell); beside it (the app, not the landing): stake / unstake / claim
 //   under the chart (same width): your positions
 // Phones (<= 860px): search, the chart card (no Profile button, no Log/Reset), then one card with three tabs:
 //   About (creator profile, bio, creator fees, stats, curve progress) · Trade (the order card) · Positions.
@@ -14,16 +15,17 @@ import { ExternalLink, Search, UserRound } from "lucide-react";
 import { CATEGORIES, SECTORS } from "../lib/launch";
 import { CandleChart, type ChartControls } from "./CandleChart";
 import { subscribeTrades, useLivePrices } from "../lib/live";
-import { tokenCreatorEarned } from "../lib/fees";
-import { formatEther, type Address } from "viem";
+import { platformFees, tokenCreatorEarned } from "../lib/fees";
+import { formatUnits, type Address } from "viem";
 import { OrderCard } from "./OrderCard";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { PositionsCard } from "./PositionsCard";
+import { StakeCard } from "./StakeCard";
 import { ProfileBody, ProfileModal, useCreatorProfile } from "./ProfileModal";
 import { useIsMobile } from "../lib/media";
 import { Avatar } from "./Avatar";
-import { compactUsd, tinyPrice } from "../lib/format";
-import { useHypeUsd } from "../lib/tickers";
+import { compactUsd, tinyPrice, usd } from "../lib/format";
+import { QUOTE } from "../lib/config";
 import {
   type Candle,
   candles,
@@ -33,9 +35,11 @@ import {
   SHOW_HYPE_USD,
   displayName,
   getToken,
+  handleOf,
   INTERVALS,
   type IntervalSeconds,
   searchTokens,
+  tickerOf,
   topByTotalVolume,
   type TokenStat,
 } from "../lib/explore";
@@ -43,8 +47,8 @@ import {
 const START = new URLSearchParams(location.search).get("t");
 
 export function ExploreCard() {
-  const realHypeUsd = useHypeUsd();
-  const hypeUsd = LANDING ? SHOW_HYPE_USD : realHypeUsd;
+  // launched tokens are priced in USDC ($1); the landing's sample data is in HYPE at a fixed price
+  const hypeUsd = LANDING ? SHOW_HYPE_USD : QUOTE.usd;
   const [top, setTop] = useState<TokenStat[] | null>(null);
   const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
   const live = useLivePrices(); // every token's latest price from the live feed
@@ -176,6 +180,7 @@ export function ExploreCard() {
     <div className="ex-grid">
       <section className="panel ex-card ex-list-card">
         <CardBg />
+        {!LANDING && <PlatformFees />}
         <div className="ex-list-head">
           <span>Top 25 · total volume</span>
           <span>MCAP</span>
@@ -212,6 +217,12 @@ export function ExploreCard() {
         <CardBg side="left" />
         <OrderCard key={picked?.address} t={picked} hypeUsd={hypeUsd} />
       </section>
+
+      {!LANDING && (
+        <section className="panel ex-card ex-stake-card">
+          <StakeCard key={picked?.address} t={picked} />
+        </section>
+      )}
     </div>
   );
 }
@@ -270,12 +281,12 @@ function AboutTab({ t, hypeUsd, price }: { t: TokenStat; hypeUsd: number; price:
       <header className="ex-modal-head">
         <Avatar handle={t.kind === "ftf" ? t.name ?? t.symbol : t.handle} pfp={t.x_pfp_url} size={52} className="ex-modal-avatar" />
         <div className="ex-head-names">
-          <span className="ex-handle">{t.kind === "ftf" ? t.name : t.x_name || `@${t.handle}`}</span>
+          <span className="ex-handle">{t.kind === "ftf" ? t.name : t.x_name || handleOf(t.handle)}</span>
           {t.kind === "ftf" ? (
-            <span className="ex-ticker">${t.symbol} · Friends Turned Fam</span>
+            <span className="ex-ticker">{tickerOf(t.symbol)} · Friends Turned Fam</span>
           ) : (
             <a className="ex-modal-x" href={`https://x.com/${t.handle}`} target="_blank" rel="noreferrer">
-              @{t.handle} on X <ExternalLink size={11} />
+              {handleOf(t.handle)} on X <ExternalLink size={11} />
             </a>
           )}
         </div>
@@ -286,8 +297,7 @@ function AboutTab({ t, hypeUsd, price }: { t: TokenStat; hypeUsd: number; price:
       <section className="ex-modal-section">
         <h3 className="ex-modal-label">Creator fees earned</h3>
         <span className="ex-earned-value">
-          {earned === null ? "…" : hypeUsd ? compactUsd(earned * hypeUsd) : `${earned.toFixed(4)} HYPE`}
-          {earned !== null && hypeUsd ? <span className="ex-earned-hype"> · {earned.toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE</span> : null}
+          {earned === null ? "…" : compactUsd(earned * hypeUsd)}
         </span>
       </section>
 
@@ -302,19 +312,42 @@ function AboutTab({ t, hypeUsd, price }: { t: TokenStat; hypeUsd: number; price:
       <Progress t={t} />
 
       <p className="ex-order-note">
-        ${t.symbol} is a meme with no promise of value. {t.kind === "ftf" ? "Its members owe" : `@${t.handle} owes`} holders nothing.
+        {displayName(t)} is a meme with no promise of value. {t.kind === "ftf" ? "Its members owe" : `${handleOf(t.handle)} owes`} holders nothing.
       </p>
     </div>
   );
 }
 
-/** Lifetime creator fees this token has earned (FeeVault.creatorEarned), in HYPE; null while loading. */
+/** Every fee the platform has taken so far (NeuriioFees.totalFees, all vaults), in USDC; refreshed every 15 s. */
+function PlatformFees() {
+  const [total, setTotal] = useState<number | null>(null);
+  useEffect(() => {
+    if (DEMO) return setTotal(48_213.37);
+    let alive = true;
+    const load = () => platformFees().then((w) => alive && setTotal(Number(formatUnits(w, QUOTE.decimals))), () => {});
+    load();
+    const id = setInterval(load, 15_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+  return (
+    <div className="ex-platform" title="Every 1% trading fee taken so far, curve and pool, all tokens: shared with stakers, creators, the KNTQ buyback and the treasury">
+      <span className="ex-platform-label">Platform fees</span>
+      <span className="ex-platform-value">{total === null ? "…" : usd(total * QUOTE.usd)}</span>
+    </div>
+  );
+}
+
+/** Lifetime creator fees this token has earned (NeuriioFees.creatorEarned), in USDC (the landing's samples: HYPE);
+ *  null while loading. */
 function useCreatorEarned(t: TokenStat) {
   const [earned, setEarned] = useState<number | null>(null);
   useEffect(() => {
-    if (DEMO) return setEarned(t.volume_usd / (LANDING ? SHOW_HYPE_USD : 90) * 0.0075 * 0.2); // demo: ~20% of the curve's 0.75%, in HYPE
+    if (DEMO) return setEarned((t.volume_usd / (LANDING ? SHOW_HYPE_USD : QUOTE.usd)) * 0.01 * 0.1); // demo: 10% of a 1% fee
     let alive = true;
-    const load = () => tokenCreatorEarned(t.address as Address).then((w) => alive && setEarned(Number(formatEther(w))), () => {});
+    const load = () => tokenCreatorEarned(t.address as Address).then((w) => alive && setEarned(Number(formatUnits(w, QUOTE.decimals))), () => {});
     load();
     const id = setInterval(load, 15_000);
     return () => {
@@ -409,12 +442,12 @@ function TokenDetail({
   const usdOr = (hype: number) => (hypeUsd ? compactUsd(hype * hypeUsd) : "…");
   return (
     <div className="ex-detail">
-      <GraduatingOverlay stage={grad} symbol={t.symbol} />
+      <GraduatingOverlay stage={grad} name={displayName(t)} />
       <header className="ex-head">
         <Avatar handle={t.handle} pfp={t.x_pfp_url} size={44} />
         <div className="ex-head-names">
           <span className="ex-handle">{displayName(t)}</span>
-          <span className="ex-ticker">${t.symbol}</span>
+          <span className="ex-ticker">{tickerOf(t.symbol)}</span>
         </div>
         <span className="ex-chips">
           {sector && <span className="lp-chip ex-sector-chip">{sector}</span>}
@@ -425,11 +458,10 @@ function TokenDetail({
             <button className="ex-profile-btn" onClick={() => setShowProfile(true)}>
               <UserRound size={13} aria-hidden /> Profile
             </button>
-            <span className="ex-earned" title="Lifetime creator fees: 20% of the curve's trading fees before graduation, 80% of the pool's after, paid in HYPE">
+            <span className="ex-earned" title="Lifetime creator fees: 10% of the pool's trading fees once the token graduates, paid in USDC">
               <span className="ex-earned-label">Creator fees earned</span>
               <span className="ex-earned-value">
-                {earned === null ? "…" : hypeUsd ? compactUsd(earned * hypeUsd) : `${earned.toFixed(4)} HYPE`}
-                {earned !== null && hypeUsd ? <span className="ex-earned-hype"> · {earned.toLocaleString("en-US", { maximumFractionDigits: 4 })} HYPE</span> : null}
+                {earned === null ? "…" : compactUsd(earned * hypeUsd)}
               </span>
             </span>
           </>

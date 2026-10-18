@@ -9,6 +9,9 @@ const log = <A>(args: A) => ({ args, address: "0xPAD", transactionHash: "0xabc" 
 const T = "0x2000000000000000000000000000000000000002";
 const W_HIGH = "0xf000000000000000000000000000000000000000"; // WHYPE sorts after the token -> token is token0
 const W_LOW = "0x1000000000000000000000000000000000000000"; // WHYPE sorts first -> token is token1
+// the old HYPE world (18 decimals, USD from HYPE's price) and the USDC world (6 decimals, $1)
+const hype = (address: string, usd: number | null) => ({ address, decimals: 18, usd });
+const USDC_HIGH = { address: W_HIGH, decimals: 6, usd: 1 };
 
 test("hlVenue", () => {
   assert.equal(hlVenue("BTC"), "hl_perp");
@@ -34,7 +37,7 @@ test("curve trade -> row with USD", () => {
   const r = curveTradeToRow(
     log({ token: T, trader: "0xAA", isBuy: false, hypeAmount: 2n * 10n ** 18n, tokenAmount: 5n * 10n ** 18n, fee: 10n ** 16n, virtualHype: 10n ** 18n, virtualToken: 10n ** 27n }),
     "2026-09-27T00:00:00.000Z",
-    90,
+    hype(W_HIGH, 90),
   );
   assert.deepEqual([r.venue, r.side, r.quote_amount, r.size, r.usd_value, r.fee], ["curve", "sell", "2", "5", 180, "0.01"]);
 });
@@ -48,7 +51,7 @@ test("curve trade -> spot price + curve progress", () => {
       virtualHype: 66n * e, virtualToken: 973_000_000n * e,
     }),
     "t",
-    null,
+    hype(W_HIGH, null),
   );
   assert.equal(r.curve_sold, "100000000");
   assert.ok(Math.abs(Number(r.price_hype) / (66 / 973_000_000) - 1) < 1e-15);
@@ -57,26 +60,50 @@ test("curve trade -> spot price + curve progress", () => {
 test("pool price from Sync reserves (either token order)", () => {
   const e = 10n ** 18n;
   // 170 HYPE vs 206.9M tokens
-  assert.ok(Math.abs(Number(poolPrice(206_900_000n * e, 170n * e, T, W_HIGH)) / (170 / 206_900_000) - 1) < 1e-15); // token is token0
-  assert.ok(Math.abs(Number(poolPrice(170n * e, 206_900_000n * e, T, W_LOW)) / (170 / 206_900_000) - 1) < 1e-15); // token is token1
+  assert.ok(Math.abs(Number(poolPrice(206_900_000n * e, 170n * e, T, hype(W_HIGH, null))) / (170 / 206_900_000) - 1) < 1e-15); // token is token0
+  assert.ok(Math.abs(Number(poolPrice(170n * e, 206_900_000n * e, T, hype(W_LOW, null))) / (170 / 206_900_000) - 1) < 1e-15); // token is token1
 });
 
 test("pair swap orientation (token0 and token1)", () => {
   const e = 10n ** 18n;
   // buy: 1 HYPE in, 1000 tokens out
-  const buy0 = pairSwapToRow(log({ amount0In: 0n, amount1In: e, amount0Out: 1000n * e, amount1Out: 0n }), T, W_HIGH, "0xF", "t", 90);
+  const buy0 = pairSwapToRow(log({ amount0In: 0n, amount1In: e, amount0Out: 1000n * e, amount1Out: 0n }), T, hype(W_HIGH, 90), "0xF", "t");
   assert.deepEqual([buy0.side, buy0.quote_amount, buy0.size, buy0.usd_value], ["buy", "1", "1000", 90]);
-  const buy1 = pairSwapToRow(log({ amount0In: e, amount1In: 0n, amount0Out: 0n, amount1Out: 1000n * e }), T, W_LOW, "0xF", "t", 90);
+  const buy1 = pairSwapToRow(log({ amount0In: e, amount1In: 0n, amount0Out: 0n, amount1Out: 1000n * e }), T, hype(W_LOW, 90), "0xF", "t");
   assert.deepEqual([buy1.side, buy1.quote_amount, buy1.size], ["buy", "1", "1000"]);
   // sell: 500 tokens in, 0.5 HYPE out
-  const sell0 = pairSwapToRow(log({ amount0In: 500n * e, amount1In: 0n, amount0Out: 0n, amount1Out: e / 2n }), T, W_HIGH, "0xF", "t", null);
+  const sell0 = pairSwapToRow(log({ amount0In: 500n * e, amount1In: 0n, amount0Out: 0n, amount1Out: e / 2n }), T, hype(W_HIGH, null), "0xF", "t");
   assert.deepEqual([sell0.side, sell0.quote_amount, sell0.size, sell0.usd_value], ["sell", "0.5", "500", null]);
+});
+
+test("USDC world: 6-decimal amounts, $1 per USDC, prices per whole token", () => {
+  const e = 10n ** 18n;
+  // 5,000 USDC virtual : 1.073B tokens; a 100 USDC buy (1 USDC fee) through the router, trader from CurveTraded
+  const r = curveTradeToRow(
+    log({ token: T, trader: "0xRouter", isBuy: true, hypeAmount: 100_000_000n, tokenAmount: 20_000_000n * e, fee: 1_000_000n, virtualHype: 5_100_000_000n, virtualToken: 1_053_000_000n * e }),
+    "t",
+    USDC_HIGH,
+    "0xTrader",
+  );
+  assert.deepEqual([r.trader, r.quote_amount, r.usd_value, r.fee, r.size], ["0xtrader", "100", 100, "1", "20000000"]);
+  assert.ok(Math.abs(Number(r.price_hype) / (5100 / 1_053_000_000) - 1) < 1e-15, "USDC per whole token");
+  // pool: 2,834 USDC vs 206.9M tokens (token is token0)
+  assert.ok(Math.abs(Number(poolPrice(206_900_000n * e, 2_834_000_000n, T, USDC_HIGH)) / (2834 / 206_900_000) - 1) < 1e-15);
+  const sell = pairSwapToRow(log({ amount0In: 1000n * e, amount1In: 0n, amount0Out: 0n, amount1Out: 13_500_000n }), T, USDC_HIGH, "0xF", "t");
+  assert.deepEqual([sell.side, sell.quote_amount, sell.usd_value], ["sell", "13.5", 13.5]);
+  const tok = launchedToToken(
+    log({ token: T, creator: "0xCC", xUserId: 1n, handle: "dog", category: 0, profileHash: "0x11", virtualHype: 1_000_000_000n }),
+    "t",
+    USDC_HIGH,
+  );
+  assert.equal(tok.virtual_hype, "1000", "1,000 USDC virtual reserve");
 });
 
 test("launched -> token row", () => {
   const r = launchedToToken(
     log({ token: T, creator: "0xCC", xUserId: 1850000000000000123n, handle: "Von_Builds9", category: 2, profileHash: "0x11", virtualHype: 60n * 10n ** 18n }),
     "t",
+    hype(W_HIGH, null),
   );
   assert.deepEqual([r.x_user_id, r.symbol, r.category, r.creator, r.virtual_hype], ["1850000000000000123", "VON_BUILDS9", "researcher", "0xcc", "60"]);
   assert.equal(r.launchpad, "0xpad", "tagged with the Launchpad version that launched it");
@@ -102,6 +129,7 @@ test("FTF launched -> token row (4 members, ticker as handle)", () => {
   const r = ftfLaunchedToToken(
     log({ token: T, founder: "0xF0", name: "Degen Den", ticker: "DEN", memberXIds: [1n, 2n, 3n, 4n], profileHash: "0x22", virtualHype: 60n * 10n ** 18n }),
     "t",
+    hype(W_HIGH, null),
   );
   assert.deepEqual([r.kind, r.name, r.symbol, r.handle, r.x_user_id, r.category, r.creator], ["ftf", "Degen Den", "DEN", "den", null, null, "0xf0"]);
   assert.deepEqual(r.member_x_user_ids, ["1", "2", "3", "4"]);

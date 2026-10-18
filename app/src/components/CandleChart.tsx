@@ -79,7 +79,7 @@ export function CandleChart({
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
         textColor: "#8c7d9f",
-        fontFamily: '"Lilex", ui-monospace, monospace',
+        fontFamily: '"Manrope", ui-sans-serif, system-ui, sans-serif',
         fontSize: 11,
         attributionLogo: false, // credited as "Charts by TradingView" under the chart instead (ExploreCard)
       },

@@ -5,8 +5,8 @@ import './UniswapV2Pair.sol';
 
 // Neuriio fork of Uniswap V2 (v2-core v1.0.1). Changes are marked "Neuriio": only a token's own NeuriioPad (per the
 // NeuriioRegistry, any NeuriioPad version) creates its pair (so nobody can open a graduating token's pool first at a
-// bad price), and the factory holds the WHYPE and NeuriioFees addresses its pairs send their swap fee to (see
-// UniswapV2Pair._takeFee). Part of the permanent core: every NeuriioPad version's pools live here.
+// bad price), and the factory holds the quote token (USDC: every pool is TOKEN/USDC) and the NeuriioFees its pairs send
+// their swap fee to (see UniswapV2Pair._takeFee). Part of the permanent core: every NeuriioPad version's pools live here.
 interface INeuriioRegistry { // Neuriio
     function launchpadOf(address token) external view returns (address);
 }
@@ -14,7 +14,7 @@ interface INeuriioRegistry { // Neuriio
 contract UniswapV2Factory is IUniswapV2Factory {
     address public feeTo;
     address public feeToSetter;
-    address public whype;     // Neuriio
+    address public quote;     // Neuriio: the token every pool is priced in (USDC)
     address public feeVault;  // Neuriio: owner-replaceable (0 = pools keep the fee, like V2)
     address public registry;  // Neuriio: set once (NeuriioRegistry)
 
@@ -23,9 +23,9 @@ contract UniswapV2Factory is IUniswapV2Factory {
 
     event PairCreated(address indexed token0, address indexed token1, address pair, uint);
 
-    constructor(address _feeToSetter, address _whype) public { // Neuriio: + _whype
+    constructor(address _feeToSetter, address _quote) public { // Neuriio: + _quote
         feeToSetter = _feeToSetter;
-        whype = _whype; // Neuriio
+        quote = _quote; // Neuriio
     }
 
     function allPairsLength() external view returns (uint) {
@@ -33,9 +33,9 @@ contract UniswapV2Factory is IUniswapV2Factory {
     }
 
     function createPair(address tokenA, address tokenB) external returns (address pair) {
-        // Neuriio: TOKEN/WHYPE only, created by that token's own NeuriioPad
-        require(tokenA == whype || tokenB == whype, 'UniswapV2: FORBIDDEN');
-        require(msg.sender == INeuriioRegistry(registry).launchpadOf(tokenA == whype ? tokenB : tokenA), 'UniswapV2: FORBIDDEN');
+        // Neuriio: TOKEN/quote only, created by that token's own NeuriioPad
+        require(tokenA == quote || tokenB == quote, 'UniswapV2: FORBIDDEN');
+        require(msg.sender == INeuriioRegistry(registry).launchpadOf(tokenA == quote ? tokenB : tokenA), 'UniswapV2: FORBIDDEN');
         require(tokenA != tokenB, 'UniswapV2: IDENTICAL_ADDRESSES');
         (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
         require(token0 != address(0), 'UniswapV2: ZERO_ADDRESS');

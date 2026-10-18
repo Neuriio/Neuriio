@@ -12,7 +12,7 @@ export type GradStage = "graduating" | "graduated" | null;
 /** Tokens this browser is graduating itself (OrderCard shows its own overlay), so the live event doesn't repeat it. */
 export const ownGraduations = new Set<string>();
 
-export function GraduatingOverlay({ stage, symbol }: { stage: GradStage; symbol: string }) {
+export function GraduatingOverlay({ stage, name }: { stage: GradStage; name: string }) {
   return createPortal(
     <AnimatePresence>
       {stage && (
@@ -66,7 +66,7 @@ export function GraduatingOverlay({ stage, symbol }: { stage: GradStage; symbol:
                   )}
                 </span>
                 <span className="grad-sub">
-                  {stage === "graduating" ? `$${symbol} is moving from the curve to its pool` : `$${symbol} now trades in its pool · LP burned`}
+                  {stage === "graduating" ? `${name} is moving from the curve to its pool` : `${name} now trades in its pool · LP burned`}
                 </span>
               </motion.div>
             </AnimatePresence>

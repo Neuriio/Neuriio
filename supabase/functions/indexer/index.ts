@@ -1,13 +1,17 @@
 // POST /functions/v1/indexer   (run every minute by pg_cron; idempotent, so public is fine)
-// 1. Elysium: Launched/FtfLaunched/Trade/Graduated from EVERY Launchpad version in the LaunchRegistry (listed
-//    on-chain, re-read each run, one cursor per registry), Swapped from every router we deployed, and pair Swaps
-//    not made via a router -> tokens (tagged with their launchpad + registry) + trades. Writes app_config.registry,
-//    which scopes what the app lists (token_stats).
+// 1. Elysium, for every "world" (a registry and its quote token: the old HYPE world, the USDC world):
+//    Launched/FtfLaunched/Trade/Graduated from EVERY Launchpad version in the world's registry (listed on-chain,
+//    re-read each run, one cursor per registry), Swapped / CurveTraded from every router of that world, and pair
+//    Swaps not made via a router -> tokens (tagged with their launchpad + registry) + trades. Curve trades made
+//    through the NeuriioRouter get their real trader from its CurveTraded. Writes app_config.registry = APP_REGISTRY
+//    (default: the first world), which scopes what the app lists (token_stats), so a new world is indexed (charts,
+//    history) before the app switches to it.
 // 2. Hyperliquid: each user's fills that carry our builder fee (= placed through Neuriio) -> trades
 // 3. award_points(): trades + launches -> points ledger (rates in points_rules)
 //
-// Secrets: REGISTRY_ADDRESS, ROUTER_ADDRESSES (comma list; or ROUTER_ADDRESS), WHYPE_ADDRESS, INDEX_FROM_BLOCK
-// (the registry's deploy block), RPC_URL, HL_TESTNET ("true"/"false")
+// Secrets: WORLDS = JSON list of { registry, routers: [..], quote, decimals, usd: "hype" | "1", fromBlock }; or, for
+// a single HYPE world, REGISTRY_ADDRESS + ROUTER_ADDRESSES (comma list; or ROUTER_ADDRESS) + WHYPE_ADDRESS +
+// INDEX_FROM_BLOCK. APP_REGISTRY (optional), RPC_URL, HL_TESTNET ("true"/"false")
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { createPublicClient, getAddress, http, parseAbi } from "npm:viem@2";
@@ -21,6 +25,7 @@ import {
   pairEvents,
   pairSwapToRow,
   poolPrice,
+  type Quote,
   routerEvents,
   routerSwapToRow,
   type TradeRow,
@@ -29,12 +34,27 @@ import { json } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
 
 
-const REGISTRY = getAddress(env("REGISTRY_ADDRESS"));
-const ROUTERS = (Deno.env.get("ROUTER_ADDRESSES") ?? env("ROUTER_ADDRESS")).split(",").map((a) => getAddress(a.trim()));
-const IS_ROUTER = new Set(ROUTERS.map((a) => a.toLowerCase()));
+type World = { registry: `0x${string}`; routers: `0x${string}`[]; quote: `0x${string}`; decimals: number; usd: "hype" | "1"; fromBlock: bigint };
+const WORLDS: World[] = Deno.env.get("WORLDS")
+  // deno-lint-ignore no-explicit-any
+  ? JSON.parse(Deno.env.get("WORLDS")!).map((w: any) => ({
+    registry: getAddress(w.registry),
+    routers: w.routers.map((r: string) => getAddress(r)),
+    quote: getAddress(w.quote),
+    decimals: Number(w.decimals),
+    usd: w.usd === "1" ? "1" : "hype",
+    fromBlock: BigInt(w.fromBlock),
+  }))
+  : [{
+    registry: getAddress(env("REGISTRY_ADDRESS")),
+    routers: (Deno.env.get("ROUTER_ADDRESSES") ?? env("ROUTER_ADDRESS")).split(",").map((a) => getAddress(a.trim())),
+    quote: getAddress(env("WHYPE_ADDRESS")),
+    decimals: 18,
+    usd: "hype",
+    fromBlock: BigInt(env("INDEX_FROM_BLOCK")),
+  }];
+const APP_REGISTRY = (Deno.env.get("APP_REGISTRY") ?? WORLDS[0].registry).toLowerCase();
 const registryAbi = parseAbi(["function launchpadsLength() view returns (uint256)", "function launchpads(uint256) view returns (address)"]);
-const WHYPE = getAddress(env("WHYPE_ADDRESS"));
-const FROM_BLOCK = BigInt(env("INDEX_FROM_BLOCK"));
 const HL_INFO = env("HL_TESTNET") === "true" ? "https://api.hyperliquid-testnet.xyz/info" : "https://api.hyperliquid.xyz/info";
 const MAX_BLOCKS = 50_000n; // per run
 const chain = createPublicClient({ transport: http(env("RPC_URL")) });
@@ -76,26 +96,26 @@ async function insertTrades(rows: TradeRow[], onConflict: string) {
 }
 
 /** Every Launchpad version ever approved in the registry (retired ones still trade their own curves). */
-async function launchpads(): Promise<`0x${string}`[]> {
-  const n = await chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "launchpadsLength" });
+async function launchpads(registry: `0x${string}`): Promise<`0x${string}`[]> {
+  const n = await chain.readContract({ address: registry, abi: registryAbi, functionName: "launchpadsLength" });
   return Promise.all(
-    Array.from({ length: Number(n) }, (_, i) => chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "launchpads", args: [BigInt(i)] })),
+    Array.from({ length: Number(n) }, (_, i) => chain.readContract({ address: registry, abi: registryAbi, functionName: "launchpads", args: [BigInt(i)] })),
   );
 }
 
-async function indexElysium(usd: number | null) {
-  const registry = REGISTRY.toLowerCase();
-  // the registry the app shows (token_stats reads it)
-  const { error: cfgErr } = await db.from("app_config").upsert({ key: "registry", value: registry, updated_at: new Date().toISOString() });
-  if (cfgErr) throw new Error(`app_config: ${cfgErr.message}`);
+async function indexElysium(world: World, hypeUsd: number | null) {
+  const registry = world.registry.toLowerCase();
+  const q: Quote = { address: world.quote, decimals: world.decimals, usd: world.usd === "1" ? 1 : hypeUsd };
+  const ROUTERS = world.routers;
+  const IS_ROUTER = new Set(ROUTERS.map((a) => a.toLowerCase()));
   const key = `elysium:registry:${registry}`;
   const last = await getState(key);
-  const from = last ? BigInt(last) + 1n : FROM_BLOCK;
+  const from = last ? BigInt(last) + 1n : world.fromBlock;
   const head = await chain.getBlockNumber({ cacheTime: 0 });
   if (from > head) return { from: Number(from), to: Number(head), events: 0 };
   const to = head - from > MAX_BLOCKS ? from + MAX_BLOCKS : head;
 
-  const pads = await launchpads();
+  const pads = await launchpads(world.registry);
   const { data: pairsData } = await db.from("tokens").select("address, pair").eq("registry", registry).not("pair", "is", null);
   const [padLogs, routerLogs] = await Promise.all([
     pads.length ? chain.getLogs({ address: pads, events: launchpadEvents, fromBlock: from, toBlock: to }) : Promise.resolve([]),
@@ -120,10 +140,19 @@ async function indexElysium(usd: number | null) {
     if (!best || !pair) return null;
     // deno-lint-ignore no-explicit-any
     const a = best.args as any;
-    return poolPrice(a.reserve0, a.reserve1, pairToken.get(pair)!, WHYPE);
+    return poolPrice(a.reserve0, a.reserve1, pairToken.get(pair)!, q);
   };
 
   // block timestamps (few distinct blocks per run)
+  const swappedLogs = routerLogs.filter((l) => l.eventName === "Swapped");
+  // a curve trade made through our router: the pad's Trade names the router; the router's CurveTraded (same tx,
+  // same token) names the trader
+  const curveTrader = new Map<string, string>();
+  for (const l of routerLogs) {
+    if (l.eventName === "CurveTraded") curveTrader.set(`${l.transactionHash}:${l.args.token!.toLowerCase()}`, l.args.trader!);
+  }
+  const traderOf = (l: { transactionHash: string | null; args: { token?: string; trader?: string } }) =>
+    IS_ROUTER.has(l.args.trader!.toLowerCase()) ? curveTrader.get(`${l.transactionHash}:${l.args.token!.toLowerCase()}`) : undefined;
   const blocks = new Set([...padLogs, ...routerLogs, ...pairLogs].map((l) => l.blockNumber!));
   const tsOf = new Map<bigint, string>();
   await Promise.all([...blocks].map(async (b) => {
@@ -135,9 +164,9 @@ async function indexElysium(usd: number | null) {
   // tokens first (trades reference them by address only, but graduation updates need the row)
   const launched = [
     // deno-lint-ignore no-explicit-any
-    ...padLogs.filter((l) => l.eventName === "Launched").map((l) => launchedToToken(l as any, ts(l))),
+    ...padLogs.filter((l) => l.eventName === "Launched").map((l) => launchedToToken(l as any, ts(l), q)),
     // deno-lint-ignore no-explicit-any
-    ...padLogs.filter((l) => l.eventName === "FtfLaunched").map((l) => ftfLaunchedToToken(l as any, ts(l))),
+    ...padLogs.filter((l) => l.eventName === "FtfLaunched").map((l) => ftfLaunchedToToken(l as any, ts(l), q)),
   ].map((t) => ({ ...t, registry }));
   if (launched.length) {
     const { error } = await db.from("tokens").upsert(launched, { onConflict: "address", ignoreDuplicates: true });
@@ -170,28 +199,27 @@ async function indexElysium(usd: number | null) {
   }));
   const rows: TradeRow[] = [
     // deno-lint-ignore no-explicit-any
-    ...padLogs.filter((l) => l.eventName === "Trade").map((l) => curveTradeToRow(l as any, ts(l), usd)),
     // deno-lint-ignore no-explicit-any
-    ...routerLogs.map((l) =>
+    ...padLogs.filter((l) => l.eventName === "Trade").map((l) => curveTradeToRow(l as any, ts(l), q, traderOf(l as any))),
+    ...swappedLogs.map((l) =>
       // deno-lint-ignore no-explicit-any
-      routerSwapToRow(l as any, ts(l), usd, priceBefore(tokenPair.get(l.args.token!.toLowerCase()), l.transactionHash!, l.logIndex!))
+      routerSwapToRow(l as any, ts(l), q, priceBefore(tokenPair.get(l.args.token!.toLowerCase()), l.transactionHash!, l.logIndex!))
     ),
     ...pairLogs.map((l) =>
       pairSwapToRow(
         // deno-lint-ignore no-explicit-any
         l as any,
         pairToken.get(l.address.toLowerCase())!,
-        WHYPE,
+        q,
         txFrom.get(l.transactionHash!)!,
         ts(l),
-        usd,
         priceBefore(l.address.toLowerCase(), l.transactionHash!, l.logIndex!),
       )
     ),
   ];
   await insertTrades(rows, "tx_hash,log_index");
   await setState(key, to.toString());
-  return { from: Number(from), to: Number(to), launchpads: pads.length, launched: launched.length, trades: rows.length };
+  return { registry, from: Number(from), to: Number(to), launchpads: pads.length, launched: launched.length, trades: rows.length };
 }
 
 async function indexHyperliquid() {
@@ -221,7 +249,17 @@ Deno.serve(async () => {
   try {
     const usd = await hypeUsd();
     result.hypeUsd = usd;
-    result.elysium = await indexElysium(usd);
+    // the registry the app shows (token_stats reads it)
+    const { error: cfgErr } = await db.from("app_config").upsert({ key: "registry", value: APP_REGISTRY, updated_at: new Date().toISOString() });
+    if (cfgErr) throw new Error(`app_config: ${cfgErr.message}`);
+    result.elysium = [];
+    for (const w of WORLDS) {
+      try {
+        (result.elysium as unknown[]).push(await indexElysium(w, usd));
+      } catch (e) {
+        (result.elysium as unknown[]).push({ registry: w.registry, error: (e as Error).message });
+      }
+    }
   } catch (e) {
     result.elysiumError = (e as Error).message;
   }

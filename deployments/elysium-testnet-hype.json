@@ -1,0 +1,26 @@
+{
+  "chainId": 99801,
+  "tHYPE": "0x365c3257dd6ac46371c4ea357445d57857941eb9",
+  "tUSDC": "0x200e9be287f89b6af24776223f009bf277329c38",
+  "whype": "0x517f12d5d17c4755fbdf988fe9cc24334c3314c7",
+  "swapFactory": "0xd30f539cf731d843534a9e3fe9fec51bb456339c",
+  "swapRouter": "0x4a85eca6f3ef4a07d049bd1907debb3e8961acac",
+  "launchSigner": "0x25626586434fb2003d12957a1fC4B0fA5EA52886",
+  "hlBuilder": "0xef584b1098e12c34d1d85de76285c408ab6917a8",
+  "feeVault": "0x7e9e5e96c3e99fd201a15e6a33c59aec51a39b2b",
+  "launchRegistry": "0xd7879e97c6558486ca0a92283d70a46e89ea84fc",
+  "routers": [
+    "0x4a85eca6f3ef4a07d049bd1907debb3e8961acac"
+  ],
+  "coreBlock": 5372584,
+  "launchpads": [
+    {
+      "address": "0xd9943d81b72aa55e52580bbb595af797b04d5e59",
+      "block": 5372758
+    }
+  ],
+  "feeVaults": [
+    "0x7e9e5e96c3e99fd201a15e6a33c59aec51a39b2b"
+  ],
+  "launchpad": "0xd9943d81b72aa55e52580bbb595af797b04d5e59"
+}

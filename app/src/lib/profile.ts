@@ -13,8 +13,8 @@ export function profileOf(user: User | null): Profile {
     console.info("[neuriio] login accounts:", linked.map((a) => a.type).join(", "), "| x:", x?.username ?? "none");
   }
   const name =
-    (x?.username && `@${x.username}`) ||
-    (tg?.username && `@${tg.username}`) ||
+    (x?.username && `@${x.username.toLowerCase()}`) ||
+    (tg?.username && `@${tg.username.toLowerCase()}`) ||
     tg?.firstName ||
     g?.name ||
     g?.email?.split("@")[0] ||

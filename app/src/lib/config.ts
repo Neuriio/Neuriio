@@ -1,4 +1,12 @@
+// The USDC world (2026-10-17): tokens are priced and traded in test USDC. Push this app together with
+// ./script/supabase-deploy.sh switch (go-live); the live site is still the HYPE world (elysium-testnet-hype.json) until
+// then. Data requests name this world's registry (lib/explore.ts), so it lists the right tokens before the switch too.
+import type { Address } from "viem";
 import deployment from "../../../deployments/elysium-testnet.json";
+
+/** What launched tokens trade against and are priced in: test USDC, counted as $1. (Supabase's `price_hype` /
+ *  `volume_hype` columns and the app's `hypeUsd` props now carry this quote, not HYPE.) */
+export const QUOTE = { symbol: "USDC", address: deployment.usdc as Address, decimals: 6, usd: 1 } as const;
 
 export const ELYSIUM_RPCS = [
   "https://testnet-rpc.elysium.kinetiq.xyz",
@@ -30,13 +38,12 @@ export const SHOWN_TOKENS = ["HYPE", "KNTQ", "USDC"];
 
 /**
  * ERC-20s the Neuriio wallet can hold on Elysium testnet. Native (gas) HYPE is added on top.
- * HYPE/USDC here are our mock test tokens (the pool trades them); KNTQ is the real testnet KNTQ,
+ * USDC is our test USDC (what every token trades against); KNTQ is the real testnet KNTQ,
  * bridged from HyperEVM through Elysium's canonical bridge (L2GatewayRouter.calculateL2TokenAddress).
  */
 export const ELYSIUM_TOKENS = [
-  { symbol: "HYPE", address: deployment.tHYPE as `0x${string}`, decimals: 18 },
   { symbol: "KNTQ", address: "0x9856148d9CAcf40F12BCAA9357ca016Ba5B0ED19" as `0x${string}`, decimals: 18 },
-  { symbol: "USDC", address: deployment.tUSDC as `0x${string}`, decimals: 6 },
+  { symbol: "USDC", address: QUOTE.address, decimals: QUOTE.decimals },
 ] as const;
 
 export { deployment };

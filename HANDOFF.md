@@ -1,4 +1,4 @@
-# Handoff — Neuriio (state as of 2026-10-12: LIVE on app.neuriio.xyz (landing public, app behind the passcode); app opens to the public on testnet Fri 10-16; NEXT CHAT: 3D dot clips 2-4, see "NEXT CHAT STARTS HERE")
+# Handoff — Neuriio (state as of 2026-10-18: LIVE on app.neuriio.xyz (HYPE world, testnet); the USDC world is deployed, reviewed (no rebuild needed) and the app is partly moved to it LOCALLY (not pushed); NEXT CHAT: see "USDC WORLD" -> "What's left")
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 **Consolidated 2026-10-12:** finished work, old session logs, the paused PropAMM stack, superseded deployments and the
@@ -9,7 +9,95 @@ security sweeps #1-4 in detail, the Uniswap V4 research and Appendix B/C video p
 **Project name: Neuriio.** Local folder `/Users/von/Neuriio`; code in the **private** GitHub repo
 **https://github.com/finding-agi/Neuriio** (branch `main`). Railway redeploys the app + watcher on every push to `main`.
 
-## NEXT CHAT STARTS HERE (written 2026-10-12)
+## USDC WORLD (2026-10-17): contracts live + verified, backend indexing it, app moved LOCALLY (nothing pushed)
+
+Final design (user, 2026-10-17 evening; memory "loss-mint-staking-plan"): tokens pair with USDC; every trade pays 1%
+(curve and pool, bots included: the fee is inside the new pools). Curve fees: 80% $NEURIIO stakers / 10% KNTQ buyback /
+10% treasury. Pool fees: 40% $NEURIIO stakers / 40% that token's stakers / 10% creator / 10% treasury. Staking an X
+token (opens at graduation) earns its USDC fees AND mints $NEURIIO: 100 per $1 earned, flat until $1M of total platform
+fees, then PAPER's decay (S = $120M). Staking $NEURIIO earns USDC only. Claimed $NEURIIO is staked automatically;
+$NEURIIO can't be transferred. No loss-mint, boosts or locks. Contracts: `src/stake/` (NeuriioStaking,
+NeuriioMinter, NeuriioPlatformToken), `src/launch/NeuriioFees.sol` + `NeuriioPad.sol`, `src/swap/NeuriioRouter.sol`,
+`src/swap/v2` (USDC quote + 1% fee), `src/testnet/TestUSDC.sol`. 71 Foundry tests.
+
+### Review (2026-10-18, Opus): no critical/high fund-loss issues -> NO contract rebuild
+- The source verified on Blockscout is identical to the local files for all 10 contracts, and the live wiring is
+  right (pad + factory -> current vault, minter approves only it, $NEURIIO minter = NeuriioMinter, wallets set,
+  vault USDC = `held`, pad holds no stray USDC). Extra throwaway attack tests passed (deleted after): staking stays
+  solvent in USDC and $NEURIIO over 1,024 random runs, every curve buyer can always sell back, USDC sent to a pool's
+  address before graduation is burned, a flash-swap callback can't pull anything from staking or the vault.
+- **Fixed (scripts + payout bot only; contracts untouched):** `replace-feevault.sh` didn't pass MINTER (failed at
+  once); `transfer-ownership.sh` listed the routers (no owner: the handover reverted) and missed NeuriioMinter (now
+  $NEURIIO + minter; anvil dry run with a stand-in Safe moved all 7 + the factory, old key locked out);
+  `pay-protocol.mjs` misread the replaced USDC vault `0xcb49...` (community layout: hourly error, its 5.08 USDC never
+  paid). `deploy-core.sh` is now the one new-world script (`deploy-usdc-world.sh` folded in and removed): saves the
+  minter + faucet, keeps any world already in the file as `<file>-<registry>.json`, live test on testnet worlds.
+  `deploy-launchpad.sh`, `replace-feevault.sh`, `transfer-ownership.sh` take DEPLOYMENTS + RPC + OWNER_KEY for anvil
+  dry runs (all four dry-ran on anvil: ALL CHECKS PASSED).
+- **Until go-live:** don't run `deploy-launchpad.sh` on testnet: it points Supabase LAUNCHPAD_ADDRESS at the new pad,
+  which breaks launches on the live HYPE app.
+- **Mainnet notes:** `freezeMintCurve()` only locks the curve numbers; the owner can still mint $NEURIIO through
+  `neuriio.setMinter` or `minter.setVault` (and so take $NEURIIO stakers' USDC share): the multisig (+ timelock) must
+  own both, or add a one-way lock. Next rebuild only (not worth a redeploy): NeuriioPlatformToken's comment still
+  describes the dropped loss-mint; `IFeeVault` in `src/swap/interfaces.sol` is unused. Accepted risk, unchanged:
+  $NEURIIO mint farming (wash trades, or USDC sent straight to NeuriioFees, count as fees).
+
+### Done
+- **Contracts on testnet, all verified on Blockscout** (`./script/verify-world.sh`: ALL VERIFIED): test USDC
+  `0xe83c...0c7b` (only the faucet wallet mints), registry `0x24dc...2219`, factory `0xf698...3b69`, NeuriioPad
+  `0x892b...8d76` (VIRTUAL_QUOTE 1,000 USDC: graduates at ~2,834 USDC raised), staking `0x63e2...709a`, $NEURIIO
+  `0x5964...1089`, minter `0x2406...f031`, fees `0x35cc...d6b9`, router `0x86cc...4776` (`./script/redeploy-staking.sh`,
+  live test ALL CHECKS PASSED). Full addresses: `deployments/elysium-testnet.json`; the old HYPE world's are in
+  `deployments/elysium-testnet-hype.json`.
+- **Backend `prepare` DONE (2026-10-17):** `./script/supabase-deploy.sh prepare` ran: the indexer indexes BOTH worlds
+  (secret WORLDS), the app still lists the HYPE world (APP_REGISTRY / app_config.registry = `0xd787...84fc`). Checked:
+  USDC world indexed from its deploy block (2 launches, 12 trades, USDC amounts, real traders), no errors. Pool trades
+  store no `fee` (same as the HYPE world). Tests: `./script/test-supabase.sh` (12), `npm --prefix keeper test` (8).
+- **App, local only (`npm --prefix app run dev`, http://localhost:5173), uncommitted:**
+  - Explore: edge to edge, cards touching (Hyperliquid-style): Top 25 | chart | trade | stake, Positions full width
+    below; resizes with the window (<= 1280px the stake card moves under the trade card; phones keep their layout).
+    Cards: 1px #ECDDFF border at 50%, 4px corners, no dots/gradients/shadows. Landing frame + /showcase unchanged.
+  - Stake card (`app/src/components/StakeCard.tsx`), split in half: top = the picked X token, bottom = $NEURIIO; Stake /
+    Unstake / Claim tabs, #8C7D9F accents. LAYOUT ONLY (buttons disabled, values "—"). Not on phones yet.
+  - /launch opens on one Launch button (no glow) in a small circle of slowly flickering dots plus a 3-dot-tall band of
+    them across the page, level with the button; Launch goes straight to the Sector step (log in first if needed;
+    someone who already launched lands on Type). Old two-screen intro removed.
+  - Font: Manrope everywhere (was Lilex). The videos in `video/` still use Lilex.
+  - The app now points at the USDC world (`app/src/lib/config.ts`: `elysium-testnet.json`, `QUOTE` = USDC at $1).
+    Launched tokens are priced in USDC on Explore, Feed, Trending and the account panel.
+  - Trade box in USDC through the router (`app/src/lib/trade.ts`, `OrderCard.tsx`): curve and pool, 1% fee, quick
+    amounts 5/25/100/250 USDC, silent one-time approval (unlimited, to the router) before the first buy / first sell of
+    a token, "Need a little HYPE for gas" when the wallet has none. Checked in demo mode only.
+  - Data: the app sends `x-neuriio-registry` with every Supabase read so it lists ITS world before the switch.
+    Migration `supabase/migrations/20261018054548_world_header.sql` (token_stats + Top 25 per world; no header =
+    app_config as before) **APPLIED 2026-10-18** (Supabase connector): no header still lists the 7 HYPE tokens (live
+    site unchanged), the USDC header lists the 2 USDC test tokens.
+  - **Wired to USDC 2026-10-18 (local, demo + live reads checked; no real wallet tx from the app yet):**
+    - Launch + FTF launch (`lib/launch.ts`, `LaunchCard.tsx`): first buy in USDC (quick 10/50/100, USDC balance,
+      "Graduates at $13,696 mcap", 1% fee); approves exactly the first buy's USDC to the pad, then
+      `launch(pass, sig, quoteIn, minOut)`. Until the switch the backend still signs passes for the HYPE pad: the app
+      stops with "launching opens at go-live" instead of sending a tx that would revert.
+    - Creator fees in USDC (Explore header, profile modal, Feed, Account box): 10% of pool fees, every vault summed.
+    - Stake boxes (`lib/stake.ts`, `StakeCard.tsx`): stake / unstake / claim on both halves, Max, earned USDC +
+      $NEURIIO re-read every 5 s, one silent unlimited approval per X token, "Opens after graduation".
+    - $NEURIIO box in Account (under Creator fees): staked amount, USDC earned + Claim, unstaked wallet amount.
+    - Platform fees widget (user, 2026-10-18: Explore, above the Top 25): lifetime `totalFees` of every vault in
+      `feeVaults`, refreshed every 15 s; hidden on the landing / showcase.
+
+### What's left (in order)
+1. **Finish wiring the app to USDC.** Done 2026-10-18 except: a **real trade / stake / claim from the app** with a
+   wallet holding test USDC (user, in their own browser; launches only after the switch), and **test USDC for
+   testers** (the faucet only gives HYPE; user: circle back).
+2. **Docs and copy:** remove "no revenue share"; explain the fee split above.
+3. **Go-live:** `./script/supabase-deploy.sh switch` (db push + app_config/secrets to USDC + all functions), push when
+   the user says (Railway redeploys app + watcher), restart the watcher if needed, tell testers the old HYPE tokens are
+   gone, remove the Privy LAN origin `https://192.168.0.64:5174`. **Don't push before this:** the local app is on the
+   USDC world and would break the live HYPE site.
+
+Mainnet only (later): multisig ownership incl. the $NEURIIO minter + `freezeMintCurve()`, Fable audit, real bridged
+USDC, legal review.
+
+## Earlier plan (written 2026-10-12; videos + public testnet opening)
 
 **The app is built and ready for the public testnet launch.** "Launch" = public launch on Elysium **TESTNET**; mainnet
 is a few weeks out and only if users and demand show up (memory "launch-is-testnet"). Multisig + formal audit are
@@ -171,8 +259,12 @@ run `npm --prefix app run build` first).
 
 - **Launchpad (pump.fun model) on Elysium with our own pool.** Pairs with HYPE (pool uses WHYPE). Launching is free (gas).
   1B supply; 793.1M sold on a constant-product curve over virtual reserves (`virtualHype` : 1.073B tokens); the last curve
-  buy moves the raised HYPE + 206.9M tokens into our pool (Uniswap V2 fork) and **burns all LP** (0x…dEaD). Mainnet
-  `virtualHype` = 60 HYPE (graduates at ~170 HYPE raised, ~822 HYPE FDV); testnet 0.1 HYPE (graduates at ~0.29 HYPE).
+  buy moves the raised HYPE + 206.9M tokens into our pool (Uniswap V2 fork) and **burns all LP** (0x…dEaD). **Mainnet
+  target (user, 2026-10-15): graduate at ~$70k market cap**, priced in HYPE on launch day: graduation FDV = 13.7 x
+  `virtualHype` and HYPE raised = 2.83 x `virtualHype` (fixed by the 1.073B / 793.1M split), so
+  `virtualHype` = 70,000 / (13.7 x HYPE price), e.g. ~64 HYPE at $80 (raises ~181 HYPE); set it with `setVirtualHype`
+  before mainnet launches. Testnet stays 0.1 HYPE (graduates at ~0.29 HYPE raised; testnet HYPE is scarce, user is fine
+  with the small market caps there). All USD in the app/indexer already uses HYPE's mainnet price.
   Only the launchpad can create pairs; pre-sent tokens are skimmed; slippage + deadline on every trade; owner pause
   stops launches + buys, **sells stay open**.
 - **Fees:** curve 0.75% (20% creator / 80% protocol), pool 0.25% (80% creator / 20% protocol), all into **NeuriioFees**
@@ -192,8 +284,9 @@ run `npm --prefix app run build` first).
 - **Thesis** (`docs/README.md`, memory "neuriio-thesis"): launchpads evolve by what they give exposure to (memes ->
   stocks/crypto onchain -> **social exposure**); the problem is authenticity; Neuriio = X login, only you can launch you.
 
-## Testnet contracts (Elysium testnet, chain 99801; `deployments/elysium-testnet.json`)
+## Testnet contracts: the OLD HYPE world (Elysium testnet, chain 99801; now `deployments/elysium-testnet-hype.json`)
 
+The live site still runs on these until go-live; `deployments/elysium-testnet.json` is now the USDC world (see top).
 Current core (deployed + verified on Blockscout 2026-10-08, core block 5372584): NeuriioRegistry
 `0xd7879e97c6558486ca0a92283d70a46e89ea84fc`, NeuriioFees `0x7e9e5e96c3e99fd201a15e6a33c59aec51a39b2b`, NeuriioSwap
 (router) `0x4a85eca6f3ef4a07d049bd1907debb3e8961acac`, NeuriioPad `0xd9943d81b72aa55e52580bbb595af797b04d5e59`,
@@ -214,8 +307,10 @@ before mainnet). Older cores/launchpads are retired testnet worlds (see git hist
 - **Multisig handover READY:** `./script/transfer-ownership.sh <safe> [account]` (Ownable2Step on registry, every pad,
   every fees vault; factory `feeToSetter` last, only to a deployed Safe with threshold >= 2; writes
   `deployments/accept-ownership.json` for Safe Transaction Builder); `check <safe>` = read-only report; fork-tested.
-  **Blocker: Safe isn't deployed on Elysium** — ask Kinetiq, else self-deploy Safe + safe-cli. Not moved: the launch
-  signer and the fee wallets.
+  **Blocker: Safe isn't deployed on Elysium.** Decision (user, 2026-10-13): **we deploy Safe ourselves** (not waiting on
+  Kinetiq): the official Safe contracts (singleton, proxy factory, fallback handler, MultiSend) on Elysium, then create
+  the Safe (2+ signers) and use safe-cli to sign the accept-ownership batch. No contract redeploy needed for the handover
+  (Ownable2Step, same addresses, verification stays). Not moved: the launch signer and the fee wallets.
 
 ## Backend (Supabase project "Neuriio", ref `yviymgfgaepmtijgyyyo`; Railway project `lively-renewal`)
 

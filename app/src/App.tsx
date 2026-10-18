@@ -87,8 +87,8 @@ function Page() {
           </main>
         </>
       ) : (
-        // explore: search + top list beside the picked token's chart
-        <main className="stage stage-explore">
+        // explore: edge to edge, cards touching (Hyperliquid-style); top list | chart | order | stake, positions below
+        <main className="stage stage-explore ex-wide">
           <ExploreCard />
         </main>
       )}

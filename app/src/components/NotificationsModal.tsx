@@ -8,6 +8,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { usePrivy } from "@privy-io/react-auth";
 import { Bell, Check, Copy, X } from "lucide-react";
 import { ftfCall, type Notice, useNotifications } from "../lib/ftf";
+import { handleOf, tickerOf } from "../lib/explore";
 import { EASE_OUT } from "../lib/motion";
 import { Avatar } from "./Avatar";
 
@@ -98,7 +99,7 @@ export function NotificationsList() {
         <ul className="nt-list">
           {items.map((n) => {
             const key = keyOf(n);
-            const who = n.from.x_handle ? `@${n.from.x_handle}` : "Someone";
+            const who = n.from.x_handle ? handleOf(n.from.x_handle) : "Someone";
             if (n.kind === "hype") {
               const copy = () =>
                 navigator.clipboard.writeText(n.wallet).then(() => {
@@ -134,7 +135,7 @@ export function NotificationsList() {
                 <div className="nt-text">
                   <span>
                     <b>{who}</b> {n.kind === "invite" ? "invited you to" : "asked to join"} <b>{n.name}</b>{" "}
-                    <span className="nt-ticker">${n.ticker}</span>
+                    <span className="nt-ticker">{tickerOf(n.ticker)}</span>
                   </span>
                   <span className="nt-sub">
                     {n.kind === "invite" ? "An FTF: 4 people, one token. Accepting isn't a transaction." : "You founded this FTF."}

@@ -41,6 +41,7 @@ export type FtfPassResponse = {
     deadline: string;
   };
   signature: `0x${string}`;
+  launchpad: `0x${string}`; // the NeuriioPad the pass is signed for
 };
 type NoticeFrom = { x_user_id: string; x_handle?: string; x_name?: string | null; x_pfp_url?: string | null };
 export type Notice =

@@ -9,9 +9,9 @@ import './interfaces/IUniswapV2Factory.sol';
 import './interfaces/IUniswapV2Callee.sol';
 import './interfaces/INeuriio.sol'; // Neuriio
 
-// Neuriio fork of Uniswap V2 (v2-core v1.0.1). Changes are marked "Neuriio": the swap fee is 0.25% (was 0.30%),
-// and right after each swap the pair moves that fee out of the pool as WHYPE to the factory's NeuriioFees
-// (after graduation: 80% to the token's creator, 20% to the protocol). Traders get exactly V2's output for a 0.25% fee.
+// Neuriio fork of Uniswap V2 (v2-core v1.0.1). Changes are marked "Neuriio": the swap fee is 1% (was 0.30%), and
+// right after each swap the pair moves that fee out of the pool, in the quote token (USDC), to the factory's
+// NeuriioFees (80% stakers / 10% creator / 10% treasury). Traders get exactly V2's output for a 1% fee.
 contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     using SafeMath  for uint;
     using UQ112x112 for uint224;
@@ -61,7 +61,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         address indexed to
     );
     event Sync(uint112 reserve0, uint112 reserve1);
-    event FeeTaken(address indexed vault, uint whypeAmount); // Neuriio
+    event FeeTaken(address indexed vault, uint quoteAmount); // Neuriio
 
     constructor() public {
         factory = msg.sender;
@@ -182,8 +182,8 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         uint amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
         require(amount0In > 0 || amount1In > 0, 'UniswapV2: INSUFFICIENT_INPUT_AMOUNT');
         { // scope for reserve{0,1}Adjusted, avoids stack too deep errors
-        uint balance0Adjusted = balance0.mul(10000).sub(amount0In.mul(25)); // Neuriio: 0.25% fee (was 0.30%)
-        uint balance1Adjusted = balance1.mul(10000).sub(amount1In.mul(25)); // Neuriio
+        uint balance0Adjusted = balance0.mul(10000).sub(amount0In.mul(100)); // Neuriio: 1% fee (was 0.30%)
+        uint balance1Adjusted = balance1.mul(10000).sub(amount1In.mul(100)); // Neuriio
         require(balance0Adjusted.mul(balance1Adjusted) >= uint(_reserve0).mul(_reserve1).mul(10000**2), 'UniswapV2: K'); // Neuriio
         }
 
@@ -205,24 +205,24 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         _update(IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)), reserve0, reserve1);
     }
 
-    // Neuriio: moves the 0.25% fee out of the pool as WHYPE, to the NeuriioFees. With x = token balance, y = WHYPE
-    // balance, ft/fh = the fee on the token/WHYPE input (rounded down): the K check above guarantees
-    // (x - ft)(y - fh) >= k_before; we remove fh + ft's value at the post-swap price, ft * (y - fh) / x (rounded
-    // down), leaving x * (y - fh - ft * (y - fh) / x) >= (x - ft)(y - fh) >= k_before. So k never drops.
+    // Neuriio: moves the 1% fee out of the pool in the quote token (USDC), to the NeuriioFees. With x = token balance,
+    // y = quote balance, ft/fq = the fee on the token/quote input (rounded down): the K check above guarantees
+    // (x - ft)(y - fq) >= k_before; we remove fq + ft's value at the post-swap price, ft * (y - fq) / x (rounded
+    // down), leaving x * (y - fq - ft * (y - fq) / x) >= (x - ft)(y - fq) >= k_before. So k never drops.
     function _takeFee(uint balance0, uint balance1, uint amount0In, uint amount1In) private returns (uint, uint) {
         address vault = INeuriioFactory(factory).feeVault();
-        address whype = INeuriioFactory(factory).whype();
-        bool whypeIs0 = whype == token0;
-        if (vault == address(0) || (!whypeIs0 && whype != token1)) return (balance0, balance1); // fee stays, like V2
-        uint x = whypeIs0 ? balance1 : balance0;
-        uint y = whypeIs0 ? balance0 : balance1;
-        uint fh = (whypeIs0 ? amount0In : amount1In).mul(25) / 10000;
-        uint ft = (whypeIs0 ? amount1In : amount0In).mul(25) / 10000;
-        uint fee = fh.add(ft.mul(y.sub(fh)) / x);
+        address quote = INeuriioFactory(factory).quote();
+        bool quoteIs0 = quote == token0;
+        if (vault == address(0) || (!quoteIs0 && quote != token1)) return (balance0, balance1); // fee stays, like V2
+        uint x = quoteIs0 ? balance1 : balance0;
+        uint y = quoteIs0 ? balance0 : balance1;
+        uint fq = (quoteIs0 ? amount0In : amount1In).mul(100) / 10000;
+        uint ft = (quoteIs0 ? amount1In : amount0In).mul(100) / 10000;
+        uint fee = fq.add(ft.mul(y.sub(fq)) / x);
         if (fee == 0) return (balance0, balance1);
-        _safeTransfer(whype, vault, fee);
-        INeuriioFeeVault(vault).notifyPoolFee(whypeIs0 ? token1 : token0);
+        _safeTransfer(quote, vault, fee);
+        INeuriioFeeVault(vault).notifyPoolFee(quoteIs0 ? token1 : token0);
         emit FeeTaken(vault, fee);
-        return whypeIs0 ? (balance0.sub(fee), balance1) : (balance0, balance1.sub(fee));
+        return quoteIs0 ? (balance0.sub(fee), balance1) : (balance0, balance1.sub(fee));
     }
 }

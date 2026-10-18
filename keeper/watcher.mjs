@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { RealtimeClient } from "@supabase/realtime-js";
 import { createPublicClient, parseAbi, parseEventLogs, webSocket } from "viem";
 import { makeTransport } from "./src/rpc.mjs";
-import { liveTrades, watchEvents } from "./src/watch/trades.mjs";
+import { liveTrades, priceOf, watchEvents } from "./src/watch/trades.mjs";
 
 const env = (k, d) => process.env[k] ?? d;
 const dep = JSON.parse(readFileSync(new URL(env("DEPLOYMENTS", "../deployments/elysium-testnet.json"), import.meta.url)));
@@ -32,7 +32,8 @@ const lc = (a) => a.toLowerCase();
 const ctx = {
   launchpads: new Set(), // every Launchpad version (LaunchRegistry.launchpads), loaded below
   routers: new Set((dep.routers ?? [dep.swapRouter]).map(lc)),
-  whype: lc(dep.whype),
+  quote: lc(dep.usdc ?? dep.whype), // the world's quote token: USDC (the old world: WHYPE)
+  decimals: 18, // read from the quote token below
   pairToken: new Map(), // pair -> token, filled from the factory, then from Graduated events
 };
 const log = (ev, o = {}) => console.log(JSON.stringify({ t: new Date().toISOString(), ev, ...o }));
@@ -56,7 +57,7 @@ async function loadPairs() {
   for (let i = 0; i < n; i++) {
     const pair = lc(await http.readContract({ address: dep.swapFactory, abi: factoryAbi, functionName: "allPairs", args: [BigInt(i)] }));
     const [t0, t1] = await Promise.all(["token0", "token1"].map((f) => http.readContract({ address: pair, abi: pairAbi, functionName: f })));
-    ctx.pairToken.set(pair, lc(lc(t0) === ctx.whype ? t1 : t0));
+    ctx.pairToken.set(pair, lc(lc(t0) === ctx.quote ? t1 : t0));
   }
 }
 const registryAbi = parseAbi([
@@ -218,8 +219,8 @@ async function priceMissing(trades, blockNumber) {
         http.readContract({ address: pair, abi: pairAbi, functionName: "getReserves", blockNumber }),
         http.readContract({ address: pair, abi: pairAbi, functionName: "token0" }),
       ]);
-      const [hype, tok] = lc(t0) === ctx.whype ? [r0, r1] : [r1, r0];
-      t.priceHype = tok === 0n ? null : Number(hype * 10n ** 18n / tok) / 1e18;
+      const [quote, tok] = lc(t0) === ctx.quote ? [r0, r1] : [r1, r0];
+      t.priceHype = priceOf(quote, tok, ctx.decimals);
     } catch (e) {
       log("price_error", { token: t.token, error: e.shortMessage ?? e.message });
     }
@@ -275,6 +276,7 @@ async function poll() {
 
 // ------------------------------------------------------------------ start
 
+ctx.decimals = Number(await http.readContract({ address: ctx.quote, abi: parseAbi(["function decimals() view returns (uint8)"]), functionName: "decimals" }));
 await loadLaunchpads();
 await loadPairs();
 // join the newest tokens' channels now, so their next trade already goes out over the websocket
@@ -283,7 +285,7 @@ const nTokens = Number(await http.readContract({ address: reg, abi: registryAbi,
 for (let i = nTokens - 1; i >= Math.max(0, nTokens - (MAX_CHANNELS - 1)); i--) {
   channelFor(`trades:${lc(await http.readContract({ address: reg, abi: registryAbi, functionName: "allTokens", args: [BigInt(i)] }))}`);
 }
-log("start", { registry: reg, launchpads: [...ctx.launchpads], routers: [...ctx.routers], pairs: ctx.pairToken.size, tokens: nTokens, ws: WS_URL });
+log("start", { registry: reg, quote: ctx.quote, decimals: ctx.decimals, launchpads: [...ctx.launchpads], routers: [...ctx.routers], pairs: ctx.pairToken.size, tokens: nTokens, ws: WS_URL });
 subscribe();
 poll();
 // a new Launchpad version approved in the registry: start watching it too (no restart needed)

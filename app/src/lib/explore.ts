@@ -71,7 +71,8 @@ const NUMERIC: (keyof TokenStat)[] = [
 async function rest<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
-    headers: { apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json", ...init?.headers },
+    // x-neuriio-registry: list this app's world (migration 20261018054548_world_header.sql)
+    headers: { apikey: SUPABASE_PUBLISHABLE_KEY, "Content-Type": "application/json", "x-neuriio-registry": REGISTRY.toLowerCase(), ...init?.headers },
   });
   if (!res.ok) throw new Error(`Explore data: ${res.status} ${await res.text()}`);
   return res.json();
@@ -88,8 +89,13 @@ function toStat(r: Record<string, unknown>): TokenStat {
 /** For PostgREST `ilike`: "_" is a LIKE wildcard (and common in handles), so escape it; then URL-encode. */
 const likeEscape = (s: string) => encodeURIComponent(s.replace(/_/g, "\\_"));
 
+/** How a launched token's ticker reads in the app (user, 2026-10-18): lower case, no "$" (on-chain it's in caps). */
+export const tickerOf = (symbol: string) => symbol.toLowerCase();
+/** X handles read in lower case everywhere (X itself ignores case). */
+export const handleOf = (handle: string) => `@${handle.toLowerCase()}`;
+
 /** How a token is shown: an FTF by its name, a person by "@handle". */
-export const displayName = (t: TokenStat) => (t.kind === "ftf" ? t.name ?? t.symbol : `@${t.handle}`);
+export const displayName = (t: TokenStat) => (t.kind === "ftf" ? t.name ?? tickerOf(t.symbol) : handleOf(t.handle));
 
 /** Top `limit` tokens by a ranking (default: 24h volume), live order. */
 export async function topTokens(by: Ranking = "volume_usd_24h", limit = 25): Promise<TokenStat[]> {

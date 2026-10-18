@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import { ExternalLink, X } from "lucide-react";
-import { type CreatorProfile, displayName, ftfMembers, getProfile, type MemberCard, type TokenStat } from "../lib/explore";
+import { type CreatorProfile, displayName, ftfMembers, getProfile, handleOf, type MemberCard, type TokenStat, tickerOf } from "../lib/explore";
 import { CATEGORIES } from "../lib/launch";
 import { EASE_OUT } from "../lib/motion";
 import { Avatar } from "./Avatar";
@@ -55,12 +55,12 @@ export function ProfileModal({ t, onClose }: { t: TokenStat; onClose: () => void
         <header className="ex-modal-head">
           <Avatar handle={t.kind === "ftf" ? t.name ?? t.symbol : t.handle} pfp={t.x_pfp_url} size={52} className="ex-modal-avatar" />
           <div className="ex-head-names">
-            <span className="ex-handle">{t.kind === "ftf" ? t.name : t.x_name || `@${t.handle}`}</span>
+            <span className="ex-handle">{t.kind === "ftf" ? t.name : t.x_name || handleOf(t.handle)}</span>
             {t.kind === "ftf" ? (
-              <span className="ex-ticker">${t.symbol} · Friends Turned Fam</span>
+              <span className="ex-ticker">{tickerOf(t.symbol)} · Friends Turned Fam</span>
             ) : (
               <a className="ex-modal-x" href={`https://x.com/${t.handle}`} target="_blank" rel="noreferrer">
-                @{t.handle} on X <ExternalLink size={11} />
+                {handleOf(t.handle)} on X <ExternalLink size={11} />
               </a>
             )}
           </div>
@@ -70,7 +70,7 @@ export function ProfileModal({ t, onClose }: { t: TokenStat; onClose: () => void
         <ProfileBody t={t} profile={profile} members={members} />
 
         <p className="ex-order-note">
-          ${t.symbol} is a meme with no promise of value. {t.kind === "ftf" ? "Its members owe" : `@${t.handle} owes`} holders nothing.
+          {displayName(t)} is a meme with no promise of value. {t.kind === "ftf" ? "Its members owe" : `${handleOf(t.handle)} owes`} holders nothing.
         </p>
       </motion.div>
     </motion.div>
@@ -98,8 +98,8 @@ export function ProfileBody({
                 <a href={`https://x.com/${m.x_handle}`} target="_blank" rel="noreferrer">
                   <Avatar handle={m.x_handle} pfp={m.x_pfp_url} size={28} />
                   <span className="ex-modal-member-names">
-                    <span>{m.x_name || `@${m.x_handle}`}</span>
-                    <span className="ex-modal-host">@{m.x_handle}{i === 0 ? " · founder" : ""}</span>
+                    <span>{m.x_name || handleOf(m.x_handle)}</span>
+                    <span className="ex-modal-host">{handleOf(m.x_handle)}{i === 0 ? " · founder" : ""}</span>
                   </span>
                   <ExternalLink size={11} />
                 </a>

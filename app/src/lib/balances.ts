@@ -1,11 +1,11 @@
 // Everything the account panel shows: the Neuriio wallet's balances on Elysium and on HyperCore.
 // Each venue always lists HYPE, KNTQ and USDC (true values, even $0.00), then any other token held. On Elysium that
-// includes launched tokens (shown as "$TICKER", valued at their curve/pool price x HYPE's HyperCore mainnet price).
+// includes launched tokens (shown as "$TICKER", valued at their curve/pool price in USDC).
 import { createPublicClient, erc20Abi, fallback, formatUnits, http, type Address } from "viem";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { elysiumTestnet } from "../chain";
-import { ELYSIUM_RPCS, ELYSIUM_TOKENS, HL_TESTNET, SHOWN_TOKENS } from "./config";
-import { launchedHoldings } from "./explore";
+import { ELYSIUM_RPCS, ELYSIUM_TOKENS, HL_TESTNET, QUOTE, SHOWN_TOKENS } from "./config";
+import { launchedHoldings, tickerOf } from "./explore";
 
 export type TokenBalance = { symbol: string; amount: number; usd: number };
 export type VenueBalance = { total: number; tokens: TokenBalance[] };
@@ -68,12 +68,11 @@ async function elysium(user: Address, price: Map<string, number>): Promise<Venue
   const amounts = new Map<string, number>([["HYPE", Number(formatUnits(native, 18))]]); // gas HYPE
   ELYSIUM_TOKENS.forEach((t, i) => amounts.set(t.symbol, (amounts.get(t.symbol) ?? 0) + Number(formatUnits(raw[i], t.decimals))));
   const byToken = new Map([...amounts].map(([symbol, amount]) => [symbol, { symbol, amount, usd: amount * (price.get(symbol) ?? 0) }]));
-  // launched tokens: "$" keeps a ticker like HYPE apart from the real one
-  const hypeUsd = price.get("HYPE") ?? 0;
+  // launched tokens: their ticker in lower case (apart from real tokens like HYPE); priced in USDC
   for (const { token, balance } of held) {
     const amount = Number(formatUnits(balance, 18));
-    const symbol = `$${token.symbol}`;
-    byToken.set(symbol, { symbol, amount, usd: amount * token.price_hype * hypeUsd });
+    const symbol = tickerOf(token.symbol);
+    byToken.set(symbol, { symbol, amount, usd: amount * token.price_hype * QUOTE.usd });
   }
   return arrange(byToken);
 }

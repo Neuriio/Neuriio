@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-
-interface IWHYPE is IERC20 {
-    function deposit() external payable;
-    function withdraw(uint256 amount) external;
-}
-
-/// The pair: our Uniswap V2 fork (src/swap/v2), so existing V2 aggregator adapters work (fee = 25 bps).
+/// The pair: our Uniswap V2 fork (src/swap/v2), TOKEN/USDC, so existing V2 aggregator adapters work (fee = 100 bps).
 interface ISwapPair {
     function token0() external view returns (address);
     function token1() external view returns (address);
@@ -21,13 +14,14 @@ interface ISwapPair {
 }
 
 interface ISwapFactory {
-    function whype() external view returns (address);
+    /// The token every pool is priced in (USDC).
+    function quote() external view returns (address);
     function feeVault() external view returns (address);
     function getPair(address tokenA, address tokenB) external view returns (address pair);
     function createPair(address tokenA, address tokenB) external returns (address pair);
 }
 
-/// Receives every pool's 0.25% fee (as WHYPE) and credits it to the token's creator + protocol.
+/// Receives every pool's 1% fee (in USDC) and shares it out (NeuriioFees).
 interface IFeeVault {
     function notifyPoolFee(address token) external;
 }

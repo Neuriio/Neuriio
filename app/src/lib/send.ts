@@ -33,7 +33,7 @@ export async function sendableTokens(wallet: Address): Promise<SendToken[]> {
     ...ELYSIUM_TOKENS.map((t, i) => ({
       key: t.address.toLowerCase(),
       symbol: t.symbol,
-      label: t.symbol === "HYPE" ? "tHYPE" : t.symbol, // the mock ERC-20 HYPE, not gas HYPE
+      label: t.symbol,
       address: t.address,
       decimals: t.decimals,
       balance: listed[i],

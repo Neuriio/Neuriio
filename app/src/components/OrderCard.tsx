@@ -1,17 +1,19 @@
-// Explore, right column: buy/sell the picked token with the Neuriio (Privy) wallet.
-//   curve tokens: Launchpad (0.75% fee), graduated: SwapRouter (0.25% fee). Quotes are exact on-chain previews
-//   (price impact + fee); 1% slippage limit; sells approve the exact amount first. `?demo`: simulated wallet + trades.
+// Explore, right column: buy/sell the picked token with the Neuriio (Privy) wallet, in USDC.
+//   Every trade goes through the NeuriioRouter (curve or pool, 1% fee); quotes are exact on-chain previews (price
+//   impact + fee); 1% slippage limit; the one-time approval is sent silently before the first buy / first sell of a
+//   token. `?demo`: simulated wallet + trades.
 import { useEffect, useMemo, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { formatEther, parseEther, type Address } from "viem";
-import { DEMO, displayName, type TokenStat } from "../lib/explore";
+import { formatEther, formatUnits, parseEther, parseUnits, type Address } from "viem";
+import { DEMO, displayName, tickerOf, type TokenStat } from "../lib/explore";
 import { compactUsd } from "../lib/format";
 import { SUPABASE_URL } from "../lib/config";
-import { balances, buyGraduates, friendlyTradeError, minOut, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
+import { balances, buyGraduates, FEE_BPS, friendlyTradeError, minOut, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
+import { QUOTE } from "../lib/config";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { elysiumProvider } from "../lib/tx";
 
-const QUICK_BUY = ["0.1", "0.5", "1", "5"];
+const QUICK_BUY = ["5", "25", "100", "250"]; // USDC
 const QUICK_SELL = [25, 50, 75, 100];
 
 type Status = { kind: "idle" } | { kind: "busy"; label: string } | { kind: "done"; text: string } | { kind: "error"; text: string };
@@ -25,25 +27,26 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
 
   const [side, setSide] = useState<Side>("buy");
   const [amount, setAmount] = useState("");
-  const [bal, setBal] = useState<{ hype: bigint; tokens: bigint } | null>(null);
+  const [bal, setBal] = useState<{ usdc: bigint; tokens: bigint; gas: bigint } | null>(null);
   const [q, setQ] = useState<{ out: bigint; refund: bigint; spot: number | null } | null>(null);
   const [quoting, setQuoting] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [nonce, setNonce] = useState(0); // bump to refresh balances after a trade
   const [grad, setGrad] = useState<GradStage>(null); // the full-page "Graduating" moment
 
+  // buy: USDC (6 decimals); sell: the token (18)
   const amountIn = useMemo(() => {
     try {
-      return amount ? parseEther(amount as `${number}`) : 0n;
+      return amount ? (side === "buy" ? parseUnits(amount, QUOTE.decimals) : parseEther(amount as `${number}`)) : 0n;
     } catch {
       return 0n;
     }
-  }, [amount]);
+  }, [amount, side]);
 
   // balances
   useEffect(() => {
     if (!t || !account || !loggedIn) return setBal(null);
-    if (DEMO) return setBal({ hype: parseEther("12.5"), tokens: parseEther("2500000") });
+    if (DEMO) return setBal({ usdc: parseUnits("1250", QUOTE.decimals), tokens: parseEther("2500000"), gas: parseEther("0.2") });
     let alive = true;
     const load = () => balances(account, t.address as Address).then((b) => alive && setBal(b), () => {});
     load();
@@ -78,28 +81,33 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
 
   if (!t) return <p className="ex-empty">Pick a token.</p>;
 
-  const feeBps = t.graduated ? 25 : 75;
-  const unitIn = side === "buy" ? "HYPE" : t.symbol;
-  const unitOut = side === "buy" ? t.symbol : "HYPE";
-  const have = bal ? (side === "buy" ? bal.hype : bal.tokens) : null;
+  const feeBps = FEE_BPS;
+  const unitIn = side === "buy" ? QUOTE.symbol : tickerOf(t.symbol);
+  const unitOut = side === "buy" ? tickerOf(t.symbol) : QUOTE.symbol;
+  const have = bal ? (side === "buy" ? bal.usdc : bal.tokens) : null;
+  const noGas = bal !== null && !DEMO && bal.gas === 0n;
+  // amounts: what you pay in (side's unit) and what you get out (the other one)
+  const fmtIn = (v: bigint) => (side === "buy" ? fmtUsdc(v) : fmt(v));
+  const fmtOut = (v: bigint) => (side === "buy" ? fmt(v) : fmtUsdc(v));
   const tooMuch = have !== null && amountIn > have;
   const n = Number(amount) || 0;
   const usdValue = side === "buy" ? n * hypeUsd : n * t.price_hype * hypeUsd;
   // price impact: how far this trade's average price is from the on-chain spot price read with the quote (fee
-  // excluded). Real, not slippage: "You receive" already includes it. Big on testnet (tiny 0.1 HYPE curve / ~0.3 HYPE
-  // pools); a 0.1 HYPE buy moves a mainnet-sized curve (60 HYPE) about 0.2%.
+  // excluded). Real, not slippage: "You receive" already includes it.
   const spot = q?.spot ?? t.price_hype;
   const spotOut = side === "buy" ? (n * (1 - feeBps / 10_000)) / spot : n * spot * (1 - feeBps / 10_000);
-  const outNum = q ? Number(formatEther(q.out)) : 0;
+  const outNum = q ? Number(side === "buy" ? formatEther(q.out) : formatUnits(q.out, QUOTE.decimals)) : 0;
   const impact = q && spotOut > 0 ? Math.max(0, (1 - outNum / spotOut) * 100) : null;
   const busy = status.kind === "busy";
 
   async function submit() {
     if (!t || !q || !account) return;
     setStatus({ kind: "busy", label: "Confirming…" });
-    // does this buy take the curve's last tokens? (demo: any 5+ HYPE buy on a curve token)
+    // does this buy take the curve's last tokens? (demo: any 250+ USDC buy on a curve token)
     const graduates =
-      side === "buy" && !t.graduated && (DEMO ? amountIn >= parseEther("5") : await buyGraduates(t.address as Address, q, t.launchpad).catch(() => false));
+      side === "buy" &&
+      !t.graduated &&
+      (DEMO ? amountIn >= parseUnits("250", QUOTE.decimals) : await buyGraduates(t.address as Address, q, t.launchpad).catch(() => false));
     if (graduates) ownGraduations.add(t.address.toLowerCase());
     try {
       if (DEMO) {
@@ -110,7 +118,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
         await trade(
           provider,
           account,
-          { token: t.address as Address, launchpad: t.launchpad, graduated: t.graduated, side, amountIn, minOut: minOut(q.out) },
+          { token: t.address as Address, side, amountIn, minOut: minOut(q.out) },
           (s) => {
             setStatus({ kind: "busy", label: s === "approving" ? "Approving…" : "Confirming…" });
             if (graduates && s !== "approving") setGrad("graduating"); // once the wallet has sent it
@@ -123,7 +131,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
       }
       // ask the indexer to store it now (stats, Top 25 volume); the live feed already shows it everywhere
       if (!DEMO) fetch(`${SUPABASE_URL}/functions/v1/indexer`, { method: "POST" }).catch(() => {});
-      setStatus({ kind: "done", text: `${side === "buy" ? "Bought" : "Sold"} ${fmt(side === "buy" ? q.out : amountIn)} $${t.symbol}` });
+      setStatus({ kind: "done", text: `${side === "buy" ? "Bought" : "Sold"} ${fmt(side === "buy" ? q.out : amountIn)} ${tickerOf(t.symbol)}` });
       setAmount("");
       setNonce((x) => x + 1);
     } catch (e) {
@@ -138,7 +146,8 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
   if (!loggedIn) cta = "Log in to trade";
   else if (busy) cta = status.label;
   else if (amountIn === 0n) (cta = "Enter an amount"), (disabled = true);
-  else if (tooMuch) (cta = side === "buy" ? "Not enough HYPE" : `Not enough $${t.symbol}`), (disabled = true);
+  else if (tooMuch) (cta = side === "buy" ? `Not enough ${QUOTE.symbol}` : `Not enough ${tickerOf(t.symbol)}`), (disabled = true);
+  else if (noGas) (cta = "Need a little HYPE for gas"), (disabled = true);
   else if (!q) (cta = quoting ? "Getting a quote…" : "No quote"), (disabled = true);
 
   return (
@@ -166,7 +175,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
           <span className="ex-order-label">Amount</span>
           {have !== null && (
             <span className="ex-order-bal">
-              Balance {fmt(have)} {unitIn}
+              Balance {fmtIn(have)} {unitIn}
             </span>
           )}
         </span>
@@ -207,11 +216,11 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
       <dl className="ex-order-est">
         <div>
           <dt>You receive</dt>
-          <dd>{q ? `${fmt(q.out)} ${unitOut}` : quoting ? "…" : "—"}</dd>
+          <dd>{q ? `${fmtOut(q.out)} ${unitOut}` : quoting ? "…" : "—"}</dd>
         </div>
         <div>
           <dt>Minimum ({Number(SLIPPAGE_BPS) / 100}% slippage)</dt>
-          <dd>{q ? `${fmt(minOut(q.out))} ${unitOut}` : "—"}</dd>
+          <dd>{q ? `${fmtOut(minOut(q.out))} ${unitOut}` : "—"}</dd>
         </div>
         <div>
           <dt title="How much this trade moves the price. You still receive the amount shown above.">Price impact</dt>
@@ -229,7 +238,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
         {q && q.refund > 0n && (
           <div>
             <dt>Refunded (curve sells out)</dt>
-            <dd>{fmt(q.refund)} HYPE</dd>
+            <dd>{fmtUsdc(q.refund)} {QUOTE.symbol}</dd>
           </div>
         )}
       </dl>
@@ -241,7 +250,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
         {cta}
       </button>
       <p className="ex-order-note">Tokens are memes with no promise of value.</p>
-      <GraduatingOverlay stage={grad} symbol={t.symbol} />
+      <GraduatingOverlay stage={grad} name={displayName(t)} />
     </div>
   );
 }
@@ -251,11 +260,21 @@ function fmt(wei: bigint) {
   return v.toLocaleString("en-US", { maximumFractionDigits: v >= 1000 ? 0 : v >= 1 ? 4 : 6 });
 }
 
-/** ?demo: spot price, fee and a simple price impact that grows with size. */
+/** USDC: cents (more digits only for dust). */
+function fmtUsdc(units: bigint) {
+  const v = Number(formatUnits(units, QUOTE.decimals));
+  return v.toLocaleString("en-US", { minimumFractionDigits: v >= 0.01 || v === 0 ? 2 : 0, maximumFractionDigits: v >= 0.01 || v === 0 ? 2 : 6 });
+}
+
+/** ?demo: spot price, fee and a simple price impact that grows with size (USDC in, tokens out, or back). */
 function demoQuote(t: TokenStat, side: Side, amountIn: bigint) {
-  const n = Number(formatEther(amountIn));
-  const fee = 1 - (t.graduated ? 25 : 75) / 10_000;
-  const impact = 1 / (1 + n / (side === "buy" ? 150 : 150 / t.price_hype));
+  const n = Number(side === "buy" ? formatUnits(amountIn, QUOTE.decimals) : formatEther(amountIn));
+  const fee = 1 - FEE_BPS / 10_000;
+  const impact = 1 / (1 + n / (side === "buy" ? 6_000 : 6_000 / t.price_hype));
   const out = side === "buy" ? ((n * fee) / t.price_hype) * impact : n * t.price_hype * fee * impact;
-  return { out: parseEther(out.toFixed(12) as `${number}`), refund: 0n, spot: t.price_hype };
+  return {
+    out: side === "buy" ? parseEther(out.toFixed(12) as `${number}`) : parseUnits(out.toFixed(QUOTE.decimals), QUOTE.decimals),
+    refund: 0n,
+    spot: t.price_hype,
+  };
 }

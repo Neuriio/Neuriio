@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { useLivePrices } from "../lib/live";
 import { compactUsd } from "../lib/format";
-import { useHypeUsd } from "../lib/tickers";
+import { QUOTE } from "../lib/config";
 import { useIsMobile } from "../lib/media";
 import { bondingTokens, DEMO, displayName, recentlyGraduated, trendingTokens, type TokenStat } from "../lib/explore";
 import { Avatar } from "./Avatar";
@@ -52,7 +52,7 @@ export function TrendingCard() {
 }
 
 function TokenList({ list }: { list: (typeof LISTS)[number] }) {
-  const hypeUsd = useHypeUsd();
+  const hypeUsd = QUOTE.usd; // launched tokens are priced in USDC
   const live = useLivePrices();
   const [rows, setRows] = useState<TokenStat[] | null>(null);
   const [error, setError] = useState(false);

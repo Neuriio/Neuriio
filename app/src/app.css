@@ -30,7 +30,7 @@ body,
 body {
   background: #120c1d; /* the app pages' background (the landing paints its own) */
   color: var(--text);
-  font-family: "Lilex", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; /* user, 2026-10-17 (was Lilex) */
 }
 
 .app {
@@ -2339,6 +2339,28 @@ body {
   border: 0;
   outline: none;
 }
+/* platform fees, above the Top 25: label left, lifetime total right, the cards' 1px line under it */
+.ex-platform {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid rgba(236, 221, 255, 0.5);
+}
+.ex-platform-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ex-platform-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #6ee7a0;
+  font-variant-numeric: tabular-nums;
+}
 .ex-list-head {
   display: flex;
   justify-content: space-between;
@@ -3320,16 +3342,10 @@ body {
   white-space: nowrap;
   border-left: 1px solid rgba(236, 221, 255, 0.12);
 }
-/* the header wraps only when it runs out of room (the price then moves to its own line, right-aligned);
-   on narrower screens the HYPE amount (also in the tooltip) is dropped */
+/* the header wraps only when it runs out of room (the price then moves to its own line, right-aligned) */
 .ex-head {
   flex-wrap: wrap;
   row-gap: 10px;
-}
-@media (max-width: 1440px) {
-  .ex-earned-hype {
-    display: none;
-  }
 }
 .ex-earned-label {
   font-size: 9px;
@@ -3342,11 +3358,6 @@ body {
   font-weight: 700;
   color: #6ee7a0;
   font-variant-numeric: tabular-nums;
-}
-.ex-earned-hype {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--muted);
 }
 
 /* ---- notifications: green count on the Account card, bell in the panel, the window ---- */
@@ -4159,4 +4170,167 @@ body {
 }
 .ex-chart-credit a:hover {
   color: var(--text-2);
+}
+
+/* ---- /explore in the app: edge to edge, cards touching like Hyperliquid's trade page (user, 2026-10-17) ----
+   Top list | chart | order | stake, Positions across the whole width below. No dots / tints / shadows in the cards,
+   just a 1px #ECDDFF line at 50% round each, corners slightly rounded. Everything follows the window: the side columns scale with its width (clamp), the
+   chart takes what's left, and the top row fills its height. Narrower windows (<= 1280px) move the stake card under
+   the order card, beside Positions; phones (<= 860px) keep their own layout. The landing frame and /showcase keep
+   the floating cards (no .ex-wide). */
+.ex-stake-tabs {
+  grid-template-columns: repeat(3, 1fr);
+}
+.ex-order-tab.is-stake.is-on,
+.ex-order-cta.is-stake {
+  color: #fff;
+  background: #8c7d9f;
+}
+.ex-stake-card {
+  grid-area: stake;
+}
+/* two halves: the picked X token on top, Neuriio below, split by the same 1px line as the cards */
+.ex-stake {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-size: 11px;
+  color: var(--muted);
+}
+.ex-stake-half {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+.ex-stake-half + .ex-stake-half {
+  border-top: 1px solid rgba(236, 221, 255, 0.5);
+}
+.ex-stake-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.ex-stake-title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ex-stake .ex-order-input {
+  height: 40px;
+}
+.ex-stake .ex-order-est {
+  padding: 10px 12px;
+}
+.ex-stake .ex-order-cta {
+  height: 38px;
+  font-size: 13px;
+}
+.ex-stake-max {
+  height: 24px;
+  padding: 0 8px;
+}
+@media (min-width: 861px) {
+  .ex-wide {
+    width: 100%;
+    margin: 176px 0 0;
+  }
+  .ex-wide .ex-grid {
+    position: relative; /* the search bar centers on the page, above the cards */
+    grid-template-columns:
+      clamp(220px, 16vw, 300px) minmax(0, 1fr) clamp(250px, 17vw, 310px)
+      clamp(250px, 17vw, 310px);
+    grid-template-rows: clamp(480px, calc(100vh - 200px), 900px) auto;
+    grid-template-areas:
+      "list chart order stake"
+      "positions positions positions positions";
+    gap: 0;
+  }
+  /* each card has its own 1px lavender line (user, 2026-10-17); neighbors overlap by 1px so the line between two
+     cards stays 1px, not 2 */
+  .ex-wide .ex-card {
+    margin: 0 0 -1px -1px;
+    background: #170f22;
+    border: 1px solid rgba(236, 221, 255, 0.5);
+    border-radius: 4px;
+    box-shadow: none;
+  }
+  .ex-wide .li-bg {
+    display: none;
+  }
+  .ex-wide .ex-center {
+    position: static;
+  }
+  .ex-wide .ex-positions-card {
+    min-height: 240px;
+  }
+}
+@media (max-width: 1280px) and (min-width: 861px) {
+  .ex-wide .ex-grid {
+    grid-template-columns: clamp(220px, 20vw, 260px) minmax(0, 1fr) clamp(260px, 25vw, 300px);
+    grid-template-areas:
+      "list chart order"
+      "positions positions stake";
+  }
+}
+
+/* ---- /launch first screen: one big Launch button (no glow) in a small circle of slowly flickering dots, with a band
+   of them ~3 dots tall across the whole page, level with the button (user, 2026-10-17) ----
+   Nothing else on the page until it's pressed (no dot strands, no testnet HYPE button). */
+.launch-go {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(380px, 80vw);
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+.launch-go-dots {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* the band: the window's full width (the page hides what spills past the stage), the circle's height, centered */
+.launch-go-dots.is-band {
+  inset: auto;
+  top: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+}
+.launch-go-btn {
+  position: relative;
+  padding: 0 46px;
+  height: 64px;
+  font: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #120c1d;
+  background: #ecddff;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.launch-go-btn:hover {
+  transform: translateY(-1px);
+}
+.launch-go-btn:active {
+  transform: translateY(0);
+}
+.launch-go-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.app:has(.launch-go) .dna-strand,
+.app:has(.launch-go) .launch-hype {
+  display: none;
 }

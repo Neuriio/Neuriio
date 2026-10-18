@@ -1,4 +1,7 @@
 // Pure indexer logic (no I/O): turns chain events and Hyperliquid fills into `trades` / `tokens` rows.
+// Works for any "world" (registry + its quote token): the old HYPE world (WHYPE, 18 decimals, USD from HYPE's price)
+// and the USDC world (6 decimals, 1 USDC = $1). The tables keep their old names (`price_hype`, `virtual_hype`,
+// `quote_amount`): they hold amounts and prices in the world's quote token.
 
 import { formatEther, formatUnits, parseAbi } from "npm:viem@2";
 import { CATEGORIES } from "./launchPass.ts";
@@ -11,7 +14,12 @@ export const launchpadEvents = parseAbi([
 ]);
 export const routerEvents = parseAbi([
   "event Swapped(address indexed token, address indexed trader, address to, bool isBuy, uint256 hypeAmount, uint256 tokenAmount)",
+  // NeuriioRouter (USDC world): a curve trade made through it; the NeuriioPad's Trade then names the router as trader
+  "event CurveTraded(address indexed token, address indexed trader, bool isBuy, uint256 quoteAmount, uint256 tokenAmount)",
 ]);
+
+/** A world's quote token: address, decimals, and USD per whole token (USDC: 1; HYPE: its price, or null). */
+export type Quote = { address: string; decimals: number; usd: number | null };
 export const pairEvents = parseAbi([
   "event Swap(address indexed sender, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out, address indexed to)",
   "event Sync(uint112 reserve0, uint112 reserve1)", // emitted right before Swap: reserves after the trade
@@ -43,19 +51,23 @@ export type TradeRow = {
 type Log<A> = { args: A; address: string; transactionHash: `0x${string}`; logIndex: number; blockNumber: bigint };
 
 const lc = (a: string) => a.toLowerCase();
-const usd = (hype: string, hypeUsd: number | null) => (hypeUsd == null ? null : Number(hype) * hypeUsd);
-/** num / den as a 36-decimal string (launched-token prices are ~1e-7 HYPE: 18 decimals would keep ~11 digits). */
-const ratio = (num: bigint, den: bigint) => (den === 0n ? null : formatUnits((num * 10n ** 36n) / den, 36));
+const usd = (amount: string, q: Quote) => (q.usd == null ? null : Number(amount) * q.usd);
+const amt = (v: bigint, q: Quote) => formatUnits(v, q.decimals);
+/** Quote per whole token from raw amounts (token has 18 decimals), as a 36-decimal string (launched-token prices
+ *  are tiny: 18 decimals would keep ~11 digits). */
+const price = (quoteRaw: bigint, tokenRaw: bigint, q: Quote) =>
+  tokenRaw === 0n ? null : formatUnits((quoteRaw * 10n ** BigInt(18 - q.decimals) * 10n ** 36n) / tokenRaw, 36);
 
-/** Pool spot price (HYPE per token) from a pair's Sync reserves. */
-export function poolPrice(reserve0: bigint, reserve1: bigint, token: string, whype: string): string | null {
-  const tokenIs0 = lc(token) < lc(whype);
-  return tokenIs0 ? ratio(reserve1, reserve0) : ratio(reserve0, reserve1);
+/** Pool spot price (quote per token) from a pair's Sync reserves. */
+export function poolPrice(reserve0: bigint, reserve1: bigint, token: string, q: Quote): string | null {
+  const tokenIs0 = lc(token) < lc(q.address);
+  return tokenIs0 ? price(reserve1, reserve0, q) : price(reserve0, reserve1, q);
 }
 
 export function launchedToToken(
   log: Log<{ token: string; creator: string; xUserId: bigint; handle: string; category: number; profileHash: string; virtualHype: bigint }>,
   ts: string,
+  q: Quote,
 ) {
   const a = log.args;
   return {
@@ -73,7 +85,7 @@ export function launchedToToken(
     launch_tx: log.transactionHash,
     launch_block: Number(log.blockNumber),
     launched_at: ts,
-    virtual_hype: formatEther(a.virtualHype), // opening price = virtual_hype / 1.073B
+    virtual_hype: amt(a.virtualHype, q), // in the quote token; opening price = virtual_hype / 1.073B
   };
 }
 
@@ -89,6 +101,7 @@ export function ftfLaunchedToToken(
     virtualHype: bigint;
   }>,
   ts: string,
+  q: Quote,
 ) {
   const a = log.args;
   return {
@@ -106,7 +119,7 @@ export function ftfLaunchedToToken(
     launch_tx: log.transactionHash,
     launch_block: Number(log.blockNumber),
     launched_at: ts,
-    virtual_hype: formatEther(a.virtualHype),
+    virtual_hype: amt(a.virtualHype, q),
   };
 }
 
@@ -122,24 +135,25 @@ export function curveTradeToRow(
     virtualToken: bigint;
   }>,
   ts: string,
-  hypeUsd: number | null,
+  q: Quote,
+  trader?: string, // the real trader when the trade came through our router (the pad only sees the router)
 ): TradeRow {
   const a = log.args;
-  const quote = formatEther(a.hypeAmount);
+  const quote = amt(a.hypeAmount, q);
   return {
     venue: "curve",
-    trader: lc(a.trader),
+    trader: lc(trader ?? a.trader),
     market: lc(a.token),
     side: a.isBuy ? "buy" : "sell",
     size: formatEther(a.tokenAmount),
     quote_amount: quote,
-    usd_value: usd(quote, hypeUsd),
-    fee: formatEther(a.fee),
+    usd_value: usd(quote, q),
+    fee: amt(a.fee, q),
     tx_hash: log.transactionHash,
     log_index: log.logIndex,
     block_number: Number(log.blockNumber),
     ts,
-    price_hype: ratio(a.virtualHype, a.virtualToken),
+    price_hype: price(a.virtualHype, a.virtualToken, q),
     curve_sold: formatEther(VIRTUAL_TOKENS - a.virtualToken),
   };
 }
@@ -147,11 +161,11 @@ export function curveTradeToRow(
 export function routerSwapToRow(
   log: Log<{ token: string; trader: string; isBuy: boolean; hypeAmount: bigint; tokenAmount: bigint }>,
   ts: string,
-  hypeUsd: number | null,
-  price: string | null = null,
+  q: Quote,
+  priceAfter: string | null = null,
 ): TradeRow {
   const a = log.args;
-  const quote = formatEther(a.hypeAmount);
+  const quote = amt(a.hypeAmount, q);
   return {
     venue: "pool",
     trader: lc(a.trader),
@@ -159,13 +173,13 @@ export function routerSwapToRow(
     side: a.isBuy ? "buy" : "sell",
     size: formatEther(a.tokenAmount),
     quote_amount: quote,
-    usd_value: usd(quote, hypeUsd),
+    usd_value: usd(quote, q),
     fee: null,
     tx_hash: log.transactionHash,
     log_index: log.logIndex,
     block_number: Number(log.blockNumber),
     ts,
-    price_hype: price,
+    price_hype: priceAfter,
     curve_sold: null,
   };
 }
@@ -174,19 +188,18 @@ export function routerSwapToRow(
 export function pairSwapToRow(
   log: Log<{ amount0In: bigint; amount1In: bigint; amount0Out: bigint; amount1Out: bigint }>,
   token: string,
-  whype: string,
+  q: Quote,
   txFrom: string,
   ts: string,
-  hypeUsd: number | null,
-  price: string | null = null,
+  priceAfter: string | null = null,
 ): TradeRow {
   const a = log.args;
-  const tokenIs0 = lc(token) < lc(whype);
-  const [tokIn, tokOut, hypeIn, hypeOut] = tokenIs0
+  const tokenIs0 = lc(token) < lc(q.address);
+  const [tokIn, tokOut, quoteIn, quoteOut] = tokenIs0
     ? [a.amount0In, a.amount0Out, a.amount1In, a.amount1Out]
     : [a.amount1In, a.amount1Out, a.amount0In, a.amount0Out];
-  const isBuy = hypeIn > 0n;
-  const quote = formatEther(isBuy ? hypeIn : hypeOut);
+  const isBuy = quoteIn > 0n;
+  const quote = amt(isBuy ? quoteIn : quoteOut, q);
   return {
     venue: "pool",
     trader: lc(txFrom),
@@ -194,13 +207,13 @@ export function pairSwapToRow(
     side: isBuy ? "buy" : "sell",
     size: formatEther(isBuy ? tokOut : tokIn),
     quote_amount: quote,
-    usd_value: usd(quote, hypeUsd),
+    usd_value: usd(quote, q),
     fee: null,
     tx_hash: log.transactionHash,
     log_index: log.logIndex,
     block_number: Number(log.blockNumber),
     ts,
-    price_hype: price,
+    price_hype: priceAfter,
     curve_sold: null,
   };
 }

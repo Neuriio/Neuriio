@@ -1,5 +1,5 @@
-// /launch — "Tokenize yourself". Center card: live token preview on the left, three short steps on the right
-// (who you are -> profile -> launch). Launch = our backend signs a one-time pass for your X account, then your
+// /launch — "Tokenize yourself". First a single Launch button (flickering dot square), then the center card: live token
+// preview on the left, short steps on the right (type -> sector -> profile -> launch; the button opens on Sector). Launch = our backend signs a one-time pass for your X account, then your
 // Neuriio wallet sends Launchpad.launch (with an optional first buy). Your token is always "@handle" / HANDLE.
 // Tokens are memes: the copy says back / support / trade, never invest.
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -31,7 +31,7 @@ import {
   Zap,
 } from "lucide-react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { formatEther, type Address, type EIP1193Provider } from "viem";
+import { formatEther, formatUnits, type Address, type EIP1193Provider } from "viem";
 import { confirmed, elysiumProvider, walletClientFor } from "../lib/tx";
 import { elysiumTestnet } from "../chain";
 import { amount } from "../lib/format";
@@ -45,21 +45,23 @@ import {
   type CurveParams,
   estimateFirstBuy,
   fetchCurveParams,
-  graduationMcapHype,
+  approveFirstBuy,
+  checkPassPad,
+  graduationMcap,
   LAUNCHPAD,
   launchArgs,
+  launchBalances,
   ftfTokenOf,
   launchedTokenOf,
   launchFtfArgs,
   launchpadAbi,
   MAX_LINKS,
-  pub,
   requestLaunchPass,
   SECTORS,
   type SectorId,
 } from "../lib/launch";
 import { EASE_OUT } from "../lib/motion";
-import { SUPABASE_URL } from "../lib/config";
+import { QUOTE, SUPABASE_URL } from "../lib/config";
 import { fileToBase64, FTF_NAME_RE, FTF_TICKER_RE, ftfCall, type FtfPassResponse, type FtfView } from "../lib/ftf";
 
 // Dev-only previews with a sample profile and a simulated launch:
@@ -102,8 +104,8 @@ const STEP_LABEL: Record<StepId, string> = {
 };
 const FTF_SIZE = 4;
 const STAGES = ["Checking your X account", "Launching on Elysium", "You're live"] as const;
-const QUICK_BUYS = ["0", "0.1", "0.5", "1"];
-const TESTNET_PARAMS: CurveParams = { virtualHype: 0.1, feeBps: 75 }; // until the chain answers
+const QUICK_BUYS = ["0", "10", "50", "100"]; // USDC
+const TESTNET_PARAMS: CurveParams = { virtualQuote: 1000, feeBps: 100 }; // until the chain answers
 
 type Link = { label: string; url: string };
 type Phase = { kind: "form" } | { kind: "launching"; stage: number } | { kind: "live"; token: Address | null } | { kind: "error"; message: string };
@@ -124,111 +126,35 @@ export function LaunchCard() {
     if (!DEMO && wallet?.address) launchedTokenOf(wallet.address as Address).then(setLaunchedToken).catch(() => {});
   }, [wallet?.address]);
 
+  // logged out: Launch opens the login first, then carries straight on to the flow
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    if (pending && loggedIn) setStarted(true);
+  }, [pending, loggedIn]);
+
   if (!started && !launchedToken) {
-    // (someone who already launched personally skips the intro; the Type step offers them an FTF)
+    // (someone who already launched personally skips this; the Type step offers them an FTF)
     return (
-      <LaunchIntro
-        loggedIn={loggedIn}
+      <LaunchGo
         busy={!DEMO && !ready}
-        onLogin={() => (DEMO ? setDemoIn(true) : login())}
-        onStart={() => setStarted(true)}
+        onLaunch={() => {
+          if (loggedIn) return setStarted(true);
+          setPending(true);
+          if (DEMO) setDemoIn(true);
+          else login();
+        }}
       />
     );
   }
   if (DEMO) return <LaunchView handle="neuriio" avatar={null} demo />;
   return (
     <LaunchView
-      handle={x?.username ?? me.name.replace("@", "")}
+      handle={(x?.username ?? me.name.replace("@", "")).toLowerCase()}
       avatar={me.avatar}
       address={wallet?.address as Address | undefined}
       getAccessToken={getAccessToken}
       getProvider={wallet ? () => elysiumProvider(wallet) : undefined}
     />
-  );
-}
-
-const FTF_LINE =
-  "The platform to tokenize your account and own your defi, or get 3 friends to form a FTF (Friends Turned Fam) and put everyone onchain.";
-
-/**
- * First screen for everyone (750 x 350): "The future of ownership" + one button (Login / Launch). Launch plays a
- * short reveal of the FTF line in the same style, with Next in the bottom-right, which opens the 3-step flow.
- */
-function LaunchIntro({
-  loggedIn,
-  busy,
-  onLogin,
-  onStart,
-}: {
-  loggedIn: boolean;
-  busy: boolean;
-  onLogin: () => void;
-  onStart: () => void;
-}) {
-  const reduce = useReducedMotion();
-  const [stage, setStage] = useState<"welcome" | "about">("welcome");
-  const rise = (delay: number) =>
-    reduce ? {} : { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.6, delay, ease: EASE_OUT } };
-  const leave = reduce ? {} : { exit: { opacity: 0, y: -14, filter: "blur(4px)", transition: { duration: 0.35, ease: EASE_OUT } } };
-  const words = FTF_LINE.split(" ");
-
-  return (
-    <div className="panel card-slot launch-card launch-intro">
-      <LaunchBg />
-      <IntroCurve />
-      {/* the Neuriio mark, top center on both intro screens (stays while the text changes) */}
-      <motion.img className="li-mark" src="/brand/mark.png" alt="Neuriio" draggable={false} {...rise(0)} />
-      <AnimatePresence mode="wait">
-        {stage === "welcome" ? (
-          <motion.div key="welcome" className="li-content" {...leave}>
-            <motion.span className="li-kicker" {...rise(0)}>
-              The future of ownership
-            </motion.span>
-            <motion.div {...rise(0.08)}>
-              <button className="li-btn" onClick={loggedIn ? () => setStage("about") : onLogin} disabled={busy}>
-                {loggedIn ? (
-                  <>
-                    <Rocket size={16} /> Launch
-                  </>
-                ) : (
-                  "Login"
-                )}
-              </button>
-            </motion.div>
-          </motion.div>
-        ) : (
-          <motion.div key="about" className="li-content li-about">
-            <p className="li-kicker li-ftf" aria-label={FTF_LINE}>
-              {words.map((w, i) => (
-                <motion.span
-                  key={i}
-                  aria-hidden
-                  initial={reduce ? false : { opacity: 0, y: 8, filter: "blur(6px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  transition={{ duration: 0.45, delay: reduce ? 0 : 0.05 + i * 0.045, ease: EASE_OUT }}
-                >
-                  {w}{" "}
-                </motion.span>
-              ))}
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {stage === "about" && (
-          <motion.button
-            key="next"
-            className="li-btn li-next"
-            onClick={onStart}
-            initial={reduce ? false : { opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4, delay: reduce ? 0 : 0.05 + words.length * 0.045, ease: EASE_OUT }}
-          >
-            Next <ArrowRight size={15} />
-          </motion.button>
-        )}
-      </AnimatePresence>
-    </div>
   );
 }
 
@@ -243,9 +169,10 @@ type ViewProps = {
 
 function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider }: ViewProps) {
   const reduce = useReducedMotion();
-  const [mode, setMode] = useState<Mode | null>(null);
+  // the Launch button opens on Sector, as a personal token (user, 2026-10-17); Back reaches Type for an FTF
+  const [mode, setMode] = useState<Mode | null>("personal");
   const [personalToken, setPersonalToken] = useState<Address | null>(null);
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(1);
   // FTF being formed
   const [ftf, setFtf] = useState<FtfView>({ draft: null, members: [] });
   const [ftfName, setFtfName] = useState("");
@@ -262,7 +189,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   const [agreed, setAgreed] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
   const [params, setParams] = useState<CurveParams>(TESTNET_PARAMS);
-  const [balance, setBalance] = useState<number | null>(null);
+  const [balance, setBalance] = useState<{ usdc: number; gas: number } | null>(null);
 
   useEffect(() => {
     fetchCurveParams().then(setParams).catch(() => {});
@@ -271,8 +198,17 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   useEffect(() => {
     if (!address) return;
     launchedTokenOf(address).then(setPersonalToken).catch(() => {});
-    pub.getBalance({ address }).then((b) => setBalance(Number(formatEther(b)))).catch(() => {});
+    launchBalances(address)
+      .then((b) => setBalance({ usdc: Number(formatUnits(b.usdc, QUOTE.decimals)), gas: Number(formatEther(b.gas)) }))
+      .catch(() => {});
   }, [address]);
+
+  // already launched personally: only an FTF is left, so back to Type
+  useEffect(() => {
+    if (!personalToken) return;
+    setMode((m) => (m === "personal" ? null : m));
+    setStep((i) => (mode === "personal" ? 0 : i));
+  }, [personalToken]);
 
   const ids = STEP_IDS[mode ?? "personal"];
   const current = ids[step];
@@ -343,7 +279,8 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
 
   const buy = Number(firstBuy) || 0;
   const est = useMemo(() => estimateFirstBuy(buy, params), [buy, params]);
-  const ticker = mode === "ftf" ? (ftf.draft?.ticker ?? ftfTicker.trim().toUpperCase()) || "TICKER" : handle.toUpperCase();
+  // tickers read in lower case with no "$" (user, 2026-10-18); on-chain they're in caps
+  const ticker = (mode === "ftf" ? ftf.draft?.ticker ?? ftfTicker.trim() : handle).toLowerCase() || "ticker";
   const cleanLinks = links.filter((l) => l.label.trim() && l.url.trim());
   const linksOk = cleanLinks.every((l) => /^https:\/\/\S+\.\S+/.test(l.url.trim()));
   const aboutLen = about.trim().length;
@@ -360,8 +297,11 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
     launch: agreed && buy >= 0,
   }[current];
   const isFtf = mode === "ftf";
-  const ftfTickerShown = ftf.draft?.ticker ?? (ftfTicker.trim().toUpperCase() || "TICKER");
-  const lowGas = balance !== null && balance < buy + 0.0005 && !demo;
+  const ftfTickerShown = (ftf.draft?.ticker ?? ftfTicker.trim()).toLowerCase() || "ticker";
+  // the first buy is paid in USDC; gas in HYPE
+  const noGas = balance !== null && balance.gas === 0 && !demo;
+  const lowUsdc = balance !== null && balance.usdc < buy && !demo;
+  const lowGas = noGas || lowUsdc;
 
   async function launch() {
     setPhase({ kind: "launching", stage: 0 });
@@ -377,8 +317,10 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
         const r = await ftfCall<FtfPassResponse>(tokenFor, "pass", { draftId: ftf.draft!.id });
         setPhase({ kind: "launching", stage: 1 });
         const provider = await getProvider!();
-        const { args, value } = launchFtfArgs(r, buy, params);
-        const hash = await walletClientFor(provider, address!).writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launchFtf", args, value });
+        checkPassPad(r.launchpad);
+        const { args, quoteIn } = launchFtfArgs(r, buy, params);
+        await approveFirstBuy(provider, address!, quoteIn);
+        const hash = await walletClientFor(provider, address!).writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launchFtf", args });
         await confirmed(hash);
         fetch(`${SUPABASE_URL}/functions/v1/indexer`, { method: "POST" }).catch(() => {});
         setPhase({ kind: "live", token: await ftfTokenOf(r.pass.ticker) });
@@ -393,8 +335,10 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
       });
       setPhase({ kind: "launching", stage: 1 });
       const provider = await getProvider!();
-      const { args, value } = launchArgs(pass, buy, params);
-      const hash = await walletClientFor(provider, address!).writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launch", args, value });
+      checkPassPad(pass.launchpad);
+      const { args, quoteIn } = launchArgs(pass, buy, params);
+      await approveFirstBuy(provider, address!, quoteIn);
+      const hash = await walletClientFor(provider, address!).writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launch", args });
       await confirmed(hash);
       // ask the indexer to run now (it's idempotent + run-locked) so Supabase has the token within seconds;
       // Explore shows it straight from the chain meanwhile
@@ -425,7 +369,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
             </div>
             <div className="lp-names">
               <span className="lp-name">{isFtf ? ftf.draft?.name || ftfName.trim() || "Your FTF" : `@${handle}`}</span>
-              <span className="lp-ticker">${isFtf ? ftfTickerShown : ticker}</span>
+              <span className="lp-ticker">{isFtf ? ftfTickerShown : ticker}</span>
             </div>
           </div>
           {isFtf && (
@@ -434,7 +378,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                 const m = ftf.members.filter((x) => x.status !== "declined")[i];
                 const ok = m?.status === "accepted";
                 return (
-                  <span key={i} className={`lp-member-dot${ok ? " is-in" : m ? " is-pending" : ""}`} title={m?.x_handle ? `@${m.x_handle}` : "Open spot"}>
+                  <span key={i} className={`lp-member-dot${ok ? " is-in" : m ? " is-pending" : ""}`} title={m?.x_handle ? `@${m.x_handle.toLowerCase()}` : "Open spot"}>
                     {m?.x_pfp_url ? <img src={m.x_pfp_url} alt="" referrerPolicy="no-referrer" /> : m?.x_handle ? m.x_handle[0].toUpperCase() : "+"}
                   </span>
                 );
@@ -455,7 +399,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
             </div>
             <div>
               <dt>Graduates at</dt>
-              <dd>{mcap(graduationMcapHype(params))} HYPE mcap</dd>
+              <dd>${mcap(graduationMcap(params))} mcap</dd>
             </div>
             <div>
               <dt>Curve fee</dt>
@@ -502,7 +446,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                       <UserRound size={20} strokeWidth={1.8} />
                       <span className="lp-cat-label">Personal</span>
                       <span className="lp-cat-hint">
-                        {personalToken ? `You already launched @${handle}` : `Your own token: @${handle} / $${handle.toUpperCase()}`}
+                        {personalToken ? `You already launched @${handle}` : `Your own token: @${handle}`}
                       </span>
                       {personalToken && (
                         <a className="link-btn lp-type-link" href={`/explore?t=${personalToken}`} onClick={(e) => e.stopPropagation()}>
@@ -532,9 +476,9 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                           <span className="lp-label">Ticker</span>
                           <input
                             className="lp-input"
-                            value={ftfTicker}
+                            value={ftfTicker.toLowerCase()}
                             maxLength={10}
-                            placeholder="DEN"
+                            placeholder="den"
                             onChange={(e) => setFtfTicker(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
                           />
                         </label>
@@ -565,7 +509,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                   ) : (
                     <>
                       <p className="lp-q">
-                        {ftf.draft.name} <span className="lp-count">${ftf.draft.ticker}</span>
+                        {ftf.draft.name} <span className="lp-count">{ftf.draft.ticker.toLowerCase()}</span>
                       </p>
                       <ul className="lp-member-list">
                         {ftf.members.filter((m) => m.status !== "declined" || m.role === "member").map((m) => (
@@ -574,7 +518,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                               {m.x_pfp_url ? <img src={m.x_pfp_url} alt="" referrerPolicy="no-referrer" /> : (m.x_handle ?? "?")[0].toUpperCase()}
                             </span>
                             <span className="lp-member-name">
-                              @{m.x_handle ?? "unknown"}
+                              @{(m.x_handle ?? "unknown").toLowerCase()}
                               {m.role === "founder" && <span className="lp-count"> · you, founder</span>}
                             </span>
                             <span className="lp-member-status">
@@ -595,7 +539,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                             {m.role !== "founder" && m.status !== "declined" && (
                               <button
                                 className="icon-btn"
-                                aria-label={`Remove @${m.x_handle}`}
+                                aria-label={`Remove @${m.x_handle?.toLowerCase()}`}
                                 disabled={ftfBusy}
                                 onClick={() => ftfDo("remove", { draftId: ftf.draft!.id, xUserId: m.x_user_id }).catch(() => {})}
                               >
@@ -752,7 +696,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                         value={firstBuy}
                         onChange={(e) => /^\d*\.?\d*$/.test(e.target.value) && setFirstBuy(e.target.value)}
                       />
-                      <span className="lp-buy-unit">HYPE</span>
+                      <span className="lp-buy-unit">USDC</span>
                     </div>
                     <div className="lp-quick">
                       {QUICK_BUYS.map((q) => (
@@ -760,23 +704,24 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                           {q === "0" ? "None" : q}
                         </button>
                       ))}
-                      {balance !== null && <span className="lp-balance">Balance {amount(balance)} HYPE</span>}
+                      {balance !== null && <span className="lp-balance">Balance {amount(balance.usdc)} USDC</span>}
                     </div>
                     <p className="lp-est">
                       {buy > 0 ? (
                         <>
-                          You get <b>~{amount(Math.round(est.tokens))} ${ticker}</b> · {est.pctOfSupply.toFixed(2)}% of supply
+                          You get <b>~{amount(Math.round(est.tokens))} {ticker}</b> · {est.pctOfSupply.toFixed(2)}% of supply
                         </>
                       ) : (
                         <>Launch with no first buy. Anyone can be first.</>
                       )}
                     </p>
-                    {lowGas && <p className="lp-warn">Add HYPE to your Neuriio wallet on Elysium first (Account → deposit address).</p>}
+                    {noGas && <p className="lp-warn">Add a little HYPE for gas to your Neuriio wallet on Elysium first (Account → deposit address).</p>}
+                    {!noGas && lowUsdc && <p className="lp-warn">Not enough USDC for this first buy.</p>}
                   </div>
                   <label className="lp-agree">
                     <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
                     <span>
-                      I understand {isFtf ? `$${ticker}` : `@${handle}`} has no promise of value or promise any returns to anyone.
+                      I understand {isFtf ? ticker : `@${handle}`} has no promise of value or promise any returns to anyone.
                     </span>
                   </label>
                 </motion.div>
@@ -804,7 +749,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                   transition={{ type: "spring", stiffness: 380, damping: 26 }}
                 >
                   <Rocket size={22} className="lp-live-icon" />
-                  <p className="lp-live-title">{isFtf ? `${ftf.draft?.name ?? "Your FTF"} ($${ticker})` : `@${handle}`} is live</p>
+                  <p className="lp-live-title">{isFtf ? `${ftf.draft?.name ?? "Your FTF"} (${ticker})` : `@${handle}`} is live</p>
                   <p className="lp-live-sub">Your token trades on its bonding curve now. It graduates to a locked pool when the curve sells out.</p>
                   <div className="lp-live-actions">
                     <a
@@ -812,7 +757,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                       target="_blank"
                       rel="noreferrer"
                       href={`https://x.com/intent/post?text=${encodeURIComponent(
-                        isFtf ? `Our FTF $${ticker} is live on @Neuriio` : `I just tokenized my account: $${ticker} is live on @Neuriio`,
+                        isFtf ? `Our FTF ${ftf.draft?.name ?? ticker} is live on @Neuriio` : `I just tokenized my account: @${handle} is live on @Neuriio`,
                       )}`}
                     >
                       Share on X
@@ -880,7 +825,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                 </button>
               ) : (
                 <button className="lock-login lp-cta lp-launch" disabled={!canNext || lowGas} onClick={launch}>
-                  <Rocket size={13} /> Launch ${ticker}
+                  <Rocket size={13} /> Launch {isFtf ? ticker : `@${handle}`}
                 </button>
               )}
             </footer>
@@ -891,60 +836,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   );
 }
 
-/**
- * Intro decoration for the bare left side: the launchpad's own bonding curve (price vs. tokens sold), rising from
- * the bottom-left into the dots on the right. It draws itself in, then a glowing dot climbs it on a loop.
- */
-const CURVE_W = 750;
-const CURVE_H = 350;
-const CURVE_PTS = Array.from({ length: 61 }, (_, i) => {
-  const s = i / 60;
-  const p = (1_073 / (1_073 - s * 793.1)) ** 2; // 1 -> ~14.7 over the curve
-  return [s * CURVE_W, CURVE_H - 26 - ((p - 1) / 13.7) * (CURVE_H - 70)] as const;
-});
-/** The curve as an SVG path, stretched by sx/sy (1/1 = the 750 x 350 viewBox). */
-const curvePath = (sx = 1, sy = 1) =>
-  CURVE_PTS.map(([x, y], i) => `${i ? "L" : "M"}${(x * sx).toFixed(1)},${(y * sy).toFixed(1)}`).join(" ");
-const CURVE_PATH = curvePath();
-
-function IntroCurve() {
-  // the line stretches with the card (preserveAspectRatio="none"); the dot's offset-path is in real pixels, so
-  // rebuild it at the card's actual size or it runs off the line wherever the card isn't 750 x 350 (phones)
-  const box = useRef<HTMLDivElement>(null);
-  const [dotPath, setDotPath] = useState(CURVE_PATH);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const fit = () => el.clientWidth && setDotPath(curvePath(el.clientWidth / CURVE_W, el.clientHeight / CURVE_H));
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return (
-    <div className="li-curve" aria-hidden ref={box}>
-      <span className="li-corner-glow" />
-      <svg viewBox={`0 0 ${CURVE_W} ${CURVE_H}`} preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="li-curve-stroke" x1="0" x2="1" y1="0" y2="0">
-            <stop offset="0" stopColor="#8c7d9f" stopOpacity="0" />
-            <stop offset="0.35" stopColor="#b3a3d6" stopOpacity="0.55" />
-            <stop offset="1" stopColor="#d8fffe" stopOpacity="0.9" />
-          </linearGradient>
-          <linearGradient id="li-curve-fill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#b3a3d6" stopOpacity="0.14" />
-            <stop offset="1" stopColor="#b3a3d6" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path d={`${CURVE_PATH} L${CURVE_W},${CURVE_H} L0,${CURVE_H} Z`} fill="url(#li-curve-fill)" className="li-curve-area" />
-        <path d={CURVE_PATH} pathLength={1} className="li-curve-line" stroke="url(#li-curve-stroke)" />
-      </svg>
-      <span className="li-curve-dot" style={{ offsetPath: `path("${dotPath}")` }} />
-    </div>
-  );
-}
-
-/** Shared card background for the intro and the flow: dot grid + two slow glows. */
+/** The flow card's background: dot grid + two slow glows. */
 function LaunchBg() {
   return (
     <div className="li-bg" aria-hidden>
@@ -1017,7 +909,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function friendly(msg: string) {
   if (/already launched/i.test(msg)) return "You already launched your token. One per X account.";
-  if (/insufficient funds/i.test(msg)) return "Not enough HYPE for this first buy plus gas.";
+  if (/insufficient funds/i.test(msg)) return "Not enough HYPE for gas.";
+  if (/exceeds balance|InsufficientBalance/i.test(msg)) return "Not enough USDC for this first buy.";
   if (/rejected|denied/i.test(msg)) return "The transaction was cancelled.";
   return msg.length > 160 ? `${msg.slice(0, 160)}…` : msg;
 }
@@ -1042,4 +935,105 @@ function InviteMore({ busy, onInvite }: { busy: boolean; onInvite: (handle: stri
       </button>
     </div>
   );
+}
+
+/**
+ * /launch first screen (user, 2026-10-17): one big Launch button in the middle of the page, inside a small circle of
+ * dots, with a band of dots ~3 rows tall running level with the button across the whole page. Every dot sits faintly
+ * and slowly flickers on and off at random (in the circle, more often near the button). Launch opens the flow on the
+ * Sector step (logging in first if needed).
+ */
+function LaunchGo({ busy, onLaunch }: { busy: boolean; onLaunch: () => void }) {
+  return (
+    <div className="launch-go">
+      <FlickerDots shape="band" />
+      <FlickerDots shape="circle" />
+      <button className="launch-go-btn" onClick={onLaunch} disabled={busy}>
+        Launch
+      </button>
+    </div>
+  );
+}
+
+const DOT_SPACING = 15; // px between neighboring dots
+const GOLDEN = Math.PI * (3 - Math.sqrt(5)); // sunflower spiral: dots fill the circle evenly, in no grid or rows
+const BAND_ROWS = 3;
+
+type Dot = { x: number; y: number; edge: number; start: number; life: number; cyan: boolean };
+
+/** Faint dots that each slowly glow up and fade, then wait before the next time. "circle": a filled circle round the
+ *  button (waits get longer toward the rim, so most flicker is near the button). "band": BAND_ROWS rows across the
+ *  page, level with the button, skipping the circle's middle (the circle canvas is its height). */
+function FlickerDots({ shape }: { shape: "circle" | "band" }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const reduce = useReducedMotion();
+  useEffect(() => {
+    const canvas = ref.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    let w = 0;
+    let h = 0;
+    let raf = 0;
+    let dots: Dot[] = [];
+    const next = (d: Dot, now: number, first = false) => {
+      d.life = 2600 + Math.random() * 3400;
+      d.start = now + (first ? -Math.random() * 9000 : 600 + Math.random() * (2000 + d.edge * d.edge * 9000));
+      d.cyan = Math.random() < 0.3;
+    };
+    const dot = (x: number, y: number, edge: number): Dot => ({ x, y, edge, start: 0, life: 0, cyan: false });
+    const layout = () => {
+      const dpr = window.devicePixelRatio || 1;
+      w = canvas.clientWidth;
+      h = canvas.clientHeight;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (shape === "circle") {
+        const R = w / 2 - 4;
+        const n = Math.floor((Math.PI * R * R) / (DOT_SPACING * DOT_SPACING));
+        dots = Array.from({ length: n }, (_, i) => {
+          const r = R * Math.sqrt((i + 0.5) / n);
+          return dot(w / 2 + Math.cos(i * GOLDEN) * r, h / 2 + Math.sin(i * GOLDEN) * r, r / R);
+        });
+      } else {
+        // the circle (same width as this canvas's height) covers the middle; the band runs out from its rim
+        const hole = h / 2 + 2;
+        dots = [];
+        for (let row = 0; row < BAND_ROWS; row++)
+          for (let x = DOT_SPACING / 2 + (row % 2) * (DOT_SPACING / 2); x < w; x += DOT_SPACING) {
+            if (Math.abs(x - w / 2) < hole) continue;
+            const jitter = () => (Math.random() - 0.5) * 4; // a touch loose, so it doesn't read as a ruled grid
+            dots.push(dot(x + jitter(), h / 2 + (row - (BAND_ROWS - 1) / 2) * DOT_SPACING + jitter(), 0.4 + Math.random() * 0.6));
+          }
+      }
+      const now = performance.now();
+      for (const d of dots) next(d, now, true);
+    };
+    const draw = (now: number) => {
+      ctx.clearRect(0, 0, w, h);
+      for (const d of dots) {
+        if (now - d.start > d.life) next(d, now);
+        const t = (now - d.start) / d.life;
+        const glow = reduce || t < 0 ? 0 : Math.sin(Math.PI * t) ** 2;
+        const color = glow > 0 && d.cyan ? "216, 255, 254" : "236, 221, 255";
+        ctx.fillStyle = `rgba(${color}, ${0.13 + glow * 0.8})`;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 1.2 + glow * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (!reduce) raf = requestAnimationFrame(draw);
+    };
+    layout();
+    draw(performance.now());
+    const ro = new ResizeObserver(() => {
+      layout();
+      if (reduce) draw(performance.now());
+    });
+    ro.observe(canvas);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [reduce, shape]);
+  return <canvas ref={ref} className={`launch-go-dots is-${shape}`} aria-hidden />;
 }

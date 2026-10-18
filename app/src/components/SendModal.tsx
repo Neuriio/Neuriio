@@ -11,7 +11,7 @@ import { Check, ExternalLink, LoaderCircle, X } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { EASE_OUT } from "../lib/motion";
 import { amount as fmt, shortAddress } from "../lib/format";
-import { DEV_DEMO as DEMO } from "../lib/explore";
+import { DEV_DEMO as DEMO, handleOf, tickerOf } from "../lib/explore";
 import { elysiumProvider } from "../lib/tx";
 import { elysiumTestnet } from "../chain";
 import { GAS_RESERVE, sendableTokens, sendToken, type SendToken } from "../lib/send";
@@ -71,7 +71,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
   const typed = toInput.trim();
   const badAddress = byAddress && typed !== "" && !isAddress(typed);
   const recipient: Address | null = !target ? null : byAddress ? (isAddress(typed) ? getAddress(typed) : null) : target.wallet;
-  const toLabel = !target ? "" : byAddress ? (recipient ? shortAddress(recipient) : "") : `@${target.handle}`;
+  const toLabel = !target ? "" : byAddress ? (recipient ? shortAddress(recipient) : "") : handleOf(target.handle);
   const canSend = !!picked && units !== null && units > 0n && !tooMuch && (DEMO ? !byAddress || !!recipient : !!recipient);
 
   async function send() {
@@ -107,7 +107,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
             className="nt-modal send-modal"
             role="dialog"
             aria-modal="true"
-            aria-label={byAddress ? "Send on Elysium" : `Send to @${target.handle}`}
+            aria-label={byAddress ? "Send on Elysium" : `Send to ${handleOf(target.handle)}`}
             onClick={(e) => e.stopPropagation()}
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -119,7 +119,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
                 <span className="nt-title">Send on Elysium</span>
               ) : (
                 <span className="nt-title send-to">
-                  Send to <Avatar handle={target.handle} pfp={target.pfp} size={22} /> <b>@{target.handle}</b>
+                  Send to <Avatar handle={target.handle} pfp={target.pfp} size={22} /> <b>{handleOf(target.handle)}</b>
                 </span>
               )}
               <button className="ex-modal-close" onClick={onClose} disabled={busy} aria-label="Close">
@@ -140,7 +140,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
                   <Check size={20} strokeWidth={3} />
                 </span>
                 <p>
-                  Sent {value} {picked?.symbol} to {toLabel}
+                  Sent {value} {picked && symOf(picked)} to {toLabel}
                 </p>
                 {phase.hash && (
                   <a className="link-btn" target="_blank" rel="noreferrer" href={`${elysiumTestnet.blockExplorers.default.url}/tx/${phase.hash}`}>
@@ -185,7 +185,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
                         <Avatar handle={t.launched ? t.label.replace("@", "") : t.symbol} pfp={t.pfp} size={26} />
                         <span className="send-token-names">
                           <span className="send-token-label">{t.label}</span>
-                          {t.launched && <span className="feed-ticker">${t.symbol}</span>}
+                          {t.launched && <span className="feed-ticker">{tickerOf(t.symbol)}</span>}
                         </span>
                         <span className="send-token-bal">{fmt(Number(formatUnits(t.balance, t.decimals)))}</span>
                       </button>
@@ -207,7 +207,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
                         autoFocus={!byAddress}
                         disabled={busy}
                       />
-                      <span className="send-sym">{picked.symbol}</span>
+                      <span className="send-sym">{symOf(picked)}</span>
                       <button className="link-btn" type="button" onClick={() => setValue(formatUnits(max, picked.decimals))} disabled={busy}>
                         Max
                       </button>
@@ -221,7 +221,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
 
                 <button className="lock-login send-go" disabled={!canSend || busy} onClick={send}>
                   {busy ? <LoaderCircle size={13} className="spin" /> : null}
-                  {busy ? "Sending…" : picked && units ? `Send ${value} ${picked.symbol}` : "Send"}
+                  {busy ? "Sending…" : picked && units ? `Send ${value} ${symOf(picked)}` : "Send"}
                 </button>
                 <p className="send-note">
                   {byAddress ? "Elysium testnet only: double-check the address, sends can't be undone." : "Goes straight to their Neuriio wallet."} You
@@ -236,3 +236,6 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
     document.body,
   );
 }
+
+/** A launched token reads as its lower-case ticker; HYPE, USDC and KNTQ keep theirs. */
+const symOf = (t: { launched: boolean; symbol: string }) => (t.launched ? tickerOf(t.symbol) : t.symbol);
