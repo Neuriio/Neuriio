@@ -82,7 +82,7 @@ function StakeHalf({
     let alive = true;
     const load = () => stakePosition(account, token).then((p) => alive && setPos(p), () => {});
     load();
-    const id = setInterval(load, 5_000); // rewards drip in every second
+    const id = setInterval(load, 10_000); // rewards drip in over an hour: every 10 s is plenty (the RPC rate-limits)
     return () => {
       alive = false;
       clearInterval(id);

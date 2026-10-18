@@ -14,6 +14,12 @@ export async function elysiumProvider(wallet: ConnectedWallet): Promise<EIP1193P
 export const walletClientFor = (provider: EIP1193Provider, account: Address) =>
   createWalletClient({ account, chain: elysiumTestnet, transport: custom(provider) });
 
+/** The nonce for the transaction after `hash` (just confirmed). Right after a transaction, Elysium's RPC can briefly
+ *  still report the old count, and a follow-up sent with it is rejected: approve-then-act flows pass this instead. */
+export async function nonceAfter(hash: Hash) {
+  return (await pub.getTransaction({ hash })).nonce + 1;
+}
+
 /** Waits for a transaction and throws if it reverted. */
 export async function confirmed(hash: Hash) {
   const receipt = await pub.waitForTransactionReceipt({ hash });

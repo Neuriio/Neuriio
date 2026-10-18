@@ -1,14 +1,14 @@
 // Explore, right column: buy/sell the picked token with the Neuriio (Privy) wallet, in USDC.
 //   Every trade goes through the NeuriioRouter (curve or pool, 1% fee); quotes are exact on-chain previews (price
-//   impact + fee); 1% slippage limit; the one-time approval is sent silently before the first buy / first sell of a
-//   token. `?demo`: simulated wallet + trades.
+//   impact + fee); 1% slippage limit; one click = one transaction: the router's one-time approvals go out silently in
+//   the background when the box opens (lib/trade.ts prepareTrading). `?demo`: simulated wallet + trades.
 import { useEffect, useMemo, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { formatEther, formatUnits, parseEther, parseUnits, type Address } from "viem";
 import { DEMO, displayName, tickerOf, type TokenStat } from "../lib/explore";
 import { compactUsd } from "../lib/format";
 import { SUPABASE_URL } from "../lib/config";
-import { balances, buyGraduates, FEE_BPS, friendlyTradeError, minOut, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
+import { balances, buyGraduates, FEE_BPS, friendlyTradeError, minOut, prepareTrading, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
 import { QUOTE } from "../lib/config";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { elysiumProvider } from "../lib/tx";
@@ -48,7 +48,13 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
     if (!t || !account || !loggedIn) return setBal(null);
     if (DEMO) return setBal({ usdc: parseUnits("1250", QUOTE.decimals), tokens: parseEther("2500000"), gas: parseEther("0.2") });
     let alive = true;
-    const load = () => balances(account, t.address as Address).then((b) => alive && setBal(b), () => {});
+    const load = () =>
+      balances(account, t.address as Address).then((b) => {
+        if (!alive) return;
+        setBal(b);
+        // approve the router in the background now, so the trade itself is one transaction
+        if (wallet) prepareTrading(() => elysiumProvider(wallet), account, t.address as Address, b);
+      }, () => {});
     load();
     const id = setInterval(load, 15_000);
     return () => {
@@ -102,7 +108,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
 
   async function submit() {
     if (!t || !q || !account) return;
-    setStatus({ kind: "busy", label: "Confirming…" });
+    setStatus({ kind: "busy", label: side === "buy" ? "Buying…" : "Selling…" });
     // does this buy take the curve's last tokens? (demo: any 250+ USDC buy on a curve token)
     const graduates =
       side === "buy" &&
@@ -115,15 +121,8 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
         await new Promise((r) => setTimeout(r, graduates ? 3200 : 1200));
       } else {
         const provider = await elysiumProvider(wallet!);
-        await trade(
-          provider,
-          account,
-          { token: t.address as Address, side, amountIn, minOut: minOut(q.out) },
-          (s) => {
-            setStatus({ kind: "busy", label: s === "approving" ? "Approving…" : "Confirming…" });
-            if (graduates && s !== "approving") setGrad("graduating"); // once the wallet has sent it
-          },
-        );
+        if (graduates) setGrad("graduating");
+        await trade(provider, account, { token: t.address as Address, side, amountIn, minOut: minOut(q.out) });
       }
       if (graduates) {
         setGrad("graduated");

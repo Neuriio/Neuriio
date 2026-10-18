@@ -319,8 +319,8 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
         const provider = await getProvider!();
         checkPassPad(r.launchpad);
         const { args, quoteIn } = launchFtfArgs(r, buy, params);
-        await approveFirstBuy(provider, address!, quoteIn);
-        const hash = await walletClientFor(provider, address!).writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launchFtf", args });
+        const nonce = await approveFirstBuy(provider, address!, quoteIn);
+        const hash = await walletClientFor(provider, address!).writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launchFtf", args, nonce });
         await confirmed(hash);
         fetch(`${SUPABASE_URL}/functions/v1/indexer`, { method: "POST" }).catch(() => {});
         setPhase({ kind: "live", token: await ftfTokenOf(r.pass.ticker) });
@@ -337,8 +337,8 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
       const provider = await getProvider!();
       checkPassPad(pass.launchpad);
       const { args, quoteIn } = launchArgs(pass, buy, params);
-      await approveFirstBuy(provider, address!, quoteIn);
-      const hash = await walletClientFor(provider, address!).writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launch", args });
+      const nonce = await approveFirstBuy(provider, address!, quoteIn);
+      const hash = await walletClientFor(provider, address!).writeContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launch", args, nonce });
       await confirmed(hash);
       // ask the indexer to run now (it's idempotent + run-locked) so Supabase has the token within seconds;
       // Explore shows it straight from the chain meanwhile

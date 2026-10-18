@@ -1,20 +1,16 @@
 // Everything the account panel shows: the Neuriio wallet's balances on Elysium and on HyperCore.
 // Each venue always lists HYPE, KNTQ and USDC (true values, even $0.00), then any other token held. On Elysium that
 // includes launched tokens (shown as "$TICKER", valued at their curve/pool price in USDC).
-import { createPublicClient, erc20Abi, fallback, formatUnits, http, type Address } from "viem";
+import { erc20Abi, formatUnits, type Address } from "viem";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
-import { elysiumTestnet } from "../chain";
-import { ELYSIUM_RPCS, ELYSIUM_TOKENS, HL_TESTNET, QUOTE, SHOWN_TOKENS } from "./config";
+import { ELYSIUM_TOKENS, HL_TESTNET, QUOTE, SHOWN_TOKENS } from "./config";
+import { pub } from "./launch";
 import { launchedHoldings, tickerOf } from "./explore";
 
 export type TokenBalance = { symbol: string; amount: number; usd: number };
 export type VenueBalance = { total: number; tokens: TokenBalance[] };
 export type Balances = { total: number; elysium: VenueBalance; hypercore: VenueBalance; at: number };
 
-const pub = createPublicClient({
-  chain: elysiumTestnet,
-  transport: fallback(ELYSIUM_RPCS.map((u) => http(u, { timeout: 5_000 }))),
-});
 const hl = new InfoClient({ transport: new HttpTransport({ isTestnet: HL_TESTNET }) });
 // Elysium tokens are valued at HyperCore MAINNET prices (the pool prices off mainnet; testnet
 // markets are separate, thin test markets)

@@ -1,9 +1,9 @@
 // Launch ("Tokenize yourself"): categories, curve math for the first-buy estimate, the launch-pass backend call and
 // the NeuriioPad transaction (priced in USDC). Mirrors src/launch/NeuriioPad.sol and supabase/functions/launch-pass.
-import { createPublicClient, erc20Abi, fallback, formatUnits, http, keccak256, parseAbi, parseEther, parseUnits, toBytes, type Address, type EIP1193Provider } from "viem";
+import { createPublicClient, erc20Abi, formatUnits, http, type Transport, keccak256, parseAbi, parseEther, parseUnits, toBytes, type Address, type EIP1193Provider } from "viem";
 import { elysiumTestnet } from "../chain";
-import { deployment, ELYSIUM_RPCS, QUOTE, SUPABASE_URL } from "./config";
-import { confirmed, walletClientFor } from "./tx";
+import { deployment, ELYSIUM_RPC, QUOTE, SUPABASE_URL } from "./config";
+import { confirmed, nonceAfter, walletClientFor } from "./tx";
 
 /** The CURRENT Launchpad version: new launches go here. Existing tokens trade on their own version (TokenStat.launchpad). */
 export const LAUNCHPAD = deployment.launchpad as Address;
@@ -63,12 +63,37 @@ export const launchpadAbi = parseAbi([
   "function ftf(address) view returns ((string name, bytes32 profileHash, uint64[4] memberXIds, address[4] members))",
 ]);
 
-// pollingInterval: Elysium makes a block every ~0.16 s; viem's default without a known block time polls every 4 s, which
-// held every "confirmed" (and the balance refresh after a trade) back by up to 4 s
+/** Elysium's public RPC (a Conduit node) rate-limits each visitor: HTTP 429 / JSON-RPC code -32017 "Rate Limit
+ *  Exceeded" (2026-10-18: about 1 request in 4 when a page is busy). viem doesn't retry that code, so a rate-limited
+ *  read failed at once ("RPC Request failed."): wait a little and ask again. */
+const isRateLimited = (e: unknown) => /Rate Limit|-32017|\b429\b/i.test(`${(e as Error)?.message} ${(e as { details?: string })?.details ?? ""}`);
+const patient = (base: Transport): Transport => (opts) => {
+  const t = base(opts);
+  return {
+    ...t,
+    request: (async (args: Parameters<typeof t.request>[0]) => {
+      for (let i = 0; ; i++) {
+        try {
+          return await t.request(args);
+        } catch (e) {
+          if (i === 4 || !isRateLimited(e)) throw e;
+          await new Promise((r) => setTimeout(r, 200 * 2 ** i + Math.random() * 200)); // 0.2, 0.4, 0.8, 1.6 s
+        }
+      }
+    }) as typeof t.request,
+  };
+};
+
+// The app's one reader for Elysium. pollingInterval: Elysium makes a block every ~0.16 s; viem's default without a
+// known block time polls every 4 s, which held every "confirmed" (and the balance refresh after a trade) back by up to
+// 4 s; 300 ms asked the rate-limited RPC too often, 750 ms still confirms within a second. batch.multicall: contract
+// reads made in the same moment (balances, stake card, positions, quotes...) go out as one multicall, so the page asks
+// the RPC far less often.
 export const pub = createPublicClient({
   chain: elysiumTestnet,
-  transport: fallback(ELYSIUM_RPCS.map((u) => http(u))),
-  pollingInterval: 300,
+  transport: patient(http(ELYSIUM_RPC, { timeout: 10_000, retryCount: 2 })),
+  batch: { multicall: { wait: 16 } },
+  pollingInterval: 750,
 });
 
 /** The current pad's curve: its starting virtual USDC reserve (whole USDC) and fee. */
@@ -170,13 +195,15 @@ export async function launchBalances(wallet: Address) {
   return { usdc, gas };
 }
 
-/** Approves the pad for the first buy's USDC if it isn't already (the wallet sends it silently). */
+/** Approves the pad for the first buy's USDC if it isn't already (the wallet sends it silently). Returns the nonce for
+ *  the launch when it sent one (see nonceAfter), else undefined. */
 export async function approveFirstBuy(provider: EIP1193Provider, account: Address, quoteIn: bigint) {
-  if (quoteIn === 0n) return;
+  if (quoteIn === 0n) return undefined;
   const allowance = await pub.readContract({ address: QUOTE.address, abi: erc20Abi, functionName: "allowance", args: [account, LAUNCHPAD] });
-  if (allowance >= quoteIn) return;
+  if (allowance >= quoteIn) return undefined;
   const hash = await walletClientFor(provider, account).writeContract({ address: QUOTE.address, abi: erc20Abi, functionName: "approve", args: [LAUNCHPAD, quoteIn] });
   await confirmed(hash);
+  return nonceAfter(hash);
 }
 
 /** The launched FTF token for a ticker (or null). */

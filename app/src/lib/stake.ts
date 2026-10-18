@@ -7,7 +7,7 @@
 import { erc20Abi, maxUint256, parseAbi, type Address, type EIP1193Provider } from "viem";
 import { deployment } from "./config";
 import { pub } from "./launch";
-import { confirmed, walletClientFor } from "./tx";
+import { confirmed, nonceAfter, walletClientFor } from "./tx";
 
 export const STAKING = deployment.staking as Address;
 export const NEURIIO = deployment.neuriio as Address;
@@ -49,14 +49,17 @@ export async function stakePosition(user: Address, token: Address): Promise<Stak
 /** Stakes `amount` of `token` (approving the staking contract first if an X token still needs it). */
 export async function stake(provider: EIP1193Provider, account: Address, token: Address, amount: bigint, onApproving?: () => void) {
   const w = walletClientFor(provider, account);
+  let nonce: number | undefined;
   if (token.toLowerCase() !== NEURIIO.toLowerCase()) {
     const allowance = await pub.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [account, STAKING] });
     if (allowance < amount) {
       onApproving?.();
-      await confirmed(await w.writeContract({ address: token, abi: erc20Abi, functionName: "approve", args: [STAKING, maxUint256] }));
+      const hash = await w.writeContract({ address: token, abi: erc20Abi, functionName: "approve", args: [STAKING, maxUint256] });
+      await confirmed(hash);
+      nonce = await nonceAfter(hash);
     }
   }
-  await confirmed(await w.writeContract({ address: STAKING, abi: stakingAbi, functionName: "stake", args: [token, amount] }));
+  await confirmed(await w.writeContract({ address: STAKING, abi: stakingAbi, functionName: "stake", args: [token, amount], nonce }));
 }
 
 export async function unstake(provider: EIP1193Provider, account: Address, token: Address, amount: bigint) {

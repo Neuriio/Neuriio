@@ -8,10 +8,9 @@ import deployment from "../../../deployments/elysium-testnet.json";
  *  `volume_hype` columns and the app's `hypeUsd` props now carry this quote, not HYPE.) */
 export const QUOTE = { symbol: "USDC", address: deployment.usdc as Address, decimals: 6, usd: 1 } as const;
 
-export const ELYSIUM_RPCS = [
-  "https://testnet-rpc.elysium.kinetiq.xyz",
-  "https://elysium-testnet-rpc.hypedexer.com/", // same chain, third-party node (fallback)
-];
+/** Elysium testnet RPC for the app's reads. (The third-party hypedexer node blocks browsers with CORS, so the app
+ *  can't use it as a fallback; the keeper still does.) */
+export const ELYSIUM_RPC = "https://testnet-rpc.elysium.kinetiq.xyz";
 
 export const HL_TESTNET = true;
 
