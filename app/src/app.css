@@ -4283,8 +4283,8 @@ a.ex-row {
    Top list | chart | order | stake, Positions across the whole width below. No dots / tints / shadows in the cards,
    just a 1px #ECDDFF line at 50% round each, corners slightly rounded. Everything follows the window: the side columns scale with its width (clamp), the
    chart takes what's left, and the top row fills its height. Narrower windows (<= 1280px) move the stake card under
-   the order card, beside Positions; phones (<= 860px) keep their own layout. The landing frame and /showcase keep
-   the floating cards (no .ex-wide). */
+   the order card, beside Positions. Phones (<= 860px) stack the cards in one column, the same flat look, touching and
+   as wide as the screen (user, 2026-10-18). The landing frame and /showcase keep the floating cards (no .ex-wide). */
 .ex-stake-tabs {
   grid-template-columns: repeat(3, 1fr);
 }
@@ -4342,9 +4342,29 @@ a.ex-row {
   height: 24px;
   padding: 0 8px;
 }
+/* every width: as wide as the window, no gaps, flat cards. Each card has its own 1px lavender line (user,
+   2026-10-17); neighbors overlap by 1px so the line between two cards stays 1px, not 2 */
+.ex-wide {
+  width: 100%;
+}
+.ex-wide .ex-grid {
+  gap: 0;
+}
+.ex-wide .ex-center {
+  gap: 0;
+}
+.ex-wide .ex-card {
+  margin: 0 0 -1px;
+  background: #170f22;
+  border: 1px solid rgba(236, 221, 255, 0.5);
+  border-radius: 4px;
+  box-shadow: none;
+}
+.ex-wide .li-bg {
+  display: none;
+}
 @media (min-width: 861px) {
   .ex-wide {
-    width: 100%;
     margin: 176px 0 0;
   }
   /* the cards start right under the header, whatever its height */
@@ -4363,19 +4383,10 @@ a.ex-row {
     grid-template-areas:
       "list chart order stake"
       "positions positions positions positions";
-    gap: 0;
   }
-  /* each card has its own 1px lavender line (user, 2026-10-17); neighbors overlap by 1px so the line between two
-     cards stays 1px, not 2 */
+  /* side by side: overlap the left neighbor's line too */
   .ex-wide .ex-card {
-    margin: 0 0 -1px -1px;
-    background: #170f22;
-    border: 1px solid rgba(236, 221, 255, 0.5);
-    border-radius: 4px;
-    box-shadow: none;
-  }
-  .ex-wide .li-bg {
-    display: none;
+    margin-left: -1px;
   }
   .ex-wide .ex-center {
     position: static;
