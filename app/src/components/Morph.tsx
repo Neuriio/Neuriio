@@ -50,7 +50,7 @@ export function Morph({
   const panelRef = useRef<HTMLDivElement>(null);
   const morph = reduce ? { duration: 0.15 } : SPRING_MORPH;
   const close = () => setOpen(false);
-  const { lift, front, hoverProps } = useCardLift(label);
+  const { front, hoverProps } = useCardLift(label);
 
   useEffect(() => {
     if (!open) return;
@@ -87,7 +87,6 @@ export function Morph({
               type="button"
               layoutId={layoutId}
               transition={{ default: morph, layout: morph, y: SPRING_LIFT }}
-              animate={{ y: reduce ? 0 : lift }}
               whileHover={hoverLift && !reduce ? { y: -hoverLift } : undefined}
               style={{ borderRadius: radius }}
               onClick={() => setOpen(true)}

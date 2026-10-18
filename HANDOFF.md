@@ -58,7 +58,7 @@ NeuriioMinter, NeuriioPlatformToken), `src/launch/NeuriioFees.sol` + `NeuriioPad
     below; resizes with the window (<= 1280px the stake card moves under the trade card; phones keep their layout).
     Cards: 1px #ECDDFF border at 50%, 4px corners, no dots/gradients/shadows. Landing frame + /showcase unchanged.
   - Stake card (`app/src/components/StakeCard.tsx`), split in half: top = the picked X token, bottom = $NEURIIO; Stake /
-    Unstake / Claim tabs, #8C7D9F accents. LAYOUT ONLY (buttons disabled, values "—"). Not on phones yet.
+    Unstake / Claim tabs, #8C7D9F accents; wired 2026-10-18. Phones: a Stake tab in Explore (About / Trade / Stake / Positions).
   - /launch opens on one Launch button (no glow) in a small circle of slowly flickering dots plus a 3-dot-tall band of
     them across the page, level with the button; Launch goes straight to the Sector step (log in first if needed;
     someone who already launched lands on Type). Old two-screen intro removed.

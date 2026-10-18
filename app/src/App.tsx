@@ -3,7 +3,8 @@ import "./app.css";
 import { AccountBox } from "./components/AccountBox";
 import { PointsBox } from "./components/PointsBox";
 import { CardStack } from "./components/CardStack";
-import { MenuBox } from "./components/MenuBox";
+import { TopNav } from "./components/TopNav";
+import { HeaderSearch } from "./components/HeaderSearch";
 import { HypeButton } from "./components/HypeButton";
 import { SocialLinks } from "./components/SocialLinks";
 import { LogoMarquee } from "./components/LogoMarquee";
@@ -34,16 +35,23 @@ function Page() {
   useRegisterOnLogin();
   useNotificationsPoller();
   return (
-    <div className={PAGE === "/" ? "app app-landing" : "app"}>
+    <div className={PAGE === "/" ? "app app-landing" : `app app-nav${PAGE === "/explore" ? " app-explore" : ""}`}>
       {PAGE === "/" && <LandingBg />}
       <header className="top">
         <div className="top-left">
           <a className="logo" href="/" aria-label="Neuriio home">
             <img src="/brand/logo.png" alt="Neuriio" width={52} height={52} />
           </a>
-          {PAGE !== "/" && <MenuBox />}
         </div>
+        {PAGE !== "/" && <TopNav current={PAGE} />}
         <LogoMarquee logos={tickers} className="top-marquee" />
+        {/* the token search: Explore puts its own here (desktop; picking switches the token in place); other pages
+            search and open the token in Explore */}
+        {PAGE !== "/" && (
+          <div id="top-search" className="top-search">
+            {PAGE !== "/explore" && <HeaderSearch />}
+          </div>
+        )}
         <CardStack>
           <PointsBox />
           <AccountBox />

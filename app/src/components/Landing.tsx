@@ -5,7 +5,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ExploreCard } from "./ExploreCard";
 import { LogoMarquee } from "./LogoMarquee";
-import { MenuBox } from "./MenuBox";
+import { Search } from "lucide-react";
+import { TopNav } from "./TopNav";
 import { SocialLinks } from "./SocialLinks";
 import { useTickerLogos } from "../lib/tickers";
 import { useIsMobile } from "../lib/media";
@@ -81,20 +82,28 @@ function ShowcaseFrame() {
   );
 }
 
-/** /showcase: the desktop Explore page as a still picture (shown inside ShowcaseFrame on phones): logo + menu,
- *  marquee (held still), Account + Points as signed out, the showcase Explore card, the footer links. */
+/** /showcase: the desktop Explore page as a still picture (shown inside ShowcaseFrame on phones): logo + page links,
+ *  marquee (held still), the search, Account + Points as signed out, the showcase Explore card, the footer links. */
 export function Showcase() {
   const tickers = useTickerLogos();
   return (
-    <div className="app ld-shot">
+    <div className="app app-nav ld-shot">
       <header className="top">
         <div className="top-left">
           <span className="logo">
             <img src="/brand/logo.png" alt="" width={52} height={52} />
           </span>
-          <MenuBox />
         </div>
+        <TopNav current="/explore" />
         <LogoMarquee logos={tickers} className="top-marquee" />
+        <div className="top-search">
+          <div className="ex-search-top">
+            <label className="ex-search">
+              <Search size={15} aria-hidden />
+              <input placeholder="Search @handle or FTF" tabIndex={-1} readOnly />
+            </label>
+          </div>
+        </div>
         {/* Account + Points as a signed-out visitor sees them (never the viewer's own account) */}
         <div className="top-right card-stack">
           <div className="top-box-slot" data-card="Account">

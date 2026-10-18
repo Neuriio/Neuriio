@@ -5,11 +5,13 @@
 //   center:     the picked token (header, price + 24h change, market-cap candle chart 5m-4H, stats, curve progress)
 //   right card: order card (buy/sell); beside it (the app, not the landing): stake / unstake / claim
 //   under the chart (same width): your positions
-// Phones (<= 860px): search, the chart card (no Profile button, no Log/Reset), then one card with three tabs:
-//   About (creator profile, bio, creator fees, stats, curve progress) · Trade (the order card) · Positions.
+// Phones (<= 860px): search, the chart card (no Profile button, no Log/Reset), then one card with four tabs:
+//   About (creator profile, bio, creator fees, stats, curve progress) · Trade (the order card) · Stake (the stake card)
+//   · Positions.
 //   The Top 25 moves to /trending on phones.
 // `/explore?t=<handle|address>` opens a token (e.g. right after its launch). `?demo` (dev) = sample data.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence } from "motion/react";
 import { ExternalLink, Search, UserRound } from "lucide-react";
 import { CATEGORIES, SECTORS } from "../lib/launch";
@@ -112,8 +114,10 @@ export function ExploreCard() {
     else getToken(address).then((x) => x && setPicked(x), () => {});
   };
 
-  const center = (
-    <div className="ex-center">
+  // the search sits in the header (App's #top-search), on every screen size; the landing keeps it above the chart
+  const [searchSlot, setSearchSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setSearchSlot(LANDING ? null : document.getElementById("top-search")), []);
+  const search = (
       <div className="ex-search-top">
         <label className="ex-search">
           <Search size={15} aria-hidden />
@@ -150,6 +154,11 @@ export function ExploreCard() {
           </ul>
         )}
       </div>
+  );
+
+  const center = (
+    <div className="ex-center">
+      {searchSlot ? createPortal(search, searchSlot) : search}
       <section className="panel ex-card ex-detail-card">
         <CardBg side="center" />
         {picked ? (
@@ -227,14 +236,15 @@ export function ExploreCard() {
   );
 }
 
-type MobileTab = "about" | "trade" | "positions";
+type MobileTab = "about" | "trade" | "stake" | "positions";
 const MOBILE_TABS: { id: MobileTab; label: string }[] = [
   { id: "about", label: "About" },
   { id: "trade", label: "Trade" },
+  { id: "stake", label: "Stake" },
   { id: "positions", label: "Positions" },
 ];
 
-/** Phones: one card under the chart with About / Trade / Positions. All three stay mounted (hidden when not
+/** Phones: one card under the chart with About / Trade / Stake / Positions. All of them stay mounted (hidden when not
  *  picked), so switching tabs keeps a typed amount. `price` = the live price, newer than the stats'. */
 function MobileTabs({
   t,
@@ -263,6 +273,9 @@ function MobileTabs({
       </div>
       <div hidden={tab !== "trade"}>
         <OrderCard key={t?.address} t={t} hypeUsd={hypeUsd} />
+      </div>
+      <div hidden={tab !== "stake"} className="ex-mtab-stake">
+        <StakeCard key={t?.address} t={t} />
       </div>
       <div hidden={tab !== "positions"} className="ex-mtab-positions">
         <PositionsCard hypeUsd={hypeUsd} onPick={onPick} bare />
