@@ -1,4 +1,4 @@
-# Handoff — Neuriio (state as of 2026-10-18: LIVE on app.neuriio.xyz (HYPE world, testnet); the USDC world is deployed, reviewed (no rebuild needed) and the app is partly moved to it LOCALLY (not pushed); NEXT CHAT: see "USDC WORLD" -> "What's left")
+# Handoff — Neuriio (state as of 2026-10-18: the USDC world is LIVE on app.neuriio.xyz (testnet): contracts, backend, app and docs all switched; NEXT CHAT: see "USDC WORLD" -> "What's left")
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 **Consolidated 2026-10-12:** finished work, old session logs, the paused PropAMM stack, superseded deployments and the
@@ -9,7 +9,7 @@ security sweeps #1-4 in detail, the Uniswap V4 research and Appendix B/C video p
 **Project name: Neuriio.** Local folder `/Users/von/Neuriio`; code in the **private** GitHub repo
 **https://github.com/finding-agi/Neuriio** (branch `main`). Railway redeploys the app + watcher on every push to `main`.
 
-## USDC WORLD (2026-10-17): contracts live + verified, backend indexing it, app moved LOCALLY (nothing pushed)
+## USDC WORLD (live since 2026-10-18): contracts, backend (switch run), app (pushed 4701f76) and docs (88206f4)
 
 Final design (user, 2026-10-17 evening; memory "loss-mint-staking-plan"): tokens pair with USDC; every trade pays 1%
 (curve and pool, bots included: the fee is inside the new pools). Curve fees: 80% $NEURIIO stakers / 10% KNTQ buyback /
@@ -85,14 +85,13 @@ NeuriioMinter, NeuriioPlatformToken), `src/launch/NeuriioFees.sol` + `NeuriioPad
       `feeVaults`, refreshed every 15 s; hidden on the landing / showcase.
 
 ### What's left (in order)
-1. **Finish wiring the app to USDC.** Done 2026-10-18 except: a **real trade / stake / claim from the app** with a
-   wallet holding test USDC (user, in their own browser; launches only after the switch), and **test USDC for
-   testers** (the faucet only gives HYPE; user: circle back).
-2. **Docs and copy:** remove "no revenue share"; explain the fee split above.
-3. **Go-live:** `./script/supabase-deploy.sh switch` (db push + app_config/secrets to USDC + all functions), push when
-   the user says (Railway redeploys app + watcher), restart the watcher if needed, tell testers the old HYPE tokens are
-   gone, remove the Privy LAN origin `https://192.168.0.64:5174`. **Don't push before this:** the local app is on the
-   USDC world and would break the live HYPE site.
+Done 2026-10-18: step 2 docs (GitBook live: 1% USDC fees + split, new Staking page, new contracts) and the go-live
+switch (`supabase-deploy.sh switch`: launch passes for the USDC pad, app_config + no-header API = USDC world; then
+everything pushed, Railway redeployed app + watcher).
+1. **Test USDC for testers:** the faucet only gives HYPE, so nobody new can trade yet. Make the faucet wallet (a
+   TestUSDC minter) mint test USDC with the HYPE claim (`supabase/functions/ftf`, `claimHype`).
+2. **A real launch / trade / stake / claim from the app** with a wallet holding test USDC (user, in their browser).
+3. Tell testers the old HYPE tokens are gone; remove the Privy LAN origin `https://192.168.0.64:5174`.
 
 Mainnet only (later): multisig ownership incl. the $NEURIIO minter + `freezeMintCurve()`, Fable audit, real bridged
 USDC, legal review.
