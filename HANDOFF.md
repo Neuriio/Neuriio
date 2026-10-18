@@ -88,8 +88,10 @@ NeuriioMinter, NeuriioPlatformToken), `src/launch/NeuriioFees.sol` + `NeuriioPad
 Done 2026-10-18: step 2 docs (GitBook live: 1% USDC fees + split, new Staking page, new contracts) and the go-live
 switch (`supabase-deploy.sh switch`: launch passes for the USDC pad, app_config + no-header API = USDC world; then
 everything pushed, Railway redeployed app + watcher).
-1. **Test USDC for testers:** the faucet only gives HYPE, so nobody new can trade yet. Make the faucet wallet (a
-   TestUSDC minter) mint test USDC with the HYPE claim (`supabase/functions/ftf`, `claimHype`).
+1. **Test USDC faucet (built 2026-10-18):** one claim (button under the launch card: "Get testnet funds") pays each X
+   account, once each, 0.2 HYPE + 1,000 test USDC from the faucet wallet's balance (`ftf` claimHype; table
+   `usdc_claims`; accounts that already took the HYPE see "Get 1,000 test USDC"). Function + table are live; the new
+   button ships with the next push. Fund / top up the faucet: `./script/mint-test-usdc.sh faucet 500000`.
 2. **A real launch / trade / stake / claim from the app** with a wallet holding test USDC (user, in their browser).
 3. Tell testers the old HYPE tokens are gone; remove the Privy LAN origin `https://192.168.0.64:5174`.
 

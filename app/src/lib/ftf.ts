@@ -50,8 +50,12 @@ export type Notice =
   | { kind: "hype"; id: number; wallet: string; from: NoticeFrom; at: string };
 
 /** Your latest manual request, and whether you've had your one faucet claim. */
-export type HypeStatus = { status: "none" | "pending" | "sent" | "dismissed"; at: string | null; claimed?: boolean };
-export type HypeClaim = { status: "sent"; tx: string } | { status: "claimed" } | { status: "fallback" };
+/** `claimed`: this X account got its 0.2 HYPE from the faucet; `usdcClaimed`: its 1,000 test USDC. */
+export type HypeStatus = { status: "none" | "pending" | "sent" | "dismissed"; at: string | null; claimed?: boolean; usdcClaimed?: boolean };
+export type HypeClaim =
+  | { status: "sent"; tx: string; hypeTx?: string; usdcTx?: string }
+  | { status: "claimed" }
+  | { status: "fallback"; usdcTx?: string };
 
 export const FTF_NAME_RE = /^[A-Za-z0-9_.&'-]+( [A-Za-z0-9_.&'-]+)*$/;
 export const FTF_TICKER_RE = /^[A-Z0-9]{2,10}$/;
@@ -147,9 +151,9 @@ function demoCall(action: string, body: Record<string, unknown>): unknown {
     case "inbox":
       return { items: demoNotices };
     case "hypeStatus":
-      return { status: "none", at: null, claimed: false };
+      return { status: "none", at: null, claimed: false, usdcClaimed: false };
     case "claimHype":
-      return { status: "sent", tx: "0x" + "ab".repeat(32) };
+      return { status: "sent", tx: "0x" + "ab".repeat(32), hypeTx: "0x" + "ab".repeat(32), usdcTx: "0x" + "cd".repeat(32) };
     case "hype":
       return { status: "pending", at: new Date().toISOString() };
     case "mine":

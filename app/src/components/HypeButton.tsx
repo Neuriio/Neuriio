@@ -1,8 +1,10 @@
-// Testnet HYPE button, under the launch card on /launch (logged in only).
-//   First time: "Get 0.2 testnet HYPE" opens a pop-up ("Receiving 0.2 HYPE" + Receive); Receive sends 0.2 HYPE from the
-//   faucet wallet to your Neuriio wallet, once per X account ever (ftf function: claimHype). If the faucet can't pay
-//   right now, the pop-up files a manual request instead (it lands in the admins' notifications).
-//   After your claim: "Request testnet HYPE" is the manual request as before (ftf: hype / hypeStatus): "HYPE requested"
+// Testnet faucet button, under the launch card on /launch (logged in only).
+//   First time: "Get testnet funds" opens a pop-up ("Receiving 0.2 HYPE + 1,000 USDC" + Receive); Receive sends, from
+//   the faucet wallet to your Neuriio wallet, what this X account hasn't had yet: 0.2 HYPE for gas and 1,000 test USDC
+//   to trade, each once per X account ever (ftf function: claimHype). Accounts that already took the HYPE see "Get
+//   1,000 test USDC". If the faucet has no HYPE to give, the pop-up files a manual request instead (it lands in the
+//   admins' notifications).
+//   After both claims: "Request testnet HYPE" is the manual request as before (ftf: hype / hypeStatus): "HYPE requested"
 //   while it's open and "HYPE sent" for 24 h after an admin sends it.
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -14,9 +16,12 @@ import { EASE_OUT } from "../lib/motion";
 
 const AGAIN_MS = 24 * 60 * 60 * 1000;
 const AMOUNT = "0.2";
+const USDC_AMOUNT = "1,000";
 const EXPLORER_TX = "https://elysium.kinetiq.xyz/tx/";
 
 type Step = "ask" | "sending" | "sent" | "requested" | "claimed" | "error";
+/** What a claim would pay right now. */
+type Gives = { hype: boolean; usdc: boolean };
 
 export function HypeButton() {
   const { ready, authenticated, getAccessToken } = usePrivy();
@@ -26,6 +31,7 @@ export function HypeButton() {
   const [error, setError] = useState<string | null>(null);
   const [popup, setPopup] = useState<Step | null>(null);
   const [tx, setTx] = useState<string | null>(null);
+  const [asked, setAsked] = useState<Gives>({ hype: true, usdc: true }); // what the open pop-up is paying
 
   const load = useCallback(() => {
     ftfCall<HypeStatus>(getAccessToken, "hypeStatus").then(setSt, () => {});
@@ -60,11 +66,12 @@ export function HypeButton() {
       if (r.status === "sent") {
         setTx(r.tx);
         setPopup("sent");
-        setSt((s) => s && { ...s, claimed: true });
+        setSt((s) => s && { ...s, claimed: s.claimed || !!r.hypeTx || !r.usdcTx, usdcClaimed: s.usdcClaimed || !!r.usdcTx });
       } else if (r.status === "claimed") {
         setPopup("claimed");
-        setSt((s) => s && { ...s, claimed: true });
+        setSt((s) => s && { ...s, claimed: true, usdcClaimed: true });
       } else {
+        if (r.usdcTx) setSt((s) => s && { ...s, usdcClaimed: true });
         await request(); // the faucet can't pay right now: ask the team instead
         setPopup("requested");
       }
@@ -87,11 +94,14 @@ export function HypeButton() {
     }
   };
 
-  const first = !st.claimed && !pending;
+  // what a claim still pays this X account (the USDC can be claimed even while a HYPE request is open)
+  const gives: Gives = { hype: !st.claimed && !pending, usdc: !st.usdcClaimed };
+  const first = gives.hype || gives.usdc;
   const done = !first && (pending || sent);
-  const label = error && !popup ? error : first ? `Get ${AMOUNT} testnet HYPE` : pending ? "HYPE requested" : sent ? "HYPE sent" : "Request testnet HYPE";
+  const what = gives.hype && gives.usdc ? "testnet funds" : gives.usdc ? `${USDC_AMOUNT} test USDC` : `${AMOUNT} testnet HYPE`;
+  const label = error && !popup ? error : first ? `Get ${what}` : pending ? "HYPE requested" : sent ? "HYPE sent" : "Request testnet HYPE";
   const title = first
-    ? `Get ${AMOUNT} testnet HYPE in your Neuriio wallet`
+    ? `Get ${gives.hype && gives.usdc ? `${AMOUNT} HYPE + ${USDC_AMOUNT} USDC` : what} in your Neuriio wallet`
     : pending
       ? "Requested: we'll send testnet HYPE to your wallet soon"
       : sent
@@ -102,7 +112,7 @@ export function HypeButton() {
     <>
       <button
         className={`panel top-box hype-btn${done ? " hype-btn-done" : ""}${error && !popup ? " hype-btn-error" : ""}`}
-        onClick={first ? () => setPopup("ask") : manual}
+        onClick={first ? () => (setAsked(gives), setPopup("ask")) : manual}
         disabled={busy || done}
         title={title}
         aria-label={title}
@@ -110,19 +120,21 @@ export function HypeButton() {
         {done ? <Check size={14} strokeWidth={3} /> : <Droplet size={14} strokeWidth={2.4} />}
         <span className="top-value hype-btn-text">{label}</span>
       </button>
-      <HypePopup step={popup} tx={tx} error={error} onReceive={receive} onClose={() => (setPopup(null), setError(null))} />
+      <HypePopup step={popup} gives={asked} tx={tx} error={error} onReceive={receive} onClose={() => (setPopup(null), setError(null))} />
     </>
   );
 }
 
 function HypePopup({
   step,
+  gives,
   tx,
   error,
   onReceive,
   onClose,
 }: {
   step: Step | null;
+  gives: Gives;
   tx: string | null;
   error: string | null;
   onReceive: () => void;
@@ -135,12 +147,17 @@ function HypePopup({
     return () => removeEventListener("keydown", onKey);
   }, [step, onClose]);
 
+  const paying = gives; // fixed when the pop-up opened, while the button behind it updates
+  const what = [paying.hype && `${AMOUNT} HYPE`, paying.usdc && `${USDC_AMOUNT} USDC`].filter(Boolean).join(" + ") || `${AMOUNT} HYPE`;
   const body: Record<Step, { title: string; text: string }> = {
-    ask: { title: `Receiving ${AMOUNT} HYPE`, text: "Testnet HYPE for your Neuriio wallet, to launch and trade. One per X account." },
-    sending: { title: `Receiving ${AMOUNT} HYPE`, text: "Sending it to your wallet…" },
-    sent: { title: `${AMOUNT} HYPE received`, text: "It's in your Neuriio wallet. Open Account to see it." },
-    requested: { title: "Request sent", text: "The faucet is out right now, so we've asked the team. Your HYPE will arrive soon." },
-    claimed: { title: "Already received", text: `This X account already got its ${AMOUNT} HYPE.` },
+    ask: {
+      title: `Receiving ${what}`,
+      text: `Testnet ${paying.usdc ? "USDC to trade, launch and stake" : "HYPE"}${paying.hype && paying.usdc ? ", and HYPE for gas" : paying.hype ? " for gas" : ""}, in your Neuriio wallet. Once per X account.`,
+    },
+    sending: { title: `Receiving ${what}`, text: "Sending it to your wallet…" },
+    sent: { title: `${what} received`, text: "It's in your Neuriio wallet. Open Account to see it." },
+    requested: { title: "Request sent", text: "The faucet is out of HYPE right now, so we've asked the team. Your HYPE will arrive soon." },
+    claimed: { title: "Already received", text: "This X account already got its testnet HYPE and USDC." },
     error: { title: "Something went wrong", text: error ?? "Try again in a moment." },
   };
 

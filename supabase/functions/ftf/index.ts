@@ -18,10 +18,12 @@
 //   pass    { draftId }                founder, with exactly 4 accepted: a signed FtfPass for Launchpad.launchFtf
 //
 // Testnet HYPE requests (the header button; admins = app_config.hype_admins, they see requests in their inbox):
-//   hypeStatus {}                      your latest request: { status: none | pending | sent | dismissed, at, claimed }
-//   claimHype  {}                      the faucet: 0.2 HYPE to your Neuriio wallet, once per X account ever
-//                                      -> { status: "sent", tx } | { status: "claimed" } | { status: "fallback" } (faucet
-//                                      can't pay: the app files a manual request instead)
+//   hypeStatus {}                      your latest request: { status: none | pending | sent | dismissed, at, claimed,
+//                                      usdcClaimed }
+//   claimHype  {}                      the faucet: what this X account hasn't had yet, once each, ever: 0.2 HYPE (gas)
+//                                      and 1,000 test USDC, to your Neuriio wallet
+//                                      -> { status: "sent", tx, hypeTx, usdcTx } | { status: "claimed" } |
+//                                      { status: "fallback", usdcTx } (no HYPE to give: the app files a manual request)
 //   hype       {}                      ask for testnet HYPE to your Neuriio wallet (one open request; again 24 h after sent)
 //   hypeDone   { id, sent }            admin: mark a request sent (or dismissed)
 //
@@ -29,7 +31,7 @@
 // (the faucet wallet's key: its own wallet, never the deployer/owner key; without it every claim falls back)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { createPublicClient, createWalletClient, defineChain, getAddress, http, keccak256, parseAbi, parseEther, toBytes, zeroAddress } from "npm:viem@2";
+import { createPublicClient, createWalletClient, defineChain, erc20Abi, getAddress, http, keccak256, parseAbi, parseEther, parseUnits, toBytes, zeroAddress } from "npm:viem@2";
 import { privateKeyToAccount } from "npm:viem@2/accounts";
 import {
   CATEGORIES,
@@ -435,8 +437,10 @@ async function pass(who: XUser, body: Body) {
 
 const HYPE_AGAIN_MS = 24 * 60 * 60 * 1000; // after a request was sent
 
-// the faucet: its own wallet (FAUCET_KEY), 0.2 HYPE per X account, once
+// the faucet: its own wallet (FAUCET_KEY), once per X account: 0.2 HYPE for gas and 1,000 test USDC (2026-10-18; paid
+// from the faucet's USDC balance, funded by the owner)
 const FAUCET_AMOUNT = parseEther("0.2");
+const FAUCET_USDC = "1000"; // whole USDC
 const FAUCET_GAS_RESERVE = parseEther("0.01"); // keep this much for gas; below amount + reserve, claims fall back
 const faucetKey = Deno.env.get("FAUCET_KEY");
 const faucet = faucetKey
@@ -446,50 +450,81 @@ const faucet = faucetKey
     transport: http(env("RPC_URL")),
   })
   : null;
+/** The world's USDC: the current NeuriioPad's quote token (read once). */
+let usdcAddress: `0x${string}` | null = null;
+async function usdc() {
+  usdcAddress ??= await chain.readContract({ address: LAUNCHPAD, abi: parseAbi(["function quote() view returns (address)"]), functionName: "quote" });
+  return usdcAddress;
+}
 
-async function claimed(who: XUser) {
-  const { data, error } = await db.from("hype_claims").select("status").eq("x_user_id", who.xUserId).maybeSingle();
+type ClaimTable = "hype_claims" | "usdc_claims";
+async function claimedIn(table: ClaimTable, who: XUser) {
+  const { data, error } = await db.from(table).select("status").eq("x_user_id", who.xUserId).maybeSingle();
   if (error) dbError("claim status", error.message);
   return !!data;
 }
 
-async function claimHype(who: XUser) {
-  if (!faucet) return { status: "fallback" };
-  // the insert is the lock: one row per X account, ever (a second click, or a second tab, hits the primary key)
-  const { error } = await db.from("hype_claims")
-    .insert({ x_user_id: who.xUserId, wallet: who.wallet.toLowerCase(), amount: "0.2", status: "sending" });
+/** Sends one faucet payout (many claims at once share one sender: on a nonce clash, try again with a fresh nonce). */
+async function faucetSend(send: (nonce: number) => Promise<`0x${string}`>) {
+  for (let i = 0; ; i++) {
+    try {
+      return await send(await chain.getTransactionCount({ address: faucet!.account.address, blockTag: "pending" }));
+    } catch (e) {
+      const m = (e as Error).message.toLowerCase();
+      if (!/nonce|replacement|already known/.test(m) || i === 3) throw e;
+      await new Promise((r) => setTimeout(r, 150 + Math.random() * 400));
+    }
+  }
+}
+
+/** One payout, once per X account: the row inserted first is the lock (a second click or tab hits the primary key);
+ *  a failed send deletes it again. "sent" | "claimed" | "unavailable" (the faucet can't pay this right now). */
+async function payOnce(table: ClaimTable, who: XUser, amount: string, canPay: () => Promise<boolean>, send: (nonce: number) => Promise<`0x${string}`>) {
+  const { error } = await db.from(table).insert({ x_user_id: who.xUserId, wallet: who.wallet.toLowerCase(), amount, status: "sending" });
   if (error) {
-    if (error.code === "23505") return { status: "claimed" };
+    if (error.code === "23505") return { status: "claimed" as const };
     dbError("claim insert", error.message);
   }
-  const release = () => db.from("hype_claims").delete().eq("x_user_id", who.xUserId).eq("status", "sending");
+  const release = () => db.from(table).delete().eq("x_user_id", who.xUserId).eq("status", "sending");
   try {
-    const balance = await chain.getBalance({ address: faucet.account.address });
-    if (balance < FAUCET_AMOUNT + FAUCET_GAS_RESERVE) {
-      console.error(`ftf: faucet low: ${balance} wei`);
+    if (!(await canPay())) {
       await release();
-      return { status: "fallback" };
+      return { status: "unavailable" as const };
     }
-    // many claims at once share one sender: on a nonce clash, try again with a fresh nonce
-    let tx: `0x${string}` | null = null;
-    for (let i = 0; i < 4 && !tx; i++) {
-      try {
-        const nonce = await chain.getTransactionCount({ address: faucet.account.address, blockTag: "pending" });
-        tx = await faucet.sendTransaction({ to: who.wallet, value: FAUCET_AMOUNT, nonce });
-      } catch (e) {
-        const m = (e as Error).message.toLowerCase();
-        if (!/nonce|replacement|already known/.test(m) || i === 3) throw e;
-        await new Promise((r) => setTimeout(r, 150 + Math.random() * 400));
-      }
-    }
-    const { error: e2 } = await db.from("hype_claims").update({ status: "sent", tx_hash: tx }).eq("x_user_id", who.xUserId);
-    if (e2) console.error(`ftf: claim update: ${e2.message}`); // the HYPE went out; the row still blocks a second claim
-    return { status: "sent", tx };
+    const tx = await faucetSend(send);
+    const { error: e2 } = await db.from(table).update({ status: "sent", tx_hash: tx }).eq("x_user_id", who.xUserId);
+    if (e2) console.error(`ftf: ${table} update: ${e2.message}`); // it went out; the row still blocks a second claim
+    return { status: "sent" as const, tx };
   } catch (e) {
-    console.error(`ftf: faucet send: ${(e as Error).message}`);
+    console.error(`ftf: faucet ${table}: ${(e as Error).message}`);
     await release();
-    return { status: "fallback" };
+    return { status: "unavailable" as const };
   }
+}
+
+async function claimHype(who: XUser) {
+  if (!faucet) return { status: "fallback" };
+  const gas = () => chain.getBalance({ address: faucet.account.address });
+  const hype = await payOnce("hype_claims", who, "0.2", async () => {
+    const balance = await gas();
+    if (balance < FAUCET_AMOUNT + FAUCET_GAS_RESERVE) console.error(`ftf: faucet low on HYPE: ${balance} wei`);
+    return balance >= FAUCET_AMOUNT + FAUCET_GAS_RESERVE;
+  }, (nonce) => faucet.sendTransaction({ to: who.wallet, value: FAUCET_AMOUNT, nonce }));
+  const amount = parseUnits(FAUCET_USDC, 6);
+  const usdcPay = await payOnce("usdc_claims", who, FAUCET_USDC, async () => {
+    const [held, balance] = await Promise.all([
+      chain.readContract({ address: await usdc(), abi: erc20Abi, functionName: "balanceOf", args: [faucet.account.address] }),
+      gas(),
+    ]);
+    if (held < amount) console.error(`ftf: faucet low on USDC: ${held}`);
+    return held >= amount && balance >= FAUCET_GAS_RESERVE;
+  }, async (nonce) => faucet.writeContract({ address: await usdc(), abi: erc20Abi, functionName: "transfer", args: [who.wallet as `0x${string}`, amount], nonce }));
+  const hypeTx = hype.status === "sent" ? hype.tx : undefined;
+  const usdcTx = usdcPay.status === "sent" ? usdcPay.tx : undefined;
+  if (hype.status === "unavailable") return { status: "fallback", usdcTx }; // the app asks the team for the HYPE
+  if (hypeTx || usdcTx) return { status: "sent", tx: hypeTx ?? usdcTx, hypeTx, usdcTx };
+  if (usdcPay.status === "unavailable") fail(503, "The test USDC faucet is empty right now. Try again later.");
+  return { status: "claimed" };
 }
 
 async function isHypeAdmin(who: XUser) {
@@ -507,7 +542,8 @@ async function latestHype(who: XUser) {
 
 async function hypeStatus(who: XUser) {
   const r = await latestHype(who);
-  return { status: r?.status ?? "none", at: r ? (r.done_at ?? r.created_at) : null, claimed: await claimed(who) };
+  const [claimed, usdcClaimed] = await Promise.all([claimedIn("hype_claims", who), claimedIn("usdc_claims", who)]);
+  return { status: r?.status ?? "none", at: r ? (r.done_at ?? r.created_at) : null, claimed, usdcClaimed };
 }
 
 async function hype(who: XUser) {
