@@ -9,11 +9,17 @@ import deployment from "../../../deployments/elysium-testnet.json";
 export const QUOTE = { symbol: "USDC", address: deployment.usdc as Address, decimals: 6, usd: 1 } as const;
 
 /** Elysium testnet RPC for the app's reads and the wallet's sends (chain.ts). With our Conduit API key (build-time
- *  VITE_ELYSIUM_RPC = the RPC URL + "/<key>": Railway variable, and app/.env.local locally; never in git) the
- *  per-visitor rate limit is lifted (a 150-request burst: all answered, against ~60% without it). The key ships in the
- *  page like any frontend RPC key: restrict it to our domains in the Conduit dashboard. Without it: the public URL.
- *  (The third-party hypedexer node blocks browsers with CORS; the keeper still uses it.) */
-export const ELYSIUM_RPC: string = import.meta.env.VITE_ELYSIUM_RPC || "https://testnet-rpc.elysium.kinetiq.xyz";
+ *  VITE_ELYSIUM_RPC: Railway variable, and app/.env.local locally; never in git; either the bare key or the full URL
+ *  with "/<key>") the per-visitor rate limit is lifted (a 150-request burst: all answered, against ~60% without it).
+ *  The key ships in the page like any frontend RPC key: restrict it to our domains in the Conduit dashboard. Without
+ *  it: the public URL. (The third-party hypedexer node blocks browsers with CORS; the keeper still uses it.) */
+const PUBLIC_RPC = "https://testnet-rpc.elysium.kinetiq.xyz";
+const rpcSetting = (import.meta.env.VITE_ELYSIUM_RPC ?? "").trim();
+export const ELYSIUM_RPC: string = !rpcSetting
+  ? PUBLIC_RPC
+  : /^https?:\/\//.test(rpcSetting)
+    ? rpcSetting
+    : `${PUBLIC_RPC}/${rpcSetting.replace(/^\/+/, "")}`; // a bare key
 
 export const HL_TESTNET = true;
 
