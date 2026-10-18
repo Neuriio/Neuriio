@@ -6,8 +6,8 @@ Launching is free: you only pay gas. Each X account can launch **one** personal 
 
 | | |
 | --- | --- |
-| Name | `@` + your X handle, e.g. `@neuriio` |
-| Ticker | Your handle in capitals, e.g. `$NEURIIO` |
+| Name | `@` + your X handle, e.g. `@alice` |
+| Ticker | Your handle, e.g. `alice` (stored in capitals on-chain) |
 | Supply | 1,000,000,000, all created at launch |
 | Creator allocation | None. You start with zero tokens, like everyone else |
 
@@ -17,7 +17,7 @@ Launching is free: you only pay gas. Each X account can launch **one** personal 
 2. **Pick a category** that describes what you're known for: Trader, Meme Trader, Researcher, Influencer, Builder or
    Creator.
 3. **Write your profile**: a short "about" and links to your work. This is how people decide whether to back you.
-4. **Launch.** You can add an optional first buy in the same transaction.
+4. **Launch.** You can add an optional first buy, in USDC, in the same transaction.
 
 Your token goes live on its [bonding curve](bonding-curve.md) immediately and shows up in Explore.
 

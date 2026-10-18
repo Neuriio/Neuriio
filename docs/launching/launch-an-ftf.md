@@ -1,8 +1,8 @@
 # Launch an FTF
 
 An **FTF** ("Friends Turned Fam") is one token launched by **exactly four people** together. It trades on the same
-[bonding curve](bonding-curve.md) as a personal token, and its creator fees are split equally between the four
-members.
+[bonding curve](bonding-curve.md) as a personal token, and its creator fees (10% of its pool fees once it graduates) are
+split equally between the four members.
 
 ## How it works
 

@@ -14,10 +14,10 @@ When you first log in, Neuriio creates a wallet for you. You don't need to insta
 * **Export private key** at the bottom of the panel opens a secure window where you can take your key to any other
   wallet. Never share it.
 
-## 3. Add HYPE
+## 3. Add USDC and a little HYPE
 
-Every trade on Neuriio is priced in HYPE, and you need a little HYPE on Elysium for gas. Send HYPE on **Elysium
-testnet** to your Neuriio address.
+Every trade on Neuriio is priced in **USDC** (on testnet: Neuriio's test USDC), and you need a little **HYPE** on
+Elysium for gas. Send them on **Elysium testnet** to your Neuriio address.
 
 {% hint style="warning" %}
 Send on Elysium testnet only. Funds sent on another network to this address won't show up in Neuriio.
@@ -27,6 +27,7 @@ Send on Elysium testnet only. Funds sent on another network to this address won'
 
 * [Launch your token](launching/launch-your-token.md) from the Launch page.
 * Buy and sell any token from Explore. See [Trading and fees](trading/trading-and-fees.md).
+* Stake graduated tokens and Neuriio for a share of trading fees. See [Staking](trading/staking.md).
 * **Send** any token you hold to any address on Elysium from the Account panel (**Send $**). Double-check the address:
   sends can't be undone.
 
@@ -38,3 +39,4 @@ Send on Elysium testnet only. Funds sent on another network to this address won'
 | RPC | `https://testnet-rpc.elysium.kinetiq.xyz` |
 | Explorer | [elysium.kinetiq.xyz](https://elysium.kinetiq.xyz) |
 | Gas token | HYPE |
+| Trading token | USDC (test USDC) |

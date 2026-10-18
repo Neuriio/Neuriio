@@ -15,7 +15,7 @@ We are excited for everyone to gain social exposure to their favorite X accounts
 &#x20;
 
 {% hint style="info" %}
-Neuriio is live on **Elysium testnet**. Testnet tokens and HYPE have no value.
+Neuriio is live on **Elysium testnet**. Testnet tokens, test USDC and testnet HYPE have no value.
 {% endhint %}
 
 {% hint style="warning" %}

@@ -6,12 +6,15 @@ Every Neuriio contract is verified on the Elysium explorer, so anyone can read t
 
 | Contract | What it does | Address |
 | --- | --- | --- |
-| NeuriioPad | Launches tokens, runs bonding curves, graduates tokens | [`0xd994…5e59`](https://elysium.kinetiq.xyz/address/0xd9943d81b72aa55e52580bbb595af797b04d5e59) |
-| NeuriioRegistry | Permanent record of every token and its creators; one token per X account | [`0xd787…84fc`](https://elysium.kinetiq.xyz/address/0xd7879e97c6558486ca0a92283d70a46e89ea84fc) |
-| NeuriioFees | Collects all fees in HYPE; creators claim here | [`0x7e9e…9b2b`](https://elysium.kinetiq.xyz/address/0x7e9e5e96c3e99fd201a15e6a33c59aec51a39b2b) |
-| NeuriioSwap | Router for trading graduated tokens | [`0x4a85…acac`](https://elysium.kinetiq.xyz/address/0x4a85eca6f3ef4a07d049bd1907debb3e8961acac) |
-| Pool factory | Uniswap V2 fork; creates each token's pool | [`0xd30f…339c`](https://elysium.kinetiq.xyz/address/0xd30f539cf731d843534a9e3fe9fec51bb456339c) |
-| WHYPE | Wrapped HYPE used in pools | [`0x517f…14c7`](https://elysium.kinetiq.xyz/address/0x517f12d5d17c4755fbdf988fe9cc24334c3314c7) |
+| NeuriioPad | Launches tokens, runs bonding curves, graduates tokens | [`0x892b…8d76`](https://elysium.kinetiq.xyz/address/0x892b08a9b3987516a4ae5ab7d7e4d56642268d76) |
+| NeuriioRegistry | Permanent record of every token and its creators; one token per X account | [`0x24dc…2219`](https://elysium.kinetiq.xyz/address/0x24dc6e578a7e2ea468ab300a50e23cc504d32219) |
+| NeuriioFees | Collects every fee in USDC and shares it out; creators claim here | [`0x35cc…d6b9`](https://elysium.kinetiq.xyz/address/0x35cc3eb03c575083c01cf3f84f9136b77f5dd6b9) |
+| NeuriioRouter | Every trade from the app, on the curve or in a pool | [`0x86cc…4776`](https://elysium.kinetiq.xyz/address/0x86cc9908c3f3953da13f2a8760afc25b3b6a4776) |
+| NeuriioStaking | Holds staked tokens and pays stakers their share of fees | [`0x63e2…709a`](https://elysium.kinetiq.xyz/address/0x63e29d4f1929a9fc59e84c7ee75a50ca6b83709a) |
+| Neuriio (platform token) | Minted only to people staking graduated tokens | [`0x5964…1089`](https://elysium.kinetiq.xyz/address/0x5964e0e586208992cbd0d419c56052b97a4b1089) |
+| NeuriioMinter | Sets how much Neuriio each $1 of fees mints | [`0x2406…f031`](https://elysium.kinetiq.xyz/address/0x24067f1d414d1bb5fa0fb759d9129d6fed55f031) |
+| Pool factory | Uniswap V2 fork; creates each token's USDC pool (1% fee) | [`0xf698…3b69`](https://elysium.kinetiq.xyz/address/0xf6988f1219341262450ae279790e2105c9173b69) |
+| Test USDC | USDC for testnet only | [`0xe83c…0c7b`](https://elysium.kinetiq.xyz/address/0xe83c3630cab1c3d1d3b19a1f6ee393618c690c7b) |
 
 Each launched token is a standard ERC-20 (NeuriioToken) with a fixed supply of 1B: no minting, no transfer fees, no
 blacklist.
@@ -22,22 +25,28 @@ blacklist.
 * **No creator or team allocation.** The full supply is created inside NeuriioPad and only leaves through the curve or
   the pool.
 * **Only the launchpad opens pools.** The pool factory accepts a new pool only from the token's own NeuriioPad.
-* **Fixed creator shares.** The 20% / 80% creator shares are constants in NeuriioFees.
+* **Fixed fee split.** Every percentage in the split is a constant in NeuriioFees. The pool's 1% fee is fixed in the
+  pool code.
+* **Staked tokens are yours.** NeuriioStaking has no owner and no admin function: only you can unstake your tokens or
+  claim your rewards.
 * **Sells can't be paused.** The emergency pause stops launches and buys only.
 
 ## What the owner can do
 
-The contracts have an owner, which can:
+Some contracts have an owner, which can:
 
 * Pause and unpause **launches and buys** in an emergency (never sells).
-* Change the curve fee for future trades, up to a hard cap of **2%** (it's 0.75%).
-* Change the starting virtual HYPE for **new** launches only.
+* Change the curve fee for future trades, up to a hard cap of **2%** (it's 1%).
+* Change the starting virtual USDC for **new** launches only.
 * Approve a new NeuriioPad version for new launches. Existing tokens keep trading on their own version.
 * Point **future** fees at a new NeuriioFees contract. Balances already earned stay claimable in the old one.
 * Reserve tickers and rotate the key that approves launches.
+* Set Neuriio's minter and tune the mint rate (until it's frozen for good), and allow Neuriio to be sent between
+  wallets (once, and never back).
 
-None of these can move users' tokens, HYPE, pool liquidity or creator balances.
+None of these can move users' tokens, USDC, pool liquidity, staked tokens or creator balances.
 
 {% hint style="info" %}
-Before mainnet, ownership moves from a single key to a multisig, and the contracts get a formal security audit.
+Before mainnet, ownership moves from a single key to a multisig, the mint rate is frozen, and the contracts get a
+formal security audit.
 {% endhint %}

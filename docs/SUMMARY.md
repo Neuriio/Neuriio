@@ -14,6 +14,7 @@
 ## Trading
 
 * [Trading and fees](trading/trading-and-fees.md)
+* [Staking](trading/staking.md)
 * [Creator fees](trading/creator-fees.md)
 * [Feed and points](trading/feed-and-points.md)
 

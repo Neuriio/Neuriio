@@ -14,31 +14,31 @@ formula. There's no order book and no seed liquidity, and everyone trades agains
 ## How the price moves
 
 The curve is **constant product** over *virtual* reserves, the same model pump.fun uses. At launch it starts with a
-virtual HYPE reserve and 1.073B virtual tokens:
+virtual USDC reserve and 1.073B virtual tokens:
 
 ```
-price = HYPE reserve ÷ token reserve
-HYPE reserve × token reserve = constant
+price = USDC reserve ÷ token reserve
+USDC reserve × token reserve = constant
 ```
 
-Each buy adds HYPE and removes tokens, so the price rises; each sell does the opposite. Early buyers pay less because
+Each buy adds USDC and removes tokens, so the price rises; each sell does the opposite. Early buyers pay less because
 fewer tokens have been sold, not because anyone got a special deal.
 
 ## Graduation threshold
 
-The curve sells out when all 793.1M curve tokens are sold. How much HYPE that takes depends on the starting virtual
-HYPE reserve:
+The curve sells out when all 793.1M curve tokens are sold. How much USDC that takes depends on the starting virtual
+USDC reserve:
 
-| Network | Starting virtual HYPE | HYPE raised at graduation |
-| --- | --- | --- |
-| Elysium testnet | 0.1 | about 0.28 |
-| Mainnet (planned) | 60 | about 170 |
+| Network | Starting virtual USDC | USDC raised at graduation | Market cap at graduation |
+| --- | --- | --- | --- |
+| Elysium testnet | 1,000 | about 2,834 | about $13.7k |
+| Mainnet (planned) | about 5,109 | about 14,500 | about $70k |
 
 The closing price on the curve is exactly the pool's opening price, so there's no jump at graduation.
 
 ## Buying and selling
 
 * **Buy and sell any time** until the token graduates. After that, trading moves to its pool.
-* **Fee:** 0.75% of each curve trade, paid in HYPE. See [Trading and fees](../trading/trading-and-fees.md).
+* **Fee:** 1% of each curve trade, paid in USDC. See [Trading and fees](../trading/trading-and-fees.md).
 * **Protection:** every trade has a minimum amount out (slippage limit) and a deadline. If the price moves past your
   limit, or the deadline passes, the trade cancels instead of filling at a worse price.
