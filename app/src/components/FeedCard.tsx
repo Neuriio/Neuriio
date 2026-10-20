@@ -2,7 +2,7 @@
 // the card, then one wide card: a left column (you: picture, sector, category, creator fees · your wallet balances ·
 // top 25 trending by 24h volume) beside the posts. Every post has Like, Comment (opens the thread in a window to
 // read) and Send $ (a window: pick one of your Elysium tokens + amount, sent to the poster's wallet). Posts, likes
-// and comments aren't stored yet. A compose box with a Post button sits on top of the posts (desktop and phones).
+// Posts are stored (supabase posts table, written by the `posts` function); likes and comments aren't yet. A compose box with a Post button sits on top of the posts (desktop and phones).
 // Phones (<= 860px): no left column; one card with two tabs, Feed (the posts) and Notifications (the same list as
 // the Account panel's bell).
 import { useEffect, useState } from "react";
@@ -16,6 +16,7 @@ import { NotificationsList, NotificationsModal } from "./NotificationsModal";
 import { useIsMobile } from "../lib/media";
 import { SendModal, type SendTarget } from "./SendModal";
 import { useNotifications } from "../lib/ftf";
+import { createPost, latestPosts, POST_MAX, type PostRow } from "../lib/posts";
 import { EASE_OUT } from "../lib/motion";
 import { amount, compactUsd, usd } from "../lib/format";
 import { QUOTE } from "../lib/config";
@@ -40,7 +41,18 @@ type Post = {
   comments: Comment[];
 };
 
-const POST_MAX = 280;
+const toPost = (r: PostRow): Post => ({
+  id: r.id,
+  handle: r.x_handle,
+  name: r.x_name || r.x_handle,
+  pfp: r.x_pfp_url,
+  ticker: null,
+  wallet: r.wallet,
+  text: r.text,
+  at: Date.parse(r.created_at),
+  likes: 0,
+  comments: [],
+});
 
 function ago(ms: number) {
   const s = Math.max(1, Math.round((Date.now() - ms) / 1000));
@@ -59,13 +71,25 @@ export function FeedCard() {
   const mobile = useIsMobile();
   const [tab, setTab] = useState<"feed" | "notifications">("feed");
   const { items } = useNotifications();
-  const [list] = useState<Post[]>([]); // stored posts: next step
+  const [list, setList] = useState<Post[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => latestPosts().then((r) => alive && setList(r.map(toPost)), () => {});
+    load();
+    const id = setInterval(load, 15_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+  const onPosted = (r: PostRow) => setList((l) => [toPost(r), ...(l ?? []).filter((p) => p.id !== r.id)]);
   const posts = (
     <div className="feed-col">
-      <Composer />
+      <Composer onPosted={onPosted} />
       <ol className="feed-list">
-      {list.length === 0 && <li className="nt-empty feed-empty">No posts yet. Be the first.</li>}
-      {list.map((p) => (
+      {list?.length === 0 && <li className="nt-empty feed-empty">No posts yet. Be the first.</li>}
+      {!list && <li className="nt-empty feed-empty">Loading…</li>}
+      {list?.map((p) => (
         <PostRow
           key={p.id}
           p={p}
@@ -399,9 +423,25 @@ function Trending() {
 // ------------------------------------------------------------------ posts
 
 /** Top of the posts column (desktop and phones): write a post, then Post. Logged out: a login prompt. */
-function Composer() {
-  const { ready, authenticated, user, login } = usePrivy();
+function Composer({ onPosted }: { onPosted: (r: PostRow) => void }) {
+  const { ready, authenticated, user, login, getAccessToken } = usePrivy();
   const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      onPosted(await createPost(getAccessToken, text));
+      setText("");
+    } catch (x) {
+      setErr((x as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   if (!(ready && authenticated))
     return (
       <div className="feed-compose feed-compose-locked">
@@ -414,7 +454,7 @@ function Composer() {
   const me = profileOf(user);
   const left = POST_MAX - text.length;
   return (
-    <form className="feed-compose" onSubmit={(e) => e.preventDefault()}>
+    <form className="feed-compose" onSubmit={submit}>
       <Avatar handle={me.initial} pfp={me.avatar} size={42} />
       <div className="feed-compose-body">
         <textarea
@@ -424,11 +464,13 @@ function Composer() {
           maxLength={POST_MAX}
           rows={2}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && submit(e)}
         />
         <div className="feed-compose-foot">
+          {err && <span className="feed-compose-err">{err}</span>}
           <span className={`feed-muted feed-compose-left${left < 20 ? " is-low" : ""}`}>{left}</span>
-          <button type="submit" className="lock-login feed-post-btn" disabled={!text.trim()}>
-            Post
+          <button type="submit" className="lock-login feed-post-btn" disabled={!text.trim() || busy}>
+            {busy ? "Posting…" : "Post"}
           </button>
         </div>
       </div>

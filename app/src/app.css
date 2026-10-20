@@ -4564,3 +4564,8 @@ a.ex-row {
 .feed-empty {
   padding: 24px 0;
 }
+.feed-compose-err {
+  margin-right: auto;
+  font-size: 12px;
+  color: #ff8fb1;
+}
