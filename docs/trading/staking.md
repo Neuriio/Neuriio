@@ -5,7 +5,7 @@ Staking lets you share in Neuriio's trading fees, in USDC. There are two kinds:
 | Stake | You earn | Opens |
 | --- | --- | --- |
 | A graduated token | 40% of that token's pool fees, in USDC, **plus newly minted Neuriio** | When the token graduates |
-| Neuriio | 80% of every curve fee and 40% of every pool fee, across all tokens, in USDC | Any time |
+| Neuriio | 50% of every curve fee and 40% of every pool fee, across all tokens, in USDC | Any time |
 
 Staking is a choice. There's no lockup: stake or unstake any amount at any time.
 
@@ -25,7 +25,7 @@ Neuriio is the platform token. The only way it's created is by staking graduated
 allocation and no pre-mint. **Supply is hard-capped at 1,000,000,000 Neuriio**: the token contract refuses any mint past
 it, so once the cap is reached staking keeps paying USDC but mints no more Neuriio.
 
-* **Stake Neuriio** to share 80% of every curve fee and 40% of every pool fee on Neuriio, in USDC. Staking Neuriio
+* **Stake Neuriio** to share 50% of every curve fee and 40% of every pool fee on Neuriio, in USDC. Staking Neuriio
   doesn't mint more Neuriio.
 * **Claimed Neuriio is staked for you.** When you claim from a token you stake, the USDC goes to your wallet and the
   Neuriio goes straight into your Neuriio stake, where it starts earning right away.

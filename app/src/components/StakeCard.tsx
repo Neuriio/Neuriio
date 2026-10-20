@@ -1,7 +1,7 @@
 // Explore, far right (beside the order card), split in half (user, 2026-10-17):
 //   top:    the picked X token. Staking opens once it graduates; stakers share 40% of its pool fees in USDC and mint
 //           Neuriio on every $1 they earn.
-//   bottom: Neuriio (minted only by staking X tokens). Stakers share 80% of every curve fee and 40% of every pool
+//   bottom: Neuriio (minted only by staking X tokens). Stakers share 50% of every curve fee and 40% of every pool
 //           fee, in USDC. Neuriio claimed from X staking is staked here automatically.
 // Each half: Stake / Unstake / Claim, wired to NeuriioStaking (lib/stake.ts). Rewards drip in over an hour, so the
 // earned amounts are re-read every few seconds. `?demo`: sample numbers, simulated actions.
@@ -47,7 +47,7 @@ export function StakeCard({ t }: { t: TokenStat | null }) {
       ) : (
         <p className="ex-empty">Pick a token.</p>
       )}
-      <StakeHalf me={me} token={NEURIIO} title="Stake Neuriio" unit="Neuriio" earns="80% curve · 40% pool fees" />
+      <StakeHalf me={me} token={NEURIIO} title="Stake Neuriio" unit="Neuriio" earns="50% curve · 40% pool fees" />
     </div>
   );
 }

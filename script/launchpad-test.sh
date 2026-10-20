@@ -82,11 +82,11 @@ BAL2=$(call $TOKEN "balanceOf(address)(uint256)" $TRADER)
 BOUGHT=$(py "$BAL2-$BAL1")
 check "received exactly the quote: $(tok $BOUGHT) $HANDLE" "$( [ "$BOUGHT" = "$EXP" ] && echo true )"
 
-echo "== 3. Sell them back through the router (curve fee: 80% \$NEURIIO stakers / 10% buyback / 10% treasury)"
+echo "== 3. Sell them back through the router (curve fee: 50% \$NEURIIO stakers / 30% buyback / 10% creator / 10% treasury)"
 BB0=$(call $VAULT "buybackBalance()(uint256)"); SUP0=$(call $NEURIIO "totalSupply()(uint256)")
 T $ROUTER "sell(address,uint256,uint256,uint256)" $TOKEN $BOUGHT 0 $DL >/dev/null
 BB1=$(call $VAULT "buybackBalance()(uint256)")
-check "KNTQ buyback got $(usd $(py "$BB1-$BB0")) USDC (10%)" "$(py "'true' if $BB1 > $BB0 else ''")"
+check "KNTQ buyback got $(usd $(py "$BB1-$BB0")) USDC (30%)" "$(py "'true' if $BB1 > $BB0 else ''")"
 check "no \$NEURIIO minted on the curve" "$( [ "$(call $NEURIIO "totalSupply()(uint256)")" = "$SUP0" ] && echo true )"
 
 echo "== 4. Graduate: buy out the rest of the curve through the router"

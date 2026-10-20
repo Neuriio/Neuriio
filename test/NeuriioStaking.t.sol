@@ -266,10 +266,10 @@ contract NeuriioStakingTest is NeuriioBase {
         vm.prank(bob);
         staking.stake(address(neuriio), 1e18);
         _buy(alice, token, 1_010e6);
-        assertEq(vault.stakersEarned(), 8e6);
+        assertEq(vault.stakersEarned(), 5e6);
         assertEq(neuriio.totalSupply(), 1e18, "staking $NEURIIO mints nothing");
         skip(HOUR);
-        assertApproxEqAbs(_usdcEarned(bob, address(neuriio)), 8e6, 10);
+        assertApproxEqAbs(_usdcEarned(bob, address(neuriio)), 5e6, 10);
         assertEq(_neuEarned(bob, address(neuriio)), 0);
     }
 
@@ -396,18 +396,18 @@ contract NeuriioStakingTest is NeuriioBase {
 
     // ------------------------------------------------------------------ the fee split (NeuriioFees)
 
-    /// Curve fee: 80% $NEURIIO stakers, 10% KNTQ buyback, 10% treasury.
+    /// Curve fee: 50% $NEURIIO stakers, 30% KNTQ buyback, 10% creator, 10% treasury.
     function test_curveFeeSplit() public {
         address token = _launch();
         _giveNeuriio(bob, 1e18);
         vm.prank(bob);
         staking.stake(address(neuriio), 1e18);
         _buy(alice, token, 1_010e6); // fee 10
-        assertEq(vault.stakersEarned(), 8e6);
-        assertEq(vault.buybackBalance(), 1e6);
+        assertEq(vault.stakersEarned(), 5e6);
+        assertEq(vault.buybackBalance(), 3e6);
         assertEq(vault.treasuryBalance(), 1e6);
-        assertEq(vault.creatorBalance(creator), 0);
-        assertEq(usdc.balanceOf(address(staking)), 8e6);
+        assertEq(vault.creatorBalance(creator), 1e6);
+        assertEq(usdc.balanceOf(address(staking)), 5e6);
     }
 
     /// Pool fee: 40% $NEURIIO stakers, 40% token stakers, 10% creator, 10% treasury.

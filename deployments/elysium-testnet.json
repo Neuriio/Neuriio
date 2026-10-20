@@ -5,8 +5,9 @@
   "swapFactory": "0xf6988f1219341262450ae279790e2105c9173b69",
   "staking": "0xdf46b1c55634865618fdfca36504beffad18c2ab",
   "neuriio": "0x1cac143eb95e6bcde71c38bd128c2af94a54d483",
-  "feeVault": "0x5cfb96befedf81ae7e18c5f12b16e3c52f0abe63",
+  "feeVault": "0xd780076bfdbbe4f0370b9253b1cac736cf29bfea",
   "feeVaults": [
+    "0xd780076bfdbbe4f0370b9253b1cac736cf29bfea",
     "0x5cfb96befedf81ae7e18c5f12b16e3c52f0abe63",
     "0x35cc3eb03c575083c01cf3f84f9136b77f5dd6b9",
     "0xcb49b0f7b219851b4093e06694bfe9937c37733e"

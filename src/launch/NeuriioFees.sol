@@ -12,8 +12,8 @@ import {NeuriioMinter} from "../stake/NeuriioMinter.sol";
 /// @notice Every fee a launched token generates lands here, in USDC, and is shared out at once. Every trade pays 1%:
 ///   - curve trades: the NeuriioPad's fee
 ///   - graduated pool swaps: the pair's fee, taken out of the pool
-/// The split (user, 2026-10-17; constants on purpose, no owner knob over anyone's income):
-///   - curve fee: 80% to $NEURIIO stakers, 10% to the KNTQ buyback wallet, 10% to the treasury
+/// The split (user, 2026-10-20; constants on purpose, no owner knob over anyone's income):
+///   - curve fee: 50% to $NEURIIO stakers, 30% to the KNTQ buyback wallet, 10% to the creator(s), 10% to the treasury
 ///   - pool fee:  40% to $NEURIIO stakers, 40% to whoever stakes that token, 10% to the creator(s), 10% to the treasury
 /// Stakers' shares go straight to NeuriioStaking, where they drip out over an hour; the token stakers' share also mints
 /// $NEURIIO for them (NeuriioMinter, told about every fee). A share with nobody to take it moves down the line: a token's
@@ -29,8 +29,9 @@ import {NeuriioMinter} from "../stake/NeuriioMinter.sol";
 contract NeuriioFees is Ownable2Step, ReentrancyGuardTransient {
     using SafeERC20 for IERC20;
 
-    uint256 public constant CURVE_STAKERS_BPS = 8_000;
-    uint256 public constant CURVE_BUYBACK_BPS = 1_000;
+    uint256 public constant CURVE_STAKERS_BPS = 5_000;
+    uint256 public constant CURVE_BUYBACK_BPS = 3_000;
+    uint256 public constant CURVE_CREATOR_BPS = 1_000;
     uint256 public constant POOL_HOLDERS_BPS = 4_000; // that token's stakers
     uint256 public constant POOL_STAKERS_BPS = 4_000;
     uint256 public constant POOL_CREATOR_BPS = 1_000;
@@ -166,6 +167,7 @@ contract NeuriioFees is Ownable2Step, ReentrancyGuardTransient {
             s.creator = amount * POOL_CREATOR_BPS / 10_000;
             s.holders = amount * POOL_HOLDERS_BPS / 10_000;
         } else {
+            s.creator = amount * CURVE_CREATOR_BPS / 10_000;
             s.buyback = amount * CURVE_BUYBACK_BPS / 10_000;
         }
         s.stakers = amount - s.treasury - s.creator - s.holders - s.buyback;

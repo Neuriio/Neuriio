@@ -307,21 +307,20 @@ contract NeuriioPadTest is NeuriioBase {
     /// Curve fee: 80% $NEURIIO stakers (nobody yet: falls to the treasury), 10% KNTQ buyback, 10% treasury, no creator.
     function test_curveFeeSplit() public {
         address token = _launch(); // creator = `creator`
-        _buy(alice, token, 1_010e6); // fee 10 USDC
-        assertEq(vault.creatorBalance(creator), 0, "no creator share before graduation");
-        assertEq(vault.buybackBalance(), 1e6);
-        assertEq(vault.treasuryBalance(), 9e6); // its 10% + the unclaimed stakers' 80%
+        _buy(alice, token, 1_010e6); // fee 10 USDC: 50% stakers / 30% buyback / 10% creator / 10% treasury
+        assertEq(vault.creatorBalance(creator), 1e6, "10% to the creator on the curve too");
+        assertEq(vault.buybackBalance(), 3e6);
+        assertEq(vault.treasuryBalance(), 6e6); // its 10% + the unclaimed stakers' 50%
         assertEq(vault.feesOf(token), 10e6);
         assertEq(vault.totalFees(), 10e6);
         assertEq(vault.held(), 10e6);
         vm.prank(creator);
-        vm.expectRevert(NeuriioFees.NothingToClaim.selector);
-        vault.claim(creator);
+        assertEq(vault.claim(creator), 1e6);
     }
 
     function test_treasuryWaitsForWallets() public {
         address token = _launch();
-        _buy(alice, token, 10_100e6); // fee 100 -> treasury 90 (its 10% + the unclaimed 80%), buyback 10
+        _buy(alice, token, 10_100e6); // fee 100 -> treasury 60 (its 10% + the unclaimed 50%), buyback 30, creator 10
         vm.expectRevert(NeuriioFees.WalletsNotSet.selector);
         vault.payProtocol();
 
@@ -332,8 +331,8 @@ contract NeuriioPadTest is NeuriioBase {
         vm.prank(owner);
         vault.setWallets(treasury, buyback);
         vault.payProtocol(); // anyone
-        assertEq(usdc.balanceOf(treasury), 90e6);
-        assertEq(usdc.balanceOf(buyback), 10e6);
+        assertEq(usdc.balanceOf(treasury), 60e6);
+        assertEq(usdc.balanceOf(buyback), 30e6);
         assertEq(vault.treasuryBalance() + vault.buybackBalance(), 0);
         assertEq(usdc.balanceOf(address(vault)), vault.held());
     }
@@ -474,14 +473,19 @@ contract NeuriioPadTest is NeuriioBase {
         address token = _launchFtf(_ftfPass("Degen Den", "DEN"), 0);
         _buy(bob, token, 20_000e6); // graduates into the V2 pool like any token
         assertTrue(_curve(token).graduated);
+        uint256[4] memory before;
+        for (uint256 i; i < 4; i++) before[i] = vault.creatorBalance(ftfWallets[i]); // their curve-fee shares
+        assertGt(before[1], 0, "creators earn on the curve too");
         _tradeBuy(alice, token, 1_000e6); // pool fee 10 -> creators 1, split 4 ways
-        uint256 each = vault.creatorBalance(ftfWallets[1]);
+        uint256 each = vault.creatorBalance(ftfWallets[1]) - before[1];
         assertEq(each, 0.25e6);
         for (uint256 i = 1; i < 4; i++) {
-            assertEq(vault.creatorBalance(ftfWallets[i]), each);
+            assertEq(vault.creatorBalance(ftfWallets[i]) - before[i], each);
         }
-        assertApproxEqAbs(vault.creatorBalance(ftfWallets[0]), each, 3, "founder gets the rounding units");
-        assertEq(vault.creatorEarned(token), vault.creatorBalance(ftfWallets[0]) + 3 * each);
+        assertApproxEqAbs(vault.creatorBalance(ftfWallets[0]) - before[0], each, 3, "founder gets the rounding units");
+        uint256 all;
+        for (uint256 i; i < 4; i++) all += vault.creatorBalance(ftfWallets[i]);
+        assertEq(vault.creatorEarned(token), all, "lifetime creator fees = the 4 balances (curve + pool)");
         // every member claims their own share
         for (uint256 i; i < 4; i++) {
             uint256 bal = usdc.balanceOf(ftfWallets[i]);

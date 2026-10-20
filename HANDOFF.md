@@ -20,6 +20,13 @@ $NEURIIO can't be transferred. No loss-mint, boosts or locks. Contracts: `src/st
 NeuriioMinter, NeuriioPlatformToken), `src/launch/NeuriioFees.sol` + `NeuriioPad.sol`, `src/swap/NeuriioRouter.sol`,
 `src/swap/v2` (USDC quote + 1% fee), `src/testnet/TestUSDC.sol`. 71 Foundry tests.
 
+### Fee split (2026-10-20, final): new NeuriioFees `0xd780…bfea`
+Curve fees: **50% Neuriio stakers / 30% KNTQ buyback / 10% creators / 10% treasury** (treasury = Neuriio's own
+liquidity at launch). Pool fees unchanged: 40% X-token stakers / 40% Neuriio stakers / 10% creators / 10% treasury.
+Replaced with `./script/replace-feevault.sh` on the existing staking + minter (nothing moved; older vaults stay
+claimable and listed in `feeVaults`). Docs + app copy updated. (NeuriioStaking / NeuriioPad comments still mention
+the old split: they weren't redeployed, so their verified source stays as is.)
+
 ### Neuriio cap (2026-10-20): staking side redeployed
 The user set the mint to **25 Neuriio per $1** earned by X-token stakers (never more: MAX_MINT_RATE = 25 in
 NeuriioMinter), decay after $1M of platform fees (PAPER shape, S = $120M), and a **1B hard supply cap** in the token
@@ -199,13 +206,11 @@ low-res check `--scale=0.25` (0.35 gives a fractional height). Memory "launch-vi
   (SVG goo filter), close into a 2x2 grid, melt into a token -> caret -> "create an FTF, / put everyone onchain".
   Its background (vertical mirrored purple -> lavender gradient, twinkling dots in the dark bands) is exported as
   `Background({ frame, plain?, quiet? })` from `Ftf.tsx`; plain loop `ftf-background-4k.mp4` (4 s).
-- **"Stake creators"** (2026-10-20 second cut, for X; in progress): `stake-creators-4k.mp4` (14 s), composition
-  **"StakeCreators"**, all type in Manrope, one world + camera: big X card -> token on the pool, buys/sells -> camera
-  follows one buy's 1% chip into the staking card ("40% of LP fees") -> glides along Neuriio dots to the Neuriio card
-  ("25 minted per $1 of fees", user's number; docs/contract say 100) -> flips to Stake Neuriio (80% curve / 40% LP).
-  User asked to stop there; next beats TBD. `video/scripts/capture-stake.mjs` (real stake card captures) is unused now.
+- **"Stake creators"** (2026-10-20, for X): `stake-creators-4k.mp4` (7 s), composition **"StakeCreators"**, Manrope:
+  big X card slams in -> flips into the token onto the pad -> "Staked" fades in above, holds ~1 s -> everything collapses
+  -> "live on testnet" in the middle. (User rejected a "Mine Neuriio" letter scramble; `capture-stake.mjs` is unused.)
 - **"final post of this thread"** (2026-10-12): `final-post-4k.mp4` (5 s), composition **"FinalPost"**: the FTF background
-  with the line static in the centre (Lilex 600, 96 px, `#6b5a8e`), no typing.
+  with the line static in the centre (Manrope 800, 168 px, `#2a1f40` since 2026-10-20; was Lilex 600 96 px), no typing; still `final-post-4k.png`.
 - **3D dot helix**: see above. Older drafts: "Launch" (2D helix opening), "Storyline".
 - Brand for videos: font Lilex; lavender `#ecddff`, `#a99bbd` soft words, card `#1b1428`; X banners in `video/public/x/`.
 

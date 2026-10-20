@@ -1,7 +1,7 @@
 // Staking (src/stake/NeuriioStaking.sol), from the Explore stake card and the Account panel.
 //   X tokens (once graduated): stakers share 40% of that token's pool fees in USDC, and every $1 they earn mints
 //   Neuriio (100 at first), which claiming stakes for them.
-//   Neuriio: stakers share 80% of every curve fee and 40% of every pool fee, in USDC.
+//   Neuriio: stakers share 50% of every curve fee and 40% of every pool fee, in USDC.
 // Rewards drip in over an hour. Staking an X token approves the staking contract once (unlimited, sent silently like
 // the router's); Neuriio needs no approval (the staking contract may always move it) and can't be sent anywhere else.
 import { erc20Abi, maxUint256, parseAbi, type Address, type EIP1193Provider } from "viem";

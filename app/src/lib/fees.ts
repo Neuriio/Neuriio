@@ -1,5 +1,5 @@
-// Creator fees: the creator's share of a launched token's fees (10% of the pool's 1% once it graduates; curve fees pay no
-// creator share) builds up in NeuriioFees in USDC on Elysium (an FTF's share is split equally between its 4 members).
+// Creator fees: the creator's share of a launched token's fees (10% of every 1% fee, on the curve and in the pool: user,
+// 2026-10-20) builds up in NeuriioFees in USDC on Elysium (an FTF's share is split equally between its 4 members).
 // `claim` sends it to the Neuriio wallet.
 import { parseAbi, type Address, type EIP1193Provider, zeroAddress } from "viem";
 import { confirmed, walletClientFor } from "./tx";

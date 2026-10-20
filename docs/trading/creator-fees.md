@@ -1,18 +1,17 @@
 # Creator fees
 
-Once your token graduates, every swap in its pool pays you, in USDC.
+Every trade of your token pays you, in USDC: from the first buy on its bonding curve to every swap in its pool.
 
 ## How much
 
 | Where your token trades | Fee per trade | Your share | You earn |
 | --- | --- | --- | --- |
-| Bonding curve | 1% | — | — |
+| Bonding curve | 1% | 10% | 0.1% of curve volume |
 | Pool (after graduation) | 1% | 10% | 0.1% of pool volume |
 
-Example: if your graduated token trades $10,000 of volume in its pool, you earn $10.
+Example: if your token trades $10,000 of volume, on its curve or in its pool, you earn $10.
 
-Curve fees go to Neuriio stakers, the KNTQ buyback and the treasury. See [Trading and fees](trading-and-fees.md) for the
-full split.
+See [Trading and fees](trading-and-fees.md) for where the rest of each fee goes.
 
 ## Claiming
 
@@ -29,5 +28,5 @@ from their own Account panel.
 
 ## Fixed shares
 
-The 10% creator share is a constant in the NeuriioFees contract. Changing it would mean deploying a new contract
+The 10% creator shares are constants in the NeuriioFees contract. Changing them would mean deploying a new contract
 publicly, and fees already earned stay claimable from the old one.

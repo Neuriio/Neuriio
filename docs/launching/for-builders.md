@@ -12,7 +12,7 @@ supply, or launch in public and risk snipers and liquidity that can be pulled. N
   that sells the last curve token.
 * **Liquidity nobody can drain.** At graduation, all the USDC your curve raised goes into your token's pool, and the LP
   tokens are burned. The liquidity is locked forever.
-* **Ongoing creator fees.** Once your token graduates, your account earns 10% of its pool fees, in USDC. See
+* **Ongoing creator fees.** Your account earns 10% of every trading fee your token generates, on its curve and in its pool, in USDC. See
   [Creator fees](../trading/creator-fees.md).
 * **Staking for your community.** Holders can stake your token to share 40% of its pool fees. See
   [Staking](../trading/staking.md).

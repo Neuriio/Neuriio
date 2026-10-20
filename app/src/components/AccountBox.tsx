@@ -283,7 +283,7 @@ function CreatorFees({ fees }: { fees: Fees }) {
           ? "Claimed to your Neuriio wallet"
           : typeof status === "object"
             ? status.error
-            : "Your share of your token's trading fees (10% of its pool fees once it graduates), paid in USDC on Elysium"}
+            : "Your share of your token's trading fees (10% of every fee, curve and pool), paid in USDC on Elysium"}
       </p>
     </section>
   );
@@ -346,7 +346,7 @@ function NeuriioBox({ n }: { n: Neu }) {
           ? "USDC claimed to your Neuriio wallet"
           : typeof n.status === "object"
             ? n.status.error
-            : `Earns 80% of curve fees and 40% of pool fees, in USDC. Minted by staking graduated tokens (Explore).${n.wallet > 0 ? ` ${amount(n.wallet)} unstaked in your wallet.` : ""}`}
+            : `Earns 50% of curve fees and 40% of pool fees, in USDC. Minted by staking graduated tokens (Explore).${n.wallet > 0 ? ` ${amount(n.wallet)} unstaked in your wallet.` : ""}`}
       </p>
     </section>
   );

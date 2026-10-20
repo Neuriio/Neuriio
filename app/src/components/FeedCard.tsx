@@ -303,7 +303,7 @@ function Me() {
               {sector && <span className="lp-chip ex-sector-chip">{sector}</span>}
               {cat && <span className={`lp-chip${token.kind === "ftf" ? " ex-ftf-chip" : ""}`}>{cat}</span>}
             </div>
-            <div className="feed-me-fees" title="Lifetime creator fees: 10% of the pool's trading fees once the token graduates, paid in USDC">
+            <div className="feed-me-fees" title="Lifetime creator fees: 10% of every trading fee, on the curve and in the pool, paid in USDC">
               <span className="feed-side-title">Creator fees earned</span>
               <span className="feed-me-fees-value">
                 {earned === null ? "…" : compactUsd(earned * hypeUsd)}

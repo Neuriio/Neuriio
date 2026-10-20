@@ -471,7 +471,7 @@ function TokenDetail({
             <button className="ex-profile-btn" onClick={() => setShowProfile(true)}>
               <UserRound size={13} aria-hidden /> Profile
             </button>
-            <span className="ex-earned" title="Lifetime creator fees: 10% of the pool's trading fees once the token graduates, paid in USDC">
+            <span className="ex-earned" title="Lifetime creator fees: 10% of every trading fee, on the curve and in the pool, paid in USDC">
               <span className="ex-earned-label">Creator fees earned</span>
               <span className="ex-earned-value">
                 {earned === null ? "…" : compactUsd(earned * hypeUsd)}

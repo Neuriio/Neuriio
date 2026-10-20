@@ -18,13 +18,14 @@ All fees are collected in USDC by the **NeuriioFees** contract and shared out on
 
 | Fee from | Neuriio stakers | Token stakers | Creator | KNTQ buyback | Treasury |
 | --- | --- | --- | --- | --- | --- |
-| Curve trades (1%) | 80% | — | — | 10% | 10% |
+| Curve trades (1%) | 50% | — | 10% | 30% | 10% |
 | Pool trades (1%) | 40% | 40% | 10% | — | 10% |
 
 * **Neuriio stakers** are people who stake Neuriio, the platform token. See [Staking](staking.md).
 * **Token stakers** are people who stake that graduated token. Staking opens at graduation. See [Staking](staking.md).
 * **Creator** is the token's creator, or an FTF's four members. See [Creator fees](creator-fees.md).
 * **KNTQ buyback:** USDC used to buy back KNTQ, the Kinetiq token.
+* **Treasury:** set aside for Neuriio's own liquidity at launch.
 
 If nobody is staking a token, its stakers' share goes to Neuriio stakers. If nobody is staking Neuriio, that share goes
 to the treasury.
