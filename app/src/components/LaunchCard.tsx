@@ -198,9 +198,6 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   useEffect(() => {
     if (!address) return;
     launchedTokenOf(address).then(setPersonalToken).catch(() => {});
-    launchBalances(address)
-      .then((b) => setBalance({ usdc: Number(formatUnits(b.usdc, QUOTE.decimals)), gas: Number(formatEther(b.gas)) }))
-      .catch(() => {});
   }, [address]);
 
   // already launched personally: only an FTF is left, so back to Type
@@ -212,6 +209,24 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
 
   const ids = STEP_IDS[mode ?? "personal"];
   const current = ids[step];
+
+  // USDC + gas for the first buy: read again on reaching the Launch step and every 10 s on it, so USDC that arrives
+  // while the page is open (the faucet button sits under this card) shows up without a reload
+  useEffect(() => {
+    if (!address) return;
+    let alive = true;
+    const load = () =>
+      launchBalances(address)
+        .then((b) => alive && setBalance({ usdc: Number(formatUnits(b.usdc, QUOTE.decimals)), gas: Number(formatEther(b.gas)) }))
+        .catch(() => {});
+    load();
+    if (current !== "launch") return () => void (alive = false);
+    const id = setInterval(load, 10_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [address, current]);
   const tokenFor = getAccessToken ?? (async () => null);
   const acceptedCount = ftf.members.filter((m) => m.status === "accepted").length;
 
