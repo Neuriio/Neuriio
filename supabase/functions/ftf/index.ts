@@ -117,9 +117,11 @@ function mustBeFounder(d: Draft, who: XUser) {
 }
 
 async function setMember(draftId: string, xUserId: string, patch: Partial<Member>) {
-  const { error } = await db
-    .from("ftf_members")
-    .upsert({ draft_id: draftId, x_user_id: xUserId, updated_at: new Date().toISOString(), ...patch }, { onConflict: "draft_id,x_user_id" });
+  const row = { updated_at: new Date().toISOString(), ...patch };
+  // no role = a status change on an existing row: update it (an upsert's insert half would need role, NOT NULL)
+  const { error } = patch.role
+    ? await db.from("ftf_members").upsert({ draft_id: draftId, x_user_id: xUserId, ...row }, { onConflict: "draft_id,x_user_id" })
+    : await db.from("ftf_members").update(row).eq("draft_id", draftId).eq("x_user_id", xUserId);
   if (error) dbError("member upsert", error.message);
   // member activity counts as activity on the draft (drafts idle for 7 days expire: expire_ftf_drafts)
   await db.from("ftf_drafts").update({ updated_at: new Date().toISOString() }).eq("id", draftId);
