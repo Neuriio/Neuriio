@@ -2,7 +2,7 @@
 // the card, then one wide card: a left column (you: picture, sector, category, creator fees · your wallet balances ·
 // top 25 trending by 24h volume) beside the posts. Every post has Like, Comment (opens the thread in a window to
 // read) and Send $ (a window: pick one of your Elysium tokens + amount, sent to the poster's wallet). Posts, likes
-// and comments are samples for now (nothing stored); sample posts have no wallet, so Send can't complete on them.
+// and comments aren't stored yet. A compose box with a Post button sits on top of the posts (desktop and phones).
 // Phones (<= 860px): no left column; one card with two tabs, Feed (the posts) and Notifications (the same list as
 // the Account panel's bell).
 import { useEffect, useState } from "react";
@@ -40,63 +40,7 @@ type Post = {
   comments: Comment[];
 };
 
-/** Sample posters (and commenters) show the Neuriio mark on green / orange / teal instead of an initial. */
-const SAMPLE_TONES: Record<string, string> = {
-  kntqkid: "green",
-  the_liquidator: "orange",
-  vaultvera: "teal",
-  wagmiwes: "orange",
-  mememonk: "teal",
-  chartwizard: "green",
-  onchainoliver: "orange",
-};
-
-const NOW = Date.now();
-const TEST_POSTS: Post[] = [
-  {
-    id: "t1",
-    handle: "kntqkid",
-    name: "kntq kid",
-    pfp: null,
-    ticker: "KNTQKID",
-    wallet: null,
-    text: "Just tokenized my account on Neuriio. Launch was free, took about ten seconds. Come say hi 👋",
-    at: NOW - 4 * 60_000,
-    likes: 24,
-    comments: [
-      { handle: "wagmiwes", name: "wagmi wes", text: "Welcome in. What sector did you pick?", at: NOW - 3 * 60_000 },
-      { handle: "kntqkid", name: "kntq kid", text: "Finance, trader. Obviously.", at: NOW - 2 * 60_000 },
-      { handle: "mememonk", name: "meme monk", text: "gm gm", at: NOW - 60_000 },
-    ],
-  },
-  {
-    id: "t2",
-    handle: "the_liquidator",
-    name: "the liquidator",
-    pfp: null,
-    ticker: "THE_LIQUIDATOR",
-    wallet: null,
-    text: "Forming an FTF with three friends from the trading group. Four members, one ticker, fees split four ways. Who else is building one?",
-    at: NOW - 52 * 60_000,
-    likes: 81,
-    comments: [
-      { handle: "vaultvera", name: "vault vera", text: "Doing one with my research crew this week.", at: NOW - 40 * 60_000 },
-      { handle: "chartwizard", name: "chart wizard", text: "What's the name going to be?", at: NOW - 31 * 60_000 },
-    ],
-  },
-  {
-    id: "t3",
-    handle: "vaultvera",
-    name: "vault vera",
-    pfp: null,
-    ticker: null,
-    wallet: null,
-    text: "Energy sector is quiet on here so far. Anyone working on grids or storage want to link up?",
-    at: NOW - 3 * 3600_000,
-    likes: 12,
-    comments: [{ handle: "onchainoliver", name: "onchain oliver", text: "Storage side, DMs open.", at: NOW - 2 * 3600_000 }],
-  },
-];
+const POST_MAX = 280;
 
 function ago(ms: number) {
   const s = Math.max(1, Math.round((Date.now() - ms) / 1000));
@@ -115,9 +59,13 @@ export function FeedCard() {
   const mobile = useIsMobile();
   const [tab, setTab] = useState<"feed" | "notifications">("feed");
   const { items } = useNotifications();
+  const [list] = useState<Post[]>([]); // stored posts: next step
   const posts = (
-    <ol className="feed-list">
-      {TEST_POSTS.map((p) => (
+    <div className="feed-col">
+      <Composer />
+      <ol className="feed-list">
+      {list.length === 0 && <li className="nt-empty feed-empty">No posts yet. Be the first.</li>}
+      {list.map((p) => (
         <PostRow
           key={p.id}
           p={p}
@@ -125,7 +73,8 @@ export function FeedCard() {
           onSend={() => setSendTo({ handle: p.handle, name: p.name, pfp: p.pfp, wallet: p.wallet })}
         />
       ))}
-    </ol>
+      </ol>
+    </div>
   );
   return (
     <>
@@ -449,11 +398,49 @@ function Trending() {
 
 // ------------------------------------------------------------------ posts
 
+/** Top of the posts column (desktop and phones): write a post, then Post. Logged out: a login prompt. */
+function Composer() {
+  const { ready, authenticated, user, login } = usePrivy();
+  const [text, setText] = useState("");
+  if (!(ready && authenticated))
+    return (
+      <div className="feed-compose feed-compose-locked">
+        <span className="feed-muted">Log in with X to post.</span>
+        <button className="lock-login feed-post-btn" onClick={login} disabled={!ready}>
+          Login
+        </button>
+      </div>
+    );
+  const me = profileOf(user);
+  const left = POST_MAX - text.length;
+  return (
+    <form className="feed-compose" onSubmit={(e) => e.preventDefault()}>
+      <Avatar handle={me.initial} pfp={me.avatar} size={42} />
+      <div className="feed-compose-body">
+        <textarea
+          className="feed-compose-input"
+          placeholder="What's happening?"
+          value={text}
+          maxLength={POST_MAX}
+          rows={2}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="feed-compose-foot">
+          <span className={`feed-muted feed-compose-left${left < 20 ? " is-low" : ""}`}>{left}</span>
+          <button type="submit" className="lock-login feed-post-btn" disabled={!text.trim()}>
+            Post
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
 function PostRow({ p, onComments, onSend }: { p: Post; onComments: () => void; onSend: () => void }) {
   const [liked, setLiked] = useState(false);
   return (
     <li className="feed-post">
-      <Avatar handle={p.handle} pfp={p.pfp} size={42} tone={SAMPLE_TONES[p.handle]} />
+      <Avatar handle={p.handle} pfp={p.pfp} size={42} />
       <div className="feed-body">
         <PostHead p={p} />
         <p className="feed-text">{p.text}</p>
@@ -527,7 +514,7 @@ function CommentsModal({ post, onClose }: { post: Post | null; onClose: () => vo
               </button>
             </header>
             <div className="feed-thread-post">
-              <Avatar handle={post.handle} pfp={post.pfp} size={38} tone={SAMPLE_TONES[post.handle]} />
+              <Avatar handle={post.handle} pfp={post.pfp} size={38} />
               <div className="feed-body">
                 <PostHead p={post} />
                 <p className="feed-text">{post.text}</p>
@@ -536,7 +523,7 @@ function CommentsModal({ post, onClose }: { post: Post | null; onClose: () => vo
             <ol className="feed-thread-list">
               {post.comments.map((c, i) => (
                 <li key={i} className="feed-comment">
-                  <Avatar handle={c.handle} pfp={null} size={30} tone={SAMPLE_TONES[c.handle]} />
+                  <Avatar handle={c.handle} pfp={null} size={30} />
                   <div className="feed-body">
                     <header className="feed-meta">
                       <span className="feed-name">{c.name}</span>
