@@ -1,8 +1,8 @@
 // Testnet faucet button, under the launch card on /launch (logged in only).
-//   First time: "Get testnet funds" opens a pop-up ("Receiving 0.2 HYPE + 1,000 USDC" + Receive); Receive sends, from
-//   the faucet wallet to your Neuriio wallet, what this X account hasn't had yet: 0.2 HYPE for gas and 1,000 test USDC
+//   First time: "Get testnet funds" opens a pop-up ("Receiving 0.2 HYPE + 50,000 USDC" + Receive); Receive sends, from
+//   the faucet wallet to your Neuriio wallet, what this X account hasn't had yet: 0.2 HYPE for gas and 50,000 test USDC
 //   to trade, each once per X account ever (ftf function: claimHype). Accounts that already took the HYPE see "Get
-//   1,000 test USDC". If the faucet has no HYPE to give, the pop-up files a manual request instead (it lands in the
+//   50,000 test USDC". If the faucet has no HYPE to give, the pop-up files a manual request instead (it lands in the
 //   admins' notifications).
 //   After both claims: "Request testnet HYPE" is the manual request as before (ftf: hype / hypeStatus): "HYPE requested"
 //   while it's open and "HYPE sent" for 24 h after an admin sends it.
@@ -16,7 +16,7 @@ import { EASE_OUT } from "../lib/motion";
 
 const AGAIN_MS = 24 * 60 * 60 * 1000;
 const AMOUNT = "0.2";
-const USDC_AMOUNT = "1,000";
+const USDC_AMOUNT = "50,000";
 const EXPLORER_TX = "https://elysium.kinetiq.xyz/tx/";
 
 type Step = "ask" | "sending" | "sent" | "requested" | "claimed" | "error";

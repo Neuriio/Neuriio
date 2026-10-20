@@ -21,7 +21,7 @@
 //   hypeStatus {}                      your latest request: { status: none | pending | sent | dismissed, at, claimed,
 //                                      usdcClaimed }
 //   claimHype  {}                      the faucet: what this X account hasn't had yet, once each, ever: 0.2 HYPE (gas)
-//                                      and 1,000 test USDC, to your Neuriio wallet
+//                                      and 50,000 test USDC, to your Neuriio wallet
 //                                      -> { status: "sent", tx, hypeTx, usdcTx } | { status: "claimed" } |
 //                                      { status: "fallback", usdcTx } (no HYPE to give: the app files a manual request)
 //   hype       {}                      ask for testnet HYPE to your Neuriio wallet (one open request; again 24 h after sent)
@@ -437,10 +437,10 @@ async function pass(who: XUser, body: Body) {
 
 const HYPE_AGAIN_MS = 24 * 60 * 60 * 1000; // after a request was sent
 
-// the faucet: its own wallet (FAUCET_KEY), once per X account: 0.2 HYPE for gas and 1,000 test USDC (2026-10-18; paid
+// the faucet: its own wallet (FAUCET_KEY), once per X account: 0.2 HYPE for gas and 50,000 test USDC (2026-10-18; paid
 // from the faucet's USDC balance, funded by the owner)
 const FAUCET_AMOUNT = parseEther("0.2");
-const FAUCET_USDC = "1000"; // whole USDC
+const FAUCET_USDC = "50000"; // whole USDC (user, 2026-10-19; was 1,000)
 const FAUCET_GAS_RESERVE = parseEther("0.01"); // keep this much for gas; below amount + reserve, claims fall back
 const faucetKey = Deno.env.get("FAUCET_KEY");
 const faucet = faucetKey

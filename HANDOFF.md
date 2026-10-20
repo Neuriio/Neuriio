@@ -91,7 +91,7 @@ everything pushed, Railway redeployed app + watcher).
 1. **Test USDC faucet (built 2026-10-18):** one claim (button under the launch card: "Get testnet funds") pays each X
    account, once each, 0.2 HYPE + 1,000 test USDC from the faucet wallet's balance (`ftf` claimHype; table
    `usdc_claims`; accounts that already took the HYPE see "Get 1,000 test USDC"). Function + table are live; the new
-   button ships with the next push. Fund / top up the faucet: `./script/mint-test-usdc.sh faucet 500000`.
+   button ships with the next push. Fund / top up the faucet: `./script/mint-test-usdc.sh faucet <amount>`. **2026-10-19:** 50,000 test USDC per account (every USDC claim reset once; faucet holds ~100.5M); new launches start at 6,000 virtual USDC (`./script/set-virtual-quote.sh 6000`: graduate at ~$82k market cap, ~$17k raised).
 2. **A real launch / trade / stake / claim from the app** with a wallet holding test USDC (user, in their browser).
 3. Tell testers the old HYPE tokens are gone; remove the Privy LAN origin `https://192.168.0.64:5174`.
 
@@ -190,6 +190,10 @@ low-res check `--scale=0.25` (0.35 gives a fractional height). Memory "launch-vi
   (SVG goo filter), close into a 2x2 grid, melt into a token -> caret -> "create an FTF, / put everyone onchain".
   Its background (vertical mirrored purple -> lavender gradient, twinkling dots in the dark bands) is exported as
   `Background({ frame, plain?, quiet? })` from `Ftf.tsx`; plain loop `ftf-background-4k.mp4` (4 s).
+- **"Stake creators"** (2026-10-19, for X): `stake-creators-4k.mp4` (15 s), composition **"StakeCreators"**: X card ->
+  coin -> pool; trades drop 1% chips that split 40/40/10/10 (creator card's USDC ticks up) -> the real stake card
+  (`node video/scripts/capture-stake.mjs`, Explore `?demo`) types 25000, Stake, Claim (values roll) -> Neuriio half ->
+  five X cards stream fees into the logo tile -> rings + "live on testnet · app.neuriio.xyz".
 - **"final post of this thread"** (2026-10-12): `final-post-4k.mp4` (5 s), composition **"FinalPost"**: the FTF background
   with the line static in the centre (Lilex 600, 96 px, `#6b5a8e`), no typing.
 - **3D dot helix**: see above. Older drafts: "Launch" (2D helix opening), "Storyline".
