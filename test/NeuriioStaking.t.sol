@@ -218,19 +218,19 @@ contract NeuriioStakingTest is NeuriioBase {
 
     // ------------------------------------------------------------------ $NEURIIO: minted by staking X tokens
 
-    /// Pool fee 10 USDC: the token's stakers earn 4 USDC and mint 400 $NEURIIO (100 per $1), dripping over an hour;
+    /// Pool fee 10 USDC: the token's stakers earn 4 USDC and mint 100 $NEURIIO (25 per $1), dripping over an hour;
     /// claiming sends the USDC to the wallet and stakes the $NEURIIO.
     function test_xStakersMint100PerDollarEarned() public {
         address token = _graduatedHeld();
         _stake(alice, token, 1_000e18);
         _tradeBuy(bob, token, 1_000e6); // fee 10
         assertEq(vault.holdersEarned(token), 4e6);
-        assertEq(neuriio.totalSupply(), 400e18);
+        assertEq(neuriio.totalSupply(), 100e18);
         (, uint256 neuDripping) = staking.dripping(token);
-        assertApproxEqAbs(neuDripping, 400e18, 1e6); // the drip rate rounds down by a few wei
+        assertApproxEqAbs(neuDripping, 100e18, 1e6); // the drip rate rounds down by a few wei
         skip(HOUR);
         assertApproxEqAbs(_usdcEarned(alice, token), 4e6, 10);
-        assertApproxEqAbs(_neuEarned(alice, token), 400e18, 1e9);
+        assertApproxEqAbs(_neuEarned(alice, token), 100e18, 1e9);
 
         address[] memory pools = new address[](1);
         pools[0] = token;
@@ -240,7 +240,7 @@ contract NeuriioStakingTest is NeuriioBase {
         assertEq(usdc.balanceOf(alice) - before, u);
         assertEq(neuriio.balanceOf(alice), 0, "claimed $NEURIIO is staked, not sent");
         assertEq(staking.stakedOf(alice, address(neuriio)), n);
-        assertApproxEqAbs(n, 400e18, 1e9);
+        assertApproxEqAbs(n, 100e18, 1e9);
     }
 
     /// Two stakers mint in proportion to their stake.
@@ -250,8 +250,8 @@ contract NeuriioStakingTest is NeuriioBase {
         _stake(bob, token, 3_000e18);
         _tradeBuy(creator, token, 1_000e6);
         skip(HOUR);
-        assertApproxEqAbs(_neuEarned(alice, token), 100e18, 1e9);
-        assertApproxEqAbs(_neuEarned(bob, token), 300e18, 1e9);
+        assertApproxEqAbs(_neuEarned(alice, token), 25e18, 1e9);
+        assertApproxEqAbs(_neuEarned(bob, token), 75e18, 1e9);
     }
 
     /// Curve fees mint nothing (nobody can stake a token on its curve) but move the curve; staking $NEURIIO earns USDC
@@ -287,16 +287,48 @@ contract NeuriioStakingTest is NeuriioBase {
         neuriio.mint(owner, 1);
     }
 
-    /// PAPER's decay: flat at 100 per $1 until $1M of platform fees, then 100 x (S / (S + h))^2.
+    /// PAPER's decay: flat at 25 per $1 until $1M of platform fees, then 25 x (S / (S + h))^2.
     function test_mintRateDecay() public {
         MinterHarness h = new MinterHarness(owner, staking, MINT_RATE, FLAT_UNTIL, DECAY_SCALE);
-        assertEq(h.rateNow(), 100e18);
+        assertEq(h.rateNow(), 25e18);
         h.setTotalFees(999_999e18);
-        assertEq(h.rateNow(), 100e18);
-        h.setTotalFees(31_000_000e18); // $30M past the flat part: 100 x (120/150)^2 = 64
-        assertApproxEqRel(h.rateNow(), 64e18, 1e12);
-        h.setTotalFees(101_000_000e18); // $100M past it: 100 x (120/220)^2 ~= 29.75 (PAPER's own example)
-        assertApproxEqRel(h.rateNow(), 29.7520661e18, 1e12);
+        assertEq(h.rateNow(), 25e18);
+        h.setTotalFees(31_000_000e18); // $30M past the flat part: 25 x (120/150)^2 = 16
+        assertApproxEqRel(h.rateNow(), 16e18, 1e12);
+        h.setTotalFees(101_000_000e18); // $100M past it: 25 x (120/220)^2 ~= 7.44
+        assertApproxEqRel(h.rateNow(), 7.4380165e18, 1e12);
+    }
+
+    /// Never more than 25 per $1, and never past the 1B supply: the last mint is cut to what's left, then nothing.
+    function test_rateCapAndSupplyCap() public {
+        vm.prank(owner);
+        vm.expectRevert(NeuriioMinter.InvalidParams.selector);
+        minter.setMintCurve(25e18 + 1, FLAT_UNTIL, DECAY_SCALE);
+        vm.expectRevert(NeuriioMinter.InvalidParams.selector);
+        new NeuriioMinter(owner, staking, 26e18, FLAT_UNTIL, DECAY_SCALE);
+
+        address token = _graduatedHeld();
+        _stake(alice, token, 1_000e18);
+        _giveNeuriio(bob, neuriio.MAX_SUPPLY() - 10e18); // 10 $NEURIIO left under the cap
+        _tradeBuy(creator, token, 1_000e6); // stakers earn 4 USDC: would mint 100, only 10 fit
+        assertEq(neuriio.totalSupply(), neuriio.MAX_SUPPLY());
+        uint256 earnedBefore = vault.holdersEarned(token);
+        _tradeBuy(creator, token, 1_000e6); // at the cap: USDC still flows, nothing more is minted
+        assertEq(neuriio.totalSupply(), neuriio.MAX_SUPPLY());
+        assertGt(vault.holdersEarned(token), earnedBefore);
+        vm.prank(address(minter));
+        vm.expectRevert(NeuriioPlatformToken.SupplyCapReached.selector);
+        neuriio.mint(bob, 1);
+    }
+
+    /// The owner can fix the minter for good.
+    function test_lockMinter() public {
+        vm.startPrank(owner);
+        neuriio.lockMinter();
+        vm.expectRevert(NeuriioPlatformToken.MinterIsLocked.selector);
+        neuriio.setMinter(owner);
+        vm.stopPrank();
+        assertEq(neuriio.minter(), address(minter));
     }
 
     function test_mintCurveAdmin() public {
@@ -306,9 +338,9 @@ contract NeuriioStakingTest is NeuriioBase {
         minter.setVault(alice, true);
         vm.startPrank(owner);
         vm.expectRevert(NeuriioMinter.InvalidParams.selector);
-        minter.setMintCurve(1_000_001e18, 1, 1);
-        minter.setMintCurve(50e18, 10e18, 20e18);
-        assertEq(minter.mintRate(), 50e18);
+        minter.setMintCurve(26e18, 1, 1);
+        minter.setMintCurve(20e18, 10e18, 20e18);
+        assertEq(minter.mintRate(), 20e18);
         minter.freezeMintCurve();
         vm.expectRevert(NeuriioMinter.MintCurveIsFrozen.selector);
         minter.setMintCurve(100e18, 1, 1);

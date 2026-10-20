@@ -23,8 +23,8 @@ interface IPair is ISwapPair, IERC20 {
 abstract contract NeuriioBase is Test {
     uint256 constant VQ = 5_000e6; // virtual USDC: graduates at ~14,168 USDC raised (~$68.5k market cap)
     address constant DEAD = 0x000000000000000000000000000000000000dEaD;
-    // the $NEURIIO mint: 100 per $1 X-token stakers earn, flat for $1M of platform fees, then S = $120M (PAPER's)
-    uint256 constant MINT_RATE = 100e18;
+    // the $NEURIIO mint: 25 per $1 X-token stakers earn (never more), flat for $1M of platform fees, then S = $120M
+    uint256 constant MINT_RATE = 25e18;
     uint256 constant FLAT_UNTIL = 1_000_000e18;
     uint256 constant DECAY_SCALE = 120_000_000e18;
 

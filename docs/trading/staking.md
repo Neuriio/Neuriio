@@ -16,13 +16,14 @@ Explore page.
 
 * Every pool trade of that token pays 1%, and **40% of it goes to the people staking it**, shared by how much each has
   staked.
-* Every **$1** you earn this way also **mints Neuriio** for you (100 Neuriio per $1 to start; see below).
+* Every **$1** you earn this way also **mints Neuriio** for you (25 Neuriio per $1 at most; see below).
 * A token still on its bonding curve can't be staked yet.
 
 ## Neuriio
 
 Neuriio is the platform token. The only way it's created is by staking graduated tokens: there's no presale, no team
-allocation and no pre-mint.
+allocation and no pre-mint. **Supply is hard-capped at 1,000,000,000 Neuriio**: the token contract refuses any mint past
+it, so once the cap is reached staking keeps paying USDC but mints no more Neuriio.
 
 * **Stake Neuriio** to share 80% of every curve fee and 40% of every pool fee on Neuriio, in USDC. Staking Neuriio
   doesn't mint more Neuriio.
@@ -34,11 +35,12 @@ allocation and no pre-mint.
 
 | Total fees Neuriio has taken | Neuriio per $1 earned |
 | --- | --- |
-| Up to $1M | 100 |
-| After $1M | 100 × (S ÷ (S + h))², with S = $120M and h = fees past the first $1M |
+| Up to $1M | 25 |
+| After $1M | 25 × (S ÷ (S + h))², with S = $120M and h = fees past the first $1M |
 
-The rate stays at 100 until Neuriio has taken $1M in fees, then slowly falls as the platform grows. For example, with
-$31M taken it's about 64 per $1, and with $101M taken it's about 30.
+The rate stays at 25 until Neuriio has taken $1M in fees, then slowly falls as the platform grows. For example, with
+$31M taken it's about 16 per $1, and with $101M taken it's about 7.4. **25 per $1 is the maximum**: it's fixed in the
+minter contract, so nobody can ever raise it.
 
 ## Rewards drip in
 

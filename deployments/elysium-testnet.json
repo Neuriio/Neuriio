@@ -3,10 +3,11 @@
   "usdc": "0xe83c3630cab1c3d1d3b19a1f6ee393618c690c7b",
   "launchRegistry": "0x24dc6e578a7e2ea468ab300a50e23cc504d32219",
   "swapFactory": "0xf6988f1219341262450ae279790e2105c9173b69",
-  "staking": "0x63e29d4f1929a9fc59e84c7ee75a50ca6b83709a",
-  "neuriio": "0x5964e0e586208992cbd0d419c56052b97a4b1089",
-  "feeVault": "0x35cc3eb03c575083c01cf3f84f9136b77f5dd6b9",
+  "staking": "0xdf46b1c55634865618fdfca36504beffad18c2ab",
+  "neuriio": "0x1cac143eb95e6bcde71c38bd128c2af94a54d483",
+  "feeVault": "0x5cfb96befedf81ae7e18c5f12b16e3c52f0abe63",
   "feeVaults": [
+    "0x5cfb96befedf81ae7e18c5f12b16e3c52f0abe63",
     "0x35cc3eb03c575083c01cf3f84f9136b77f5dd6b9",
     "0xcb49b0f7b219851b4093e06694bfe9937c37733e"
   ],
@@ -26,5 +27,5 @@
     }
   ],
   "launchpad": "0x892b08a9b3987516a4ae5ab7d7e4d56642268d76",
-  "minter": "0x24067f1d414d1bb5fa0fb759d9129d6fed55f031"
+  "minter": "0x9a02bbf37624b56edad9253020a37fefdff7b5db"
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Live test of the USDC world on Elysium testnet. A throwaway trader launches a token, trades it on the curve through the
 # NeuriioRouter, graduates it (LP burned), stakes the X token, trades the pool (the stakers earn USDC and mint $NEURIIO,
-# 100 per $1), and claims staking rewards (the $NEURIIO is staked for them) and creator fees. Launch passes normally come from the Supabase launch-pass
+# 25 per $1 at most), and claims staking rewards (the $NEURIIO is staked for them) and creator fees. Launch passes normally come from the Supabase launch-pass
 # function; here the owner points the NeuriioPad at a throwaway signer for the run and restores the real one at the
 # end. The owner mints the trader test USDC (as a minter only for the run) and sends a little HYPE for gas.
 #   ./script/launchpad-test.sh [account]   (default: burner; asks its keystore password unless OWNER_KEY is set)
@@ -41,10 +41,10 @@ echo "  staking $STAKING · \$NEURIIO $NEURIIO · fees $VAULT"
 
 TRADER_KEY=$(cast wallet new --json | jq -r '.[0].private_key')
 TRADER=$(cast wallet address --private-key "$TRADER_KEY")
-echo "== Funding throwaway trader $TRADER: 0.02 HYPE for gas + 10,000 test USDC"
+echo "== Funding throwaway trader $TRADER: 0.02 HYPE for gas + 50,000 test USDC (enough to graduate a curve)"
 send "$TRADER" --value 0.02ether --private-key "$OWNER_KEY" >/dev/null
 send $USDC "setMinter(address,bool)" $OWNER true --private-key "$OWNER_KEY" >/dev/null
-send $USDC "mint(address,uint256)" $TRADER 10000000000 --private-key "$OWNER_KEY" >/dev/null
+send $USDC "mint(address,uint256)" $TRADER 50000000000 --private-key "$OWNER_KEY" >/dev/null
 send $USDC "setMinter(address,bool)" $OWNER false --private-key "$OWNER_KEY" >/dev/null
 DL=$(( $(date +%s) + 900 ))
 T() { send "$@" --private-key "$TRADER_KEY"; }
@@ -121,7 +121,8 @@ T $ROUTER "sell(address,uint256,uint256,uint256)" $TOKEN $(py "$B1-$B0") 0 $DL >
 H1=$(call $VAULT "holdersEarned(address)(uint256)" $TOKEN); S1=$(call $VAULT "stakersEarned()(uint256)")
 check "token stakers got $(usd $(py "$H1-$H0")) USDC (40%)" "$(py "'true' if $H1 > $H0 else ''")"
 MINTED=$(py "$(call $NEURIIO "totalSupply()(uint256)")-$SUP0")
-check "which minted $(tok $MINTED) \$NEURIIO for them (100 per \$1)" "$( [ "$MINTED" = "$(py "($H1-$H0)*10**14")" ] && echo true )"
+RATE=$(call $(jq -r .minter $D) "rateNow()(uint256)")
+check "which minted $(tok $MINTED) \$NEURIIO for them ($(py "$RATE/10**18") per \$1)" "$( [ "$MINTED" = "$(py "($H1-$H0)*10**12*$RATE//10**18")" ] && echo true )"
 if [ "$NSTAKED" = "0" ]; then
   check "\$NEURIIO stakers' 40% fell to the treasury (nobody stakes \$NEURIIO yet)" "$( [ "$S1" = "$S0" ] && echo true )"
 else

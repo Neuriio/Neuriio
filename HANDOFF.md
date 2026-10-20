@@ -20,6 +20,15 @@ $NEURIIO can't be transferred. No loss-mint, boosts or locks. Contracts: `src/st
 NeuriioMinter, NeuriioPlatformToken), `src/launch/NeuriioFees.sol` + `NeuriioPad.sol`, `src/swap/NeuriioRouter.sol`,
 `src/swap/v2` (USDC quote + 1% fee), `src/testnet/TestUSDC.sol`. 71 Foundry tests.
 
+### Neuriio cap (2026-10-20): staking side redeployed
+The user set the mint to **25 Neuriio per $1** earned by X-token stakers (never more: MAX_MINT_RATE = 25 in
+NeuriioMinter), decay after $1M of platform fees (PAPER shape, S = $120M), and a **1B hard supply cap** in the token
+(mint reverts past it; the minter cuts the last mint to what's left). The token also gets `lockMinter()` (one-way; call
+before mainnet with `freezeMintCurve()`). Redeployed with `./script/redeploy-staking.sh` (router kept, so approvals
+stay): staking `0xdf46…c2ab`, Neuriio `0x1cac…d483`, minter `0x9a02…b5db`, fees `0x5cfb…be63`; live test passed on
+testnet (39.57 Neuriio for $1.58 earned). Old stakes stay withdrawable in the old staking contract; old vaults stay
+claimable. 73 Foundry tests. New launches start at 6,000 virtual USDC (`./script/set-virtual-quote.sh`).
+
 ### Review (2026-10-18, Opus): no critical/high fund-loss issues -> NO contract rebuild
 - The source verified on Blockscout is identical to the local files for all 10 contracts, and the live wiring is
   right (pad + factory -> current vault, minter approves only it, $NEURIIO minter = NeuriioMinter, wallets set,
@@ -190,10 +199,11 @@ low-res check `--scale=0.25` (0.35 gives a fractional height). Memory "launch-vi
   (SVG goo filter), close into a 2x2 grid, melt into a token -> caret -> "create an FTF, / put everyone onchain".
   Its background (vertical mirrored purple -> lavender gradient, twinkling dots in the dark bands) is exported as
   `Background({ frame, plain?, quiet? })` from `Ftf.tsx`; plain loop `ftf-background-4k.mp4` (4 s).
-- **"Stake creators"** (2026-10-19, for X): `stake-creators-4k.mp4` (15 s), composition **"StakeCreators"**: X card ->
-  coin -> pool; trades drop 1% chips that split 40/40/10/10 (creator card's USDC ticks up) -> the real stake card
-  (`node video/scripts/capture-stake.mjs`, Explore `?demo`) types 25000, Stake, Claim (values roll) -> Neuriio half ->
-  five X cards stream fees into the logo tile -> rings + "live on testnet · app.neuriio.xyz".
+- **"Stake creators"** (2026-10-20 second cut, for X; in progress): `stake-creators-4k.mp4` (14 s), composition
+  **"StakeCreators"**, all type in Manrope, one world + camera: big X card -> token on the pool, buys/sells -> camera
+  follows one buy's 1% chip into the staking card ("40% of LP fees") -> glides along Neuriio dots to the Neuriio card
+  ("25 minted per $1 of fees", user's number; docs/contract say 100) -> flips to Stake Neuriio (80% curve / 40% LP).
+  User asked to stop there; next beats TBD. `video/scripts/capture-stake.mjs` (real stake card captures) is unused now.
 - **"final post of this thread"** (2026-10-12): `final-post-4k.mp4` (5 s), composition **"FinalPost"**: the FTF background
   with the line static in the centre (Lilex 600, 96 px, `#6b5a8e`), no typing.
 - **3D dot helix**: see above. Older drafts: "Launch" (2D helix opening), "Storyline".

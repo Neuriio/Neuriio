@@ -31,7 +31,7 @@ USDC reserve:
 
 | Network | Starting virtual USDC | USDC raised at graduation | Market cap at graduation |
 | --- | --- | --- | --- |
-| Elysium testnet | 1,000 | about 2,834 | about $13.7k |
+| Elysium testnet | 6,000 | about 17,000 | about $82k |
 | Mainnet (planned) | about 5,109 | about 14,500 | about $70k |
 
 The closing price on the curve is exactly the pool's opening price, so there's no jump at graduation.

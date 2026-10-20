@@ -6,15 +6,14 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {NeuriioRegistry} from "../src/launch/NeuriioRegistry.sol";
 import {NeuriioFees} from "../src/launch/NeuriioFees.sol";
 import {NeuriioPad, ICurveFeeVault} from "../src/launch/NeuriioPad.sol";
-import {NeuriioRouter} from "../src/swap/NeuriioRouter.sol";
 import {NeuriioStaking} from "../src/stake/NeuriioStaking.sol";
 import {NeuriioMinter} from "../src/stake/NeuriioMinter.sol";
 import {ISwapFactory, ISwapFactoryAdmin} from "../src/swap/interfaces.sol";
 import {NeuriioConfig} from "./NeuriioConfig.sol";
 
-/// Puts the staking side (NeuriioStaking + a fresh $NEURIIO, NeuriioMinter, NeuriioFees, NeuriioRouter) on an existing
-/// core (registry, factory, USDC) and points the factory and every NeuriioPad version at the new vault. Old vault
-/// balances stay claimable there.
+/// Puts a new staking side (NeuriioStaking + a fresh $NEURIIO, NeuriioMinter, NeuriioFees) on an existing core
+/// (registry, factory, USDC, NeuriioRouter: the router doesn't depend on staking, so it and everyone's approvals of it
+/// stay) and points the factory and every NeuriioPad version at the new vault. Old vault balances stay claimable there.
 ///   forge script script/DeployStaking.s.sol --rpc-url elysium_testnet --broadcast --private-key <key>
 /// env: REGISTRY, SWAP_FACTORY, TREASURY_WALLET, BUYBACK_WALLET, and the mint curve (NeuriioConfig)
 contract DeployStaking is NeuriioConfig {
@@ -31,7 +30,6 @@ contract DeployStaking is NeuriioConfig {
         NeuriioFees vault = new NeuriioFees(deployer, usdc, ISwapFactory(address(factory)), registry, staking, minter);
         minter.setVault(address(vault), true);
         vault.setWallets(vm.envAddress("TREASURY_WALLET"), vm.envAddress("BUYBACK_WALLET"));
-        NeuriioRouter trade = new NeuriioRouter(registry, ISwapFactory(address(factory)));
         factory.setFeeVault(address(vault));
         for (uint256 i; i < registry.launchpadsLength(); ++i) {
             NeuriioPad(registry.launchpads(i)).setFeeVault(ICurveFeeVault(address(vault)));
@@ -41,6 +39,5 @@ contract DeployStaking is NeuriioConfig {
         console.log("NeuriioPlatformToken:", address(staking.neuriio()));
         console.log("NeuriioMinter:", address(minter));
         console.log("NeuriioFees:", address(vault));
-        console.log("NeuriioRouter:", address(trade));
     }
 }
