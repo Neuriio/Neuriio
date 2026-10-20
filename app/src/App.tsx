@@ -19,11 +19,12 @@ import { useRegisterOnLogin } from "./lib/register";
 import { useNotificationsPoller } from "./lib/ftf";
 
 // One layout for every page; the center card changes by path (app.neuriio.xyz/launch, ...).
-// "/" is the landing page (no menu; Explore inside a frame); any unknown path shows Explore and the address bar is set to /explore.
-const ROUTES = ["/", "/showcase", "/launch", "/feed", "/explore", "/trending"];
+// "/" opens the Feed (public launch, user 2026-10-20: no landing page, no passcode); any other unknown path shows Explore.
+// The address bar is set to the page shown. (The landing page's code stays, unused, for a later marketing site.)
+const ROUTES = ["/showcase", "/launch", "/feed", "/explore", "/trending"];
 const RAW = location.pathname.replace(/\/+$/, "") || "/";
-const PAGE = ROUTES.includes(RAW) ? RAW : "/explore";
-if (RAW !== PAGE) history.replaceState(null, "", "/explore" + location.search + location.hash);
+const PAGE = RAW === "/" ? "/feed" : ROUTES.includes(RAW) ? RAW : "/explore";
+if (RAW !== PAGE) history.replaceState(null, "", PAGE + location.search + location.hash);
 
 export function App() {
   // /showcase: the landing's Explore card alone (framed into the landing on phones); no header, no account hooks

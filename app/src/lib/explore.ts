@@ -55,7 +55,7 @@ export type Ranking = "volume_usd_24h" | "volume_usd" | "launched_at" | "curve_p
 export const DEV_DEMO = import.meta.env.DEV && new URLSearchParams(location.search).has("demo");
 /** The landing page "/" and /showcase (its Explore card, framed on phones): the demo data is a fixed showcase
  *  (no live trades; the top token shows set numbers). */
-export const LANDING = location.pathname === "/" || location.pathname === "/showcase";
+export const LANDING = location.pathname === "/showcase"; // the showcase picture ("/" now opens the Feed)
 /** Fake data for the token lists, chart, live feed and trade box: dev ?demo, and always on the landing
  *  (its Explore card is a showcase; the signed-in account, Send and Points stay real). */
 export const DEMO = DEV_DEMO || LANDING;
