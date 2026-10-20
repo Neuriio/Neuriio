@@ -3021,6 +3021,25 @@ a.ex-row {
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
+/* buy side: the four amounts + a pencil to set your own (remembered in this browser) */
+.ex-order-quick.has-edit {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+}
+.ex-quick-edit {
+  display: grid;
+  place-items: center;
+  padding: 4px 8px;
+}
+.ex-quick-input {
+  min-width: 0;
+  width: 100%;
+  color: var(--text);
+  text-align: center;
+  outline: none;
+}
+.ex-quick-input:focus {
+  border-color: rgba(216, 255, 254, 0.75);
+}
 /* preset amounts: brighter stroke + text than the chart's range buttons, so they don't read as disabled */
 .ex-order-quick .ex-range {
   color: var(--text-2);

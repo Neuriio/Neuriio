@@ -4,6 +4,7 @@
 //   the background when the box opens (lib/trade.ts prepareTrading). `?demo`: simulated wallet + trades.
 import { useEffect, useMemo, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { Check, Pencil } from "lucide-react";
 import { formatEther, formatUnits, parseEther, parseUnits, type Address } from "viem";
 import { DEMO, displayName, tickerOf, type TokenStat } from "../lib/explore";
 import { compactUsd } from "../lib/format";
@@ -13,7 +14,19 @@ import { QUOTE } from "../lib/config";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { elysiumProvider } from "../lib/tx";
 
-const QUICK_BUY = ["5", "25", "100", "250"]; // USDC
+const QUICK_BUY = ["5", "25", "100", "250"]; // USDC, until you set your own (the pencil)
+const QUICK_KEY = "neuriio.quickBuy";
+
+/** Your quick-buy amounts (USDC), remembered in this browser; the defaults if none or unreadable. */
+function savedQuickBuy(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(QUICK_KEY) ?? "null");
+    if (Array.isArray(v) && v.length === 4 && v.every((x) => typeof x === "string" && Number(x) > 0)) return v;
+  } catch {
+    /* private window / blocked storage: defaults */
+  }
+  return QUICK_BUY;
+}
 const QUICK_SELL = [25, 50, 75, 100];
 
 type Status = { kind: "idle" } | { kind: "busy"; label: string } | { kind: "done"; text: string } | { kind: "error"; text: string };
@@ -26,6 +39,8 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
   const loggedIn = DEMO || (ready && authenticated && !!wallet);
 
   const [side, setSide] = useState<Side>("buy");
+  const [quick, setQuick] = useState<string[]>(savedQuickBuy);
+  const [editing, setEditing] = useState<string[] | null>(null); // drafts while editing the quick amounts
   const [amount, setAmount] = useState("");
   const [bal, setBal] = useState<{ usdc: bigint; tokens: bigint; gas: bigint } | null>(null);
   const [q, setQ] = useState<{ out: bigint; refund: bigint; spot: number | null } | null>(null);
@@ -105,6 +120,19 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
   const outNum = q ? Number(side === "buy" ? formatEther(q.out) : formatUnits(q.out, QUOTE.decimals)) : 0;
   const impact = q && spotOut > 0 ? Math.max(0, (1 - outNum / spotOut) * 100) : null;
   const busy = status.kind === "busy";
+
+  /** Keeps the edited quick amounts (blank or zero ones fall back to what was there) and remembers them here. */
+  function saveQuick() {
+    if (!editing) return;
+    const next = editing.map((v, i) => (Number(v) > 0 ? String(Number(v)) : quick[i]));
+    setQuick(next);
+    setEditing(null);
+    try {
+      localStorage.setItem(QUICK_KEY, JSON.stringify(next));
+    } catch {
+      /* storage blocked: they still apply until the page reloads */
+    }
+  }
 
   async function submit() {
     if (!t || !q || !account) return;
@@ -193,14 +221,38 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
         <span className="ex-order-sub">{n > 0 && hypeUsd ? `≈ ${compactUsd(usdValue)}` : " "}</span>
       </label>
 
-      <div className="ex-order-quick">
-        {side === "buy"
-          ? QUICK_BUY.map((v) => (
-              <button key={v} className="ex-range" onClick={() => setAmount(v)}>
+      <div className={`ex-order-quick${side === "buy" ? " has-edit" : ""}`}>
+        {side === "buy" && editing ? (
+          <>
+            {editing.map((v, i) => (
+              <input
+                key={i}
+                className="ex-range ex-quick-input"
+                inputMode="decimal"
+                value={v}
+                aria-label={`Quick amount ${i + 1} (USDC)`}
+                autoFocus={i === 0}
+                onChange={(e) => setEditing(editing.map((x, j) => (j === i ? e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1") : x)))}
+                onKeyDown={(e) => e.key === "Enter" && saveQuick()}
+              />
+            ))}
+            <button className="ex-range ex-quick-edit" onClick={saveQuick} aria-label="Save quick amounts" title="Save">
+              <Check size={13} />
+            </button>
+          </>
+        ) : side === "buy" ? (
+          <>
+            {quick.map((v, i) => (
+              <button key={i} className="ex-range" onClick={() => setAmount(v)}>
                 {v}
               </button>
-            ))
-          : QUICK_SELL.map((pct) => (
+            ))}
+            <button className="ex-range ex-quick-edit" onClick={() => setEditing(quick)} aria-label="Edit quick amounts" title="Edit amounts">
+              <Pencil size={12} />
+            </button>
+          </>
+        ) : (
+          QUICK_SELL.map((pct) => (
               <button
                 key={pct}
                 className="ex-range"
@@ -209,7 +261,8 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
               >
                 {pct}%
               </button>
-            ))}
+            ))
+        )}
       </div>
 
       <dl className="ex-order-est">
