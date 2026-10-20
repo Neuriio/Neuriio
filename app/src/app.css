@@ -4569,3 +4569,9 @@ a.ex-row {
   font-size: 12px;
   color: #ff8fb1;
 }
+.feed-reply {
+  margin: 12px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--line);
+  border-bottom: none;
+}

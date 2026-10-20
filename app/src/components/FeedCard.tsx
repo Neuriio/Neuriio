@@ -2,7 +2,7 @@
 // the card, then one wide card: a left column (you: picture, sector, category, creator fees · your wallet balances ·
 // top 25 trending by 24h volume) beside the posts. Every post has Like, Comment (opens the thread in a window to
 // read) and Send $ (a window: pick one of your Elysium tokens + amount, sent to the poster's wallet). Posts, likes
-// Posts are stored (supabase posts table, written by the `posts` function); likes and comments aren't yet. A compose box with a Post button sits on top of the posts (desktop and phones).
+// Posts, likes and comments are stored (supabase posts / post_likes / post_comments, written by the `posts` function). A compose box with a Post button sits on top of the posts (desktop and phones).
 // Phones (<= 860px): no left column; one card with two tabs, Feed (the posts) and Notifications (the same list as
 // the Account panel's bell).
 import { useEffect, useState } from "react";
@@ -16,7 +16,7 @@ import { NotificationsList, NotificationsModal } from "./NotificationsModal";
 import { useIsMobile } from "../lib/media";
 import { SendModal, type SendTarget } from "./SendModal";
 import { useNotifications } from "../lib/ftf";
-import { createPost, latestPosts, POST_MAX, type PostRow } from "../lib/posts";
+import { commentOn, commentsOf, createPost, latestPosts, likedBy, likePost, POST_MAX, type CommentRow, type PostRow } from "../lib/posts";
 import { EASE_OUT } from "../lib/motion";
 import { amount, compactUsd, usd } from "../lib/format";
 import { QUOTE } from "../lib/config";
@@ -27,7 +27,6 @@ import { tokenCreatorEarned } from "../lib/fees";
 import { CATEGORIES, launchedTokenOf, SECTORS } from "../lib/launch";
 import { change24h, DEMO, displayName, getToken, handleOf, searchTokens, tickerOf, topTokens, type TokenStat } from "../lib/explore";
 
-type Comment = { handle: string; name: string; text: string; at: number };
 type Post = {
   id: string;
   handle: string;
@@ -38,7 +37,8 @@ type Post = {
   text: string;
   at: number; // ms
   likes: number;
-  comments: Comment[];
+  comments: number;
+  liked: boolean; // by you
 };
 
 const toPost = (r: PostRow): Post => ({
@@ -50,8 +50,9 @@ const toPost = (r: PostRow): Post => ({
   wallet: r.wallet,
   text: r.text,
   at: Date.parse(r.created_at),
-  likes: 0,
-  comments: [],
+  likes: r.likes ?? 0,
+  comments: r.comments ?? 0,
+  liked: false,
 });
 
 function ago(ms: number) {
@@ -72,16 +73,37 @@ export function FeedCard() {
   const [tab, setTab] = useState<"feed" | "notifications">("feed");
   const { items } = useNotifications();
   const [list, setList] = useState<Post[] | null>(null);
+  const { ready, authenticated, user, login, getAccessToken } = usePrivy();
+  const myX = ready && authenticated ? (user?.twitter?.subject ?? null) : null;
   useEffect(() => {
     let alive = true;
-    const load = () => latestPosts().then((r) => alive && setList(r.map(toPost)), () => {});
+    const load = () =>
+      Promise.all([latestPosts(), myX ? likedBy(myX).catch(() => new Set<string>()) : new Set<string>()]).then(
+        ([r, mine]) => alive && setList(r.map((x) => ({ ...toPost(x), liked: mine.has(x.id) }))),
+        () => {},
+      );
     load();
     const id = setInterval(load, 15_000);
     return () => {
       alive = false;
       clearInterval(id);
     };
-  }, []);
+  }, [myX]);
+  const patch = (id: string, f: (p: Post) => Post) => {
+    setList((l) => l?.map((p) => (p.id === id ? f(p) : p)) ?? l);
+    setReading((r) => (r?.id === id ? f(r) : r));
+  };
+  const onLike = async (p: Post) => {
+    if (!myX) return login();
+    const on = !p.liked;
+    patch(p.id, (x) => ({ ...x, liked: on, likes: Math.max(0, x.likes + (on ? 1 : -1)) }));
+    try {
+      const likes = await likePost(getAccessToken, p.id, on);
+      patch(p.id, (x) => ({ ...x, likes }));
+    } catch {
+      patch(p.id, (x) => ({ ...x, liked: !on, likes: Math.max(0, x.likes + (on ? -1 : 1)) }));
+    }
+  };
   const onPosted = (r: PostRow) => setList((l) => [toPost(r), ...(l ?? []).filter((p) => p.id !== r.id)]);
   const posts = (
     <div className="feed-col">
@@ -93,6 +115,7 @@ export function FeedCard() {
         <PostRow
           key={p.id}
           p={p}
+          onLike={() => onLike(p)}
           onComments={() => setReading(p)}
           onSend={() => setSendTo({ handle: p.handle, name: p.name, pfp: p.pfp, wallet: p.wallet })}
         />
@@ -131,7 +154,7 @@ export function FeedCard() {
           </div>
         )}
       </section>
-      <CommentsModal post={reading} onClose={() => setReading(null)} />
+      <CommentsModal post={reading} onClose={() => setReading(null)} onCommented={(id) => patch(id, (x) => ({ ...x, comments: x.comments + 1 }))} />
       <SendModal target={sendTo} onClose={() => setSendTo(null)} />
     </>
   );
@@ -478,8 +501,7 @@ function Composer({ onPosted }: { onPosted: (r: PostRow) => void }) {
   );
 }
 
-function PostRow({ p, onComments, onSend }: { p: Post; onComments: () => void; onSend: () => void }) {
-  const [liked, setLiked] = useState(false);
+function PostRow({ p, onLike, onComments, onSend }: { p: Post; onLike: () => void; onComments: () => void; onSend: () => void }) {
   return (
     <li className="feed-post">
       <Avatar handle={p.handle} pfp={p.pfp} size={42} />
@@ -487,11 +509,11 @@ function PostRow({ p, onComments, onSend }: { p: Post; onComments: () => void; o
         <PostHead p={p} />
         <p className="feed-text">{p.text}</p>
         <div className="feed-actions">
-          <button className={`feed-act feed-like${liked ? " is-on" : ""}`} onClick={() => setLiked(!liked)} aria-pressed={liked}>
-            <Heart size={15} fill={liked ? "currentColor" : "none"} /> {p.likes + (liked ? 1 : 0)}
+          <button className={`feed-act feed-like${p.liked ? " is-on" : ""}`} onClick={onLike} aria-pressed={p.liked}>
+            <Heart size={15} fill={p.liked ? "currentColor" : "none"} /> {p.likes}
           </button>
           <button className="feed-act" onClick={onComments}>
-            <MessageCircle size={15} /> {p.comments.length}
+            <MessageCircle size={15} /> {p.comments}
           </button>
           <button className="feed-act feed-send" onClick={onSend}>
             Send <b>$</b>
@@ -516,8 +538,40 @@ function PostHead({ p }: { p: Post }) {
   );
 }
 
-/** Comments: the post and its thread in a window over the blurred page (read only for now). */
-function CommentsModal({ post, onClose }: { post: Post | null; onClose: () => void }) {
+/** Comments: the post and its thread in a window over the blurred page, with a box to add yours. */
+function CommentsModal({ post, onClose, onCommented }: { post: Post | null; onClose: () => void; onCommented: (postId: string) => void }) {
+  const { ready, authenticated, login, getAccessToken } = usePrivy();
+  const [thread, setThread] = useState<CommentRow[] | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const postId = post?.id;
+  useEffect(() => {
+    setThread(null);
+    setErr(null);
+    if (!postId) return;
+    let alive = true;
+    commentsOf(postId).then((r) => alive && setThread(r), () => alive && setThread([]));
+    return () => {
+      alive = false;
+    };
+  }, [postId]);
+  const send = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!postId || !text.trim() || busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const c = await commentOn(getAccessToken, postId, text);
+      setThread((t) => [...(t ?? []), c]);
+      setText("");
+      onCommented(postId);
+    } catch (x) {
+      setErr((x as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
   useEffect(() => {
     if (!post) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -563,22 +617,52 @@ function CommentsModal({ post, onClose }: { post: Post | null; onClose: () => vo
               </div>
             </div>
             <ol className="feed-thread-list">
-              {post.comments.map((c, i) => (
-                <li key={i} className="feed-comment">
-                  <Avatar handle={c.handle} pfp={null} size={30} />
+              {thread?.map((c) => (
+                <li key={c.id} className="feed-comment">
+                  <Avatar handle={c.x_handle} pfp={c.x_pfp_url} size={30} />
                   <div className="feed-body">
                     <header className="feed-meta">
-                      <span className="feed-name">{c.name}</span>
-                      <span className="feed-handle">{handleOf(c.handle)}</span>
+                      <span className="feed-name">{c.x_name || c.x_handle}</span>
+                      <span className="feed-handle">{handleOf(c.x_handle)}</span>
                       <span className="feed-dot">·</span>
-                      <span className="feed-time">{ago(c.at)}</span>
+                      <span className="feed-time">{ago(Date.parse(c.created_at))}</span>
                     </header>
                     <p className="feed-text">{c.text}</p>
                   </div>
                 </li>
               ))}
-              {post.comments.length === 0 && <li className="nt-empty">No comments yet.</li>}
+              {thread?.length === 0 && <li className="nt-empty">No comments yet.</li>}
+              {!thread && <li className="nt-empty">Loading…</li>}
             </ol>
+            {ready && authenticated ? (
+              <form className="feed-compose feed-reply" onSubmit={send}>
+                <div className="feed-compose-body">
+                  <textarea
+                    className="feed-compose-input"
+                    placeholder="Write a comment"
+                    value={text}
+                    maxLength={POST_MAX}
+                    rows={2}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={(e) => (e.metaKey || e.ctrlKey) && e.key === "Enter" && send(e)}
+                  />
+                  <div className="feed-compose-foot">
+                    {err && <span className="feed-compose-err">{err}</span>}
+                    <span className="feed-muted feed-compose-left">{POST_MAX - text.length}</span>
+                    <button type="submit" className="lock-login feed-post-btn" disabled={!text.trim() || busy}>
+                      {busy ? "Sending…" : "Reply"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <div className="feed-compose feed-reply feed-compose-locked">
+                <span className="feed-muted">Log in with X to comment.</span>
+                <button className="lock-login feed-post-btn" onClick={login} disabled={!ready}>
+                  Login
+                </button>
+              </div>
+            )}
           </motion.div>
         </motion.div>
       )}
