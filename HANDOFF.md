@@ -20,6 +20,25 @@ $NEURIIO can't be transferred. No loss-mint, boosts or locks. Contracts: `src/st
 NeuriioMinter, NeuriioPlatformToken), `src/launch/NeuriioFees.sol` + `NeuriioPad.sol`, `src/swap/NeuriioRouter.sol`,
 `src/swap/v2` (USDC quote + 1% fee), `src/testnet/TestUSDC.sol`. 71 Foundry tests.
 
+### NEXT SESSION (2026-10-20 evening): scaling plan, not started; nothing urgent at today's numbers
+Done + live today: FTF accept fix (setMember updated the row instead of upserting: role NOT NULL), Feed with real
+posts / likes / comments (tables posts, post_likes, post_comments, view posts_feed; `posts` Edge Function, Privy
+login, 5 posts / 10 comments / 60 likes a minute), sample posts gone. Railway paused deploys platform-wide for a while
+(07263d0 was an empty commit to re-trigger it).
+Capacity now: a few hundred online at once is comfortable, ~1-2k at once is where limits bite. The first wall is
+Supabase's monthly function-call quota (the notifications inbox poll = an `ftf` call every 20 s per logged-in user,
+and each call also does a Privy user lookup). Chain calls already go browser -> RPC directly (never via our server);
+only the shared Conduit key is the shared limit. Charts come from Supabase + realtime, not the RPC.
+To stay on free tiers, in this order (none touch the contracts):
+1. Explore / trending / token pages read market data (prices, mcap, curve progress) from the indexer's Supabase
+   tables, not the chain. Only personal reads (balances, stakes, a quote at buy time, sending) stay on RPC.
+2. viem `fallback` transport: public Elysium RPC first, the Conduit key as backup.
+3. Read chain state on change, not on a timer: after your own tx, when a box opens, per block while the tab is
+   visible; pause all polling in hidden tabs.
+4. Notifications: realtime instead of the 20 s poll, and verify the Privy JWT once + cache who the user is (no
+   Privy API lookup per call).
+5. Feed: realtime for new posts / likes / comments instead of the 15 s poll.
+
 ### Fee split (2026-10-20, final): new NeuriioFees `0xd780…bfea`
 Curve fees: **50% Neuriio stakers / 30% KNTQ buyback / 10% creators / 10% treasury** (treasury = Neuriio's own
 liquidity at launch). Pool fees unchanged: 40% X-token stakers / 40% Neuriio stakers / 10% creators / 10% treasury.
