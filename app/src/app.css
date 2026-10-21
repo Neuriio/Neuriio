@@ -4646,3 +4646,21 @@ a.ex-row {
 .ex-bars-axis span:last-child {
   transform: translateY(1px);
 }
+
+/* ---- /trending: MCAP sort arrow (2026-10-20) ---- */
+.tr-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.tr-sort:hover,
+.tr-sort.is-on {
+  color: #fff;
+}

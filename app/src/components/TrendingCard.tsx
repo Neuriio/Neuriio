@@ -5,6 +5,7 @@
 // Desktop: three columns side by side, each scrolling inside its card. Phones: one card with the three as tabs.
 // A row opens that token on /explore. The launch page's dot strands sit on both sides.
 import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { useLivePrices } from "../lib/live";
 import { compactUsd } from "../lib/format";
 import { QUOTE } from "../lib/config";
@@ -56,6 +57,7 @@ function TokenList({ list }: { list: (typeof LISTS)[number] }) {
   const live = useLivePrices();
   const [rows, setRows] = useState<TokenStat[] | null>(null);
   const [error, setError] = useState(false);
+  const [sort, setSort] = useState<"desc" | "asc" | null>(null); // MCAP arrow: highest first, lowest first, or the list's own order
 
   useEffect(() => {
     let alive = true;
@@ -82,10 +84,20 @@ function TokenList({ list }: { list: (typeof LISTS)[number] }) {
         <span>
           <span className="tr-title">{list.title}</span> · {list.sub}
         </span>
-        <span>{list.id === "graduated" ? "GRADUATED" : "MCAP"}</span>
+        {list.id === "graduated" ? (
+          <span>GRADUATED</span>
+        ) : (
+          <button
+            className={`tr-sort${sort ? " is-on" : ""}`}
+            onClick={() => setSort(sort === null ? "desc" : sort === "desc" ? "asc" : null)}
+            title={sort === "desc" ? "Highest market cap first" : sort === "asc" ? "Lowest market cap first" : "Sort by market cap"}
+          >
+            MCAP {sort === "desc" ? <ArrowDown size={11} /> : sort === "asc" ? <ArrowUp size={11} /> : <ArrowUpDown size={11} />}
+          </button>
+        )}
       </div>
       <ol className="ex-list tr-list">
-        {rows?.map((t, i) => {
+        {(sort && rows ? [...rows].sort((a, b) => ((live[a.address] ?? a.price_hype) - (live[b.address] ?? b.price_hype)) * (sort === "asc" ? 1 : -1)) : rows)?.map((t, i) => {
           const price = live[t.address] ?? t.price_hype;
           return (
             <li key={t.address}>
