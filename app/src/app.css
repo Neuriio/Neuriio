@@ -4575,3 +4575,74 @@ a.ex-row {
   border-top: 1px solid var(--line);
   border-bottom: none;
 }
+
+/* ---- order box: volume + fees bar charts under the trade button (2026-10-20) ---- */
+.ex-bars {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+.ex-bars-card {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 110px;
+  padding: 10px 12px;
+  border: 1px solid rgba(236, 221, 255, 0.1);
+  border-radius: var(--radius);
+  background-color: rgba(10, 6, 18, 0.45);
+  background-image: radial-gradient(rgba(236, 221, 255, 0.14) 1px, transparent 1.2px);
+  background-size: 12px 12px;
+}
+.ex-bars-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(236, 221, 255, 0.55);
+}
+.ex-bars-head b {
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #fff;
+}
+.ex-bars-card {
+  padding-bottom: 0;
+}
+.ex-bars-chart {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-height: 60px;
+}
+.ex-bars-plot {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  gap: 6px;
+  border-bottom: 1px solid rgba(236, 221, 255, 0.18);
+}
+.ex-bar {
+  flex: 0 1 22px;
+  border-radius: 2px 2px 0 0;
+  background: #8c7d9f;
+}
+.ex-bars-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 34px;
+  padding-bottom: 0;
+  font-size: 10px;
+  line-height: 1;
+  text-align: right;
+  color: rgba(236, 221, 255, 0.45);
+  font-variant-numeric: tabular-nums;
+}
+.ex-bars-axis span:last-child {
+  transform: translateY(1px);
+}

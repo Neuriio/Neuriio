@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { Check, Pencil } from "lucide-react";
 import { formatEther, formatUnits, parseEther, parseUnits, type Address } from "viem";
-import { DEMO, displayName, tickerOf, type TokenStat } from "../lib/explore";
+import { candles, DEMO, displayName, tickerOf, type TokenStat } from "../lib/explore";
 import { compactUsd } from "../lib/format";
 import { SUPABASE_URL } from "../lib/config";
 import { balances, buyGraduates, FEE_BPS, friendlyTradeError, minOut, prepareTrading, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
@@ -302,6 +302,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
         {cta}
       </button>
       <p className="ex-order-note">Tokens are memes with no promise of value.</p>
+      <TradeBars address={t.address} nonce={nonce} />
       <GraduatingOverlay stage={grad} name={displayName(t)} />
     </div>
   );
@@ -329,4 +330,80 @@ function demoQuote(t: TokenStat, side: Side, amountIn: bigint) {
     refund: 0n,
     spot: t.price_hype,
   };
+}
+
+const BAR_DAYS = 7;
+
+/** Under the order box: this token's daily volume (top) and the fees it paid (bottom, the 1% fee on that volume),
+ *  last 7 days, from the stored 4H candles; refreshes after your own trade and every minute. */
+function TradeBars({ address, nonce }: { address: string; nonce: number }) {
+  const [days, setDays] = useState<{ day: string; vol: number }[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      candles(address, 14400, BAR_DAYS * 6).then((cs) => {
+        const byDay = new Map<string, number>();
+        for (let i = BAR_DAYS - 1; i >= 0; i--) byDay.set(new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10), 0);
+        for (const c of cs) {
+          const d = new Date(c.bucket).toISOString().slice(0, 10);
+          if (byDay.has(d)) byDay.set(d, byDay.get(d)! + (c.volume_usd ?? c.volume_hype));
+        }
+        if (alive) setDays([...byDay].map(([day, vol]) => ({ day, vol })));
+      }, () => {});
+    load();
+    const id = setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [address, nonce]);
+  const fee = FEE_BPS / 10_000;
+  return (
+    <div className="ex-bars">
+      <BarCard title="Volume" unit="7d" values={days?.map((d) => ({ day: d.day, v: d.vol })) ?? null} />
+      <BarCard title="Fees" unit="7d" values={days?.map((d) => ({ day: d.day, v: d.vol * fee })) ?? null} />
+    </div>
+  );
+}
+
+function BarCard({ title, unit, values }: { title: string; unit: string; values: { day: string; v: number }[] | null }) {
+  // left to right from the first day with trades (a new token's bars start at the left edge)
+  const first = (values ?? []).findIndex((x) => x.v > 0);
+  const shown = first < 0 ? [] : values!.slice(first);
+  const total = shown.reduce((a, x) => a + x.v, 0);
+  const top = niceMax(Math.max(...shown.map((x) => x.v), 0));
+  return (
+    <div className="ex-bars-card">
+      <div className="ex-bars-head">
+        <span>
+          {title} · {unit}
+        </span>
+        <b>{values ? compactUsd(total) : "…"}</b>
+      </div>
+      <div className="ex-bars-chart">
+        <div className="ex-bars-plot">
+          {shown.map((x) => (
+            <span
+              key={x.day}
+              className="ex-bar"
+              style={{ height: top > 0 ? `${Math.max(x.v > 0 ? 3 : 0, (x.v / top) * 100)}%` : 0 }}
+              title={`${x.day}: ${compactUsd(x.v)}`}
+            />
+          ))}
+        </div>
+        <div className="ex-bars-axis" aria-hidden>
+          {[top, (top * 2) / 3, top / 3, 0].map((v, i) => (
+            <span key={i}>{top > 0 ? compactUsd(v) : i === 3 ? "$0" : ""}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A round number at or above `v` (1, 1.5, 3, 6 × 10^n), so the axis labels read cleanly in thirds. */
+function niceMax(v: number) {
+  if (v <= 0) return 0;
+  const p = 10 ** Math.floor(Math.log10(v));
+  return ([1, 1.5, 3, 6, 10].find((m) => m * p >= v) ?? 10) * p;
 }
