@@ -416,6 +416,7 @@ function TokenDetail({
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [liveTrades, setLiveTrades] = useState(0);
   const startPrice = useRef(t.price_hype); // demo feed's starting point; refreshed stats mustn't restart the feed
+  const reloadCandles = useRef<() => void>(() => {});
   useEffect(() => {
     if (!controls) return;
     return subscribeTrades(
@@ -433,6 +434,11 @@ function TokenDetail({
         setTimeout(() => setGrad("graduated"), 1600);
         setTimeout(() => setGrad(null), 3800);
       },
+      () => {
+        // back from a long-hidden tab: trades in between were missed, so redraw from the stored candles
+        setLivePrice(null);
+        reloadCandles.current();
+      },
     );
   }, [controls, t.address]);
   const price = livePrice ?? t.price_hype;
@@ -442,6 +448,7 @@ function TokenDetail({
     let alive = true;
     setData(null);
     const load = () => candles(t.address, interval, 300).then((c) => alive && setData(c), () => {});
+    reloadCandles.current = load;
     load();
     const id = setInterval(load, 10_000);
     return () => {

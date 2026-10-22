@@ -116,15 +116,13 @@ setInterval(() => {
 }, 60_000).unref();
 channelFor("trades:all"); // always joined
 
-async function broadcast(items, event = "trade") {
-  if (!items.length) return;
+/** Sends each { topic, event, payload } on its joined channel, or over the REST endpoint while it's still joining. */
+async function send(messages) {
   const viaRest = [];
-  for (const t of items) {
-    for (const topic of [`trades:${t.token}`, "trades:all"]) {
-      const c = channelFor(topic);
-      if (c.ready) c.ch.send({ type: "broadcast", event, payload: t }).catch(() => {});
-      else viaRest.push({ topic, event, payload: t, private: true }); // channel still joining
-    }
+  for (const m of messages) {
+    const c = channelFor(m.topic);
+    if (c.ready) c.ch.send({ type: "broadcast", event: m.event, payload: m.payload }).catch(() => {});
+    else viaRest.push({ ...m, private: true }); // channel still joining
   }
   if (!viaRest.length) return;
   const res = await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
@@ -133,6 +131,34 @@ async function broadcast(items, event = "trade") {
     body: JSON.stringify({ messages: viaRest }),
   });
   if (!res.ok) log("broadcast_error", { status: res.status, body: (await res.text()).slice(0, 200) });
+}
+
+// Charts ("trades:<token>") get every trade at once. The page-wide "trades:all" (list prices, positions) gets them in
+// one "trades" message per second: Supabase bills every message delivered to every viewer, and a busy second can
+// hold many trades (2026-10-22). Graduations go to the token's channel only: nothing listens for them on "trades:all".
+const ALL_EVERY_MS = 1000;
+const ALL_MAX_PER_MESSAGE = 200; // keeps a message well under Realtime's payload limit
+let allQueue = [];
+setInterval(() => {
+  if (!allQueue.length) return;
+  const batch = allQueue;
+  allQueue = [];
+  const messages = [];
+  for (let i = 0; i < batch.length; i += ALL_MAX_PER_MESSAGE) {
+    messages.push({ topic: "trades:all", event: "trades", payload: { trades: batch.slice(i, i + ALL_MAX_PER_MESSAGE) } });
+  }
+  send(messages).catch((e) => log("broadcast_error", { error: e.message }));
+}, ALL_EVERY_MS).unref();
+
+async function broadcast(trades) {
+  if (!trades.length) return;
+  allQueue.push(...trades);
+  await send(trades.map((t) => ({ topic: `trades:${t.token}`, event: "trade", payload: t })));
+}
+
+async function broadcastGraduated(items) {
+  if (!items.length) return;
+  await send(items.map((g) => ({ topic: `trades:${g.token}`, event: "graduated", payload: g })));
 }
 
 // ------------------------------------------------------------------ handling a batch of logs
@@ -170,7 +196,7 @@ async function handle(logs, source) {
     const trades = await completePoolTrades(raw, ts);
     await priceMissing(trades, n);
     await broadcast(trades);
-    await broadcast(graduated, "graduated"); // after its trades, so charts already show the last curve buy
+    await broadcastGraduated(graduated); // after its trades, so charts already show the last curve buy
     if (trades.length) log("trades", { block: Number(n), n: trades.length, source, ms: Date.now() - received });
     for (const g of graduated) {
       ctx.pairToken.set(g.pair, g.token);
