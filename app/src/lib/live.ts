@@ -3,7 +3,7 @@
 // Receive-only for the app (migration 20260928020000_live_trades.sql). `?demo` (dev) fakes a trade every ~1.5 s.
 import { useSyncExternalStore } from "react";
 import { RealtimeClient } from "@supabase/realtime-js";
-import { SUPABASE_ANON_JWT, SUPABASE_URL } from "./config";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 import { DEMO, LANDING, topByTotalVolume } from "./explore";
 
 /** keeper/src/watch/trades.mjs LiveTrade */
@@ -27,8 +27,8 @@ export type LiveGraduation = { token: string; pair: string; trader: string | nul
 let client: RealtimeClient | null = null;
 function rt() {
   if (!client) {
-    client = new RealtimeClient(`${SUPABASE_URL}/realtime/v1`, { params: { apikey: SUPABASE_ANON_JWT } });
-    client.setAuth(SUPABASE_ANON_JWT);
+    // the publishable key joins as `anon`, which may receive on the private trades channels (legacy JWT keys are off)
+    client = new RealtimeClient(`${SUPABASE_URL}/realtime/v1`, { params: { apikey: SUPABASE_PUBLISHABLE_KEY } });
   }
   return client;
 }

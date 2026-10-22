@@ -11,7 +11,7 @@
 //             persistent Realtime websocket (~75-135 ms to a viewer, measured 2026-09-29) instead of the REST
 //             broadcast endpoint (~300-490 ms); REST only while a token's channel is still joining.
 //
-// env: SUPABASE_URL, SUPABASE_SERVICE_KEY (legacy service_role key; script/run-watcher.sh fetches it via the CLI),
+// env: SUPABASE_URL, SUPABASE_SERVICE_KEY (the project's secret key, sb_secret_...; run-watcher.sh fetches it via the CLI),
 //      WS_URL, RPC_URL ("primary,fallback"), POLL_MS (default 500), DEPLOYMENTS (default ../deployments/elysium-testnet.json)
 import { readFileSync } from "node:fs";
 import { RealtimeClient } from "@supabase/realtime-js";
@@ -82,7 +82,6 @@ const addresses = () => [...ctx.launchpads, ...ctx.routers, ...ctx.pairToken.key
 
 // One persistent Realtime connection; a joined private channel per active topic (LRU, left after 10 quiet minutes).
 const realtime = new RealtimeClient(`${SUPABASE_URL}/realtime/v1`, { params: { apikey: SERVICE_KEY } });
-realtime.setAuth(SERVICE_KEY);
 const channels = new Map(); // topic -> { ch, ready, lastUsed }
 const MAX_CHANNELS = 80;
 const IDLE_MS = 10 * 60_000;

@@ -27,8 +27,6 @@ export const HL_TESTNET = true;
 export const SUPABASE_URL = "https://yviymgfgaepmtijgyyyo.supabase.co";
 /** Publishable key: public by design (browser reads of public tables/views: token_stats, token_candles, leaderboard). */
 export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FegCC3kuFI9k3EsEP2TGYA_zucL2uoq";
-/** Legacy anon key (a JWT, public by design): Realtime needs it to join the private live-trade channels. */
-export const SUPABASE_ANON_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2aXltZ2ZnYWVwbXRpamd5eXlvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA1NTUyNjAsImV4cCI6MjEwNjEzMTI2MH0.STvEmPVXmHgQVX1kGUcskYKQOWgDvA-GdO4QjSCQD44";
 
 /**
  * Builder code on every Hyperliquid order placed through Neuriio, at the minimum fee (1 = 0.1 bp = 0.001%). It isn't
