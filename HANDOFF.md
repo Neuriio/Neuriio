@@ -97,6 +97,37 @@ To stay on free tiers, in this order (none touch the contracts):
 4. Notifications: realtime instead of the 20 s poll, and verify the Privy JWT once + cache who the user is (no
    Privy API lookup per call).
 5. Feed: realtime for new posts / likes / comments instead of the 15 s poll.
+Done 2026-10-22: "trades:all" batched into one message per second (charts stay per trade); tabs hidden for 60 s close
+their live connections and catch up when shown; indexer checks Hyperliquid every 10 min with one cursor query (runs
+~24 s -> ~5 s; it was ~60% of all Supabase requests). Old tabs keep old code until reloaded (a pre-fix tab on the
+vercel.app URL showed 10-12 s chart lag): consider a version check that reloads idle tabs after a deploy.
+Added 2026-10-22 (Supabase stays the indexer; no new vendor):
+6. **Watcher writes to Supabase** as it sees each trade (it already decodes every curve/pool trade + graduation
+   within ~1 s on EC2 and holds the sb_secret key): upsert `trades` with the same row shape as the indexer
+   (`curveTradeToRow` / `routerSwapToRow` / `pairSwapToRow` in `supabase/functions/_shared/indexer.ts`, conflict on
+   `tx_hash,log_index`, so both writers stay idempotent) and `tokens` on Launched / Graduated. Stored data is then
+   current within ~1 s; the indexer cron becomes the gap-filler (every 10 min instead of every minute, ~90% fewer
+   function calls). The row builders are Deno code: move the pure functions into a module both Node and Deno import.
+7. **Holdings table**: index ERC-20 `Transfer` events of every launched token (+ USDC) into
+   `holdings(wallet, token, balance)`, backfilled from each token's launch block; the watcher updates it live and
+   broadcasts changes on a private receive-only realtime channel per wallet (`wallet:<address>`, RLS like
+   `trades:%`). Then the header balances (`useBalances` every 10 s + `launchedHoldings`, a multicall of balanceOf over
+   EVERY launched token, `app/src/lib/explore.ts:385`) and the order panel (`OrderCard` every 15 s) read Supabase +
+   realtime instead of polling the RPC. Native HYPE (gas) leaves no logs: read it on chain only after the user's own
+   tx or when a panel opens.
+8. **Supabase Pro** before ~200 open tabs at once (free realtime connection cap; Pro 500) or 500K function
+   calls/month (Pro 2M).
+9. **QuickNode** (if bought; Build $49 = 80M credits = ~4M calls at 20 credits each, 50 req/s; `eth_getLogs` max
+   10,000 blocks on paid plans, 5 on the free trial, which is why the indexer failed on it 2026-10-21): SERVERS ONLY.
+   Watcher on its wss subscription + a 30 s gap-filler poll (the current 500 ms polling alone would cost ~117M
+   credits/month), indexer, functions: ~15-30M credits/month. Before switching: indexer `MAX_BLOCKS` 50,000 -> at
+   most 10,000 (else stuck after any outage > ~50 min; Elysium makes ~190 blocks/min) and make the watcher's gap-filler
+   interval configurable. Browsers stay on the public Elysium RPC (limits are per visitor, no key to steal), the
+   Conduit key as fallback (step 2).
+Measured 2026-10-22: logged-out Explore visitor ~8 RPC calls/min; logged-in trader ~40-50/min (balances, positions,
+order panel); watcher polling ~136/min. Target after 6-7: a handful per user (quotes while typing + own tx).
+Dedicated indexer (The Graph / Goldsky / Envio / Ponder): not now (works at this size; Elysium is new, hosted ones
+may not support it). Revisit at mainnet scale; Ponder on EC2 writing into the same Supabase Postgres keeps the app as is.
 
 ### Fee split (2026-10-20, final): new NeuriioFees `0xd780…bfea`
 Curve fees: **50% Neuriio stakers / 30% KNTQ buyback / 10% creators / 10% treasury** (treasury = Neuriio's own
