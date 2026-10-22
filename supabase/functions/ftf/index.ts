@@ -53,7 +53,7 @@ const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS")); // the current version: 
 const REGISTRY = getAddress(env("REGISTRY_ADDRESS")); // FTF tickers + reserved tickers, across every version
 const signer = privateKeyToAccount(env("LAUNCH_SIGNER_KEY") as `0x${string}`);
 const chain = createPublicClient({ transport: http(env("RPC_URL")) });
-const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
+const db = createClient(env("SUPABASE_URL"), env("NEURIIO_DB_KEY"), { auth: { persistSession: false } });
 const xUserFromRequest = privyAuth(env("PRIVY_APP_ID"), env("PRIVY_APP_SECRET"));
 
 const MAX_OPEN_DRAFTS = 3; // per founder

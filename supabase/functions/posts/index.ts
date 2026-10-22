@@ -10,7 +10,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { CORS, HttpError, internalError, json, privyAuth, userRow } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
 
-const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
+const db = createClient(env("SUPABASE_URL"), env("NEURIIO_DB_KEY"), { auth: { persistSession: false } });
 const xUserFromRequest = privyAuth(env("PRIVY_APP_ID"), env("PRIVY_APP_SECRET"));
 
 const POST_MAX = 280;

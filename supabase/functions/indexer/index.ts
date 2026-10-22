@@ -58,7 +58,7 @@ const registryAbi = parseAbi(["function launchpadsLength() view returns (uint256
 const HL_INFO = env("HL_TESTNET") === "true" ? "https://api.hyperliquid-testnet.xyz/info" : "https://api.hyperliquid.xyz/info";
 const MAX_BLOCKS = 50_000n; // per run
 const chain = createPublicClient({ transport: http(env("RPC_URL")) });
-const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
+const db = createClient(env("SUPABASE_URL"), env("NEURIIO_DB_KEY"), { auth: { persistSession: false } });
 
 const hlInfo = async (body: unknown) => {
   const res = await fetch(HL_INFO, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

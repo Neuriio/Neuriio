@@ -4,14 +4,14 @@
 //   body (optional): { accessCode } = the passcode they came in with (the passcode page's `neuriio_code` cookie); the
 //   first one seen per user is kept in access_code_users, to count users per code.
 //
-// Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are provided by Supabase.)
+// Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET (SUPABASE_URL is provided by Supabase; NEURIIO_DB_KEY = the project's sb_secret key, set 2026-10-21 after the Railway leak.)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { CORS, HttpError, internalError, json, privyAuth, userRow } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
 
 
-const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
+const db = createClient(env("SUPABASE_URL"), env("NEURIIO_DB_KEY"), { auth: { persistSession: false } });
 const xUserFromRequest = privyAuth(env("PRIVY_APP_ID"), env("PRIVY_APP_SECRET"));
 
 Deno.serve(async (req) => {

@@ -7,7 +7,7 @@
 // and signs a LaunchPass. The chain enforces one token per X user / wallet / handle; we pre-check to fail early.
 //
 // Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET, LAUNCH_SIGNER_KEY, LAUNCHPAD_ADDRESS, CHAIN_ID, RPC_URL
-// (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are provided by Supabase.)
+// (SUPABASE_URL is provided by Supabase; NEURIIO_DB_KEY = the project's sb_secret key, set 2026-10-21 after the Railway leak.)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { createPublicClient, getAddress, http, keccak256, parseAbi, toBytes, zeroAddress } from "npm:viem@2";
@@ -33,7 +33,7 @@ const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS")); // the current version: 
 const REGISTRY = getAddress(env("REGISTRY_ADDRESS")); // identity across every version
 const signer = privateKeyToAccount(env("LAUNCH_SIGNER_KEY") as `0x${string}`);
 const chain = createPublicClient({ transport: http(env("RPC_URL")) });
-const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), { auth: { persistSession: false } });
+const db = createClient(env("SUPABASE_URL"), env("NEURIIO_DB_KEY"), { auth: { persistSession: false } });
 const xUserFromRequest = privyAuth(PRIVY_APP_ID, PRIVY_APP_SECRET);
 
 const PASSES_PER_10_MIN = 5;
