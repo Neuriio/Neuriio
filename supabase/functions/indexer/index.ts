@@ -224,13 +224,34 @@ async function indexElysium(world: World, hypeUsd: number | null) {
   return { registry, from: Number(from), to: Number(to), launchpads: pads.length, launched: launched.length, trades: rows.length };
 }
 
+/** Every row of a select, page by page (the API returns at most 1,000 rows per request). */
+async function selectAll<T>(query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) {
+  const rows: T[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await query(from, from + 999);
+    if (error) throw new Error(error.message);
+    rows.push(...(data ?? []));
+    if ((data ?? []).length < 1000) return rows;
+  }
+}
+
+// Hyperliquid fills only earn points, so every 10 minutes is plenty: each check asks Hyperliquid once per user (2026-10-22:
+// every minute it made ~60% of all Supabase requests and most of each run's ~24 s). The cursors load in one query.
+const HL_EVERY_MS = 10 * 60_000;
+
 async function indexHyperliquid() {
-  const { data: users, error } = await db.from("users").select("wallet, created_at");
-  if (error) throw new Error(`users: ${error.message}`);
+  const last = Number((await getState("hl:last_run")) ?? 0);
+  if (Date.now() - last < HL_EVERY_MS) return { skipped: "checked in the last 10 minutes" };
+  await setState("hl:last_run", String(Date.now()));
+  const [users, cursors] = await Promise.all([
+    selectAll<{ wallet: string; created_at: string }>((a, b) => db.from("users").select("wallet, created_at").order("wallet").range(a, b)),
+    selectAll<{ key: string; value: string }>((a, b) => db.from("indexer_state").select("key, value").like("key", "hl:0x%").order("key").range(a, b)),
+  ]);
+  const cursor = new Map(cursors.map((c) => [c.key, c.value]));
   let fills = 0;
-  for (const u of users ?? []) {
+  for (const u of users) {
     const key = `hl:${u.wallet}`;
-    const start = Number(await getState(key) ?? new Date(u.created_at).getTime());
+    const start = Number(cursor.get(key) ?? new Date(u.created_at).getTime());
     const got: HlFill[] = await hlInfo({ type: "userFillsByTime", user: u.wallet, startTime: start, aggregateByTime: false });
     if (!got.length) continue;
     const rows = got.map((f) => hlFillToRow(f, u.wallet)).filter((r): r is TradeRow => r !== null);
@@ -238,7 +259,7 @@ async function indexHyperliquid() {
     fills += rows.length;
     await setState(key, String(Math.max(...got.map((f) => f.time)) + 1));
   }
-  return { users: users?.length ?? 0, fills };
+  return { users: users.length, fills };
 }
 
 Deno.serve(async () => {
