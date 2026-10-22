@@ -1,4 +1,4 @@
-# Handoff — Neuriio (state as of 2026-10-18: the USDC world is LIVE on app.neuriio.xyz (testnet): contracts, backend, app and docs all switched; NEXT CHAT: see "USDC WORLD" -> "What's left")
+# Handoff — Neuriio (state as of 2026-10-21: USDC world LIVE on app.neuriio.xyz (testnet); NEXT CHAT: "FIRST THINGS NEXT SESSION" -> multisig + locks, then scaling (Railway exit done))
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 **Consolidated 2026-10-12:** finished work, old session logs, the paused PropAMM stack, superseded deployments and the
@@ -20,7 +20,66 @@ $NEURIIO can't be transferred. No loss-mint, boosts or locks. Contracts: `src/st
 NeuriioMinter, NeuriioPlatformToken), `src/launch/NeuriioFees.sol` + `NeuriioPad.sol`, `src/swap/NeuriioRouter.sol`,
 `src/swap/v2` (USDC quote + 1% fee), `src/testnet/TestUSDC.sol`. 71 Foundry tests.
 
-### NEXT SESSION (2026-10-20 evening): scaling plan, not started; nothing urgent at today's numbers
+### FIRST THINGS NEXT SESSION (Fri 2026-10-24, when the user's tokens reset), in this order
+0. **Railway exit: DONE 2026-10-21 night.** Website on **Vercel** (project root `app`, `app/vercel.json`; vars
+   `VITE_ELYSIUM_RPC` + `VITE_PRIVY_APP_ID` as Config; Privy allowed origin `https://neuriio.vercel.app` added;
+   Cloudflare `app` CNAME -> Vercel, DNS only). Live updates restored: app realtime uses the publishable key
+   (942d561). Watcher on **AWS EC2** `i-03b1a86c4d1fff123` (us-west-2, t4g.micro, AL2023, account 137098073913):
+   no inbound ports, managed via SSM Session Manager only, IMDSv2, encrypted disk; systemd `neuriio-watcher`
+   (auto-restart) runs `/usr/local/bin/neuriio-watcher`, which reads SSM SecureStrings
+   `/neuriio/watcher/supabase-secret-key` + `/neuriio/watcher/rpc-url` (keyed Conduit URL: keyless public RPC
+   rate-limits it) into memory; IAM role `neuriio-watcher-ec2` (SSM core + GetParameter on /neuriio/watcher/*);
+   SG `sg-0b87459f1442f8868`. Code: sparse clone of keeper+deployments via read-only GitHub deploy key
+   `neuriio-watcher-ec2`; update = run `/usr/local/bin/neuriio-update` via SSM (git pull, npm ci
+   --ignore-scripts, restart). Logs: `journalctl -u neuriio-watcher`. hypedexer RPC is DEAD (stuck at block
+   10,340,873): removed from watcher + payout defaults (12dd4aa); watcher polls (no WS_URL).
+   Leftovers: delete Cloudflare `_railway-verify` TXT; delete the Railway project; user signed in to AWS as ROOT
+   -> create an admin IAM user with MFA; rotate the Conduit key (it's public in the browser anyway); move the payout
+   bot to EC2 with a new gas-only wallet (it still runs locally on the owner key).
+   **Security review 2026-10-22 (done, committed):** no critical/high; every live attack blocked. Fixed + deployed:
+   indexer never returns error text (viem errors carry the RPC URL + key); posts/ftf action lookups use
+   Object.hasOwn (`"toString"` skipped the post limit); write actions rate-limited in the DB
+   (`hit_rate_limit`, `_shared/rateLimit.ts`, migration 20261022043242); anon/authenticated lost every non-SELECT
+   privilege (20261022043307, incl. default privileges). Open lows: faucet sybil (many X accounts), FTF pfp bytes not
+   checked + no upload cap, no full CSP on the site, functions can be spammed to burn the invocation quota,
+   leaderboard is a security-definer view (by design), pg_net in public schema. Local migration files now match
+   the remote history exactly (posts files renamed to 20261020195551/200400; same SQL, comments only differed).
+1. **Multisig + locks rollout** (below; why: a big team asked for our Elysium-mainnet token page URL, so they will
+   check who controls the contracts). Start with Phase 1.
+2. **Scaling plan** (the section after it).
+Also open: answer that team's URL question. Today's token page is `https://app.neuriio.xyz/explore?t=<token address>`;
+the user may want a cleaner `/token/<address>` route (old link redirecting) before outside teams hard-code it. Mainnet
+domain not decided.
+
+### Multisig + locks roadmap (written 2026-10-21; nothing done yet, nothing changed on-chain)
+One wallet, `0xeF58…17a8`, owns everything today (Pad, Registry, Fees vaults x4, NEURIIO, Minter, TestUSDC,
+swap factory `feeToSetter`). All Ownable contracts are `Ownable2Step` -> NO redeploy except the Minter fix.
+Tokens, staking and router have no owner. On-chain today: `minterLocked=false`, `mintCurveFrozen=false`.
+Risks a partner would flag: Minter `setVault` has NO lock (any approved address can mint NEURIIO up to max supply);
+Pad `setFeeVault` + factory `setFeeVault` can send curve/pool fees anywhere (no lock possible: multisig + timelock).
+Fee is capped at 2% in code (`MAX_FEE_BPS`); `pause` keeps sells open.
+- **Phase 1: Safe on Elysium (BLOCKER).** No Safe contracts on chain 99801 (checked v1.3.0 + v1.4.1 canonical addresses;
+  singleton factory `0x914d…43d7` absent; CREATE2 deployer `0x4e59…956C` IS there). app.safe.global doesn't list
+  Elysium. Ask Safe to deploy their singleton factory (canonical addresses) or deploy Safe ourselves; sign via
+  safe-cli or a self-hosted Safe UI. Signers: normal wallets (Rabby / hardware) with Elysium added, NOT Privy
+  embedded wallets. 2-of-3 or 3-of-5, separate devices; test with a small transfer.
+- **Phase 2: Minter fix (the only contract change).** Add `lockVaults()` (same pattern as `freezeMintCurve`), tests,
+  review; redeploy the Minter only, `setMinter` on NEURIIO, add the 4 fee vaults, lock. No-code alternative:
+  `renounceOwnership()` on the Minter once vaults are final (a future fee vault could then never mint).
+- **Phase 3: timelock.** OpenZeppelin `TimelockController` (~48h), Safe = only proposer. Owns Pad/factory fee
+  routing so changes are public 48h ahead. Safe keeps direct control of emergency actions only (`pause`, launch signer).
+- **Phase 4: hand over + lock.** `freezeMintCurve()`, `lockMinter()`, `lockVaults()`; `transferOwnership` -> Safe or
+  timelock on Pad, Registry, Fees x4, NEURIIO, then Safe `acceptOwnership()` on each; factory `setFeeToSetter` ->
+  timelock (ONE step, triple-check the address). Also check the old fee vaults / old HYPE-world launchpads and who
+  receives the pools' `feeTo` share, so nothing is missed.
+- **Phase 5: prove it.** Public page: each contract, its owner (Safe/timelock), what's locked, tx links. Send it to
+  the team with the URL answer. Mainnet repeats this setup before any public launch.
+Payout bot: started 2026-10-21 in a local terminal tab (`./script/run-pay-protocol.sh`), hourly; first run paid
+~$8,323 USDC from 3 vaults to `0x10E9…EEC3`; vault `0x5cfb…` had a one-off RPC read error, pays next run. It runs on
+the `burner` keystore, which IS the owner key `0xeF58…` -> make a small gas-only wallet before moving it to Railway.
+KNTQ buy + burn is still manual (~$2.1K buyback share now in `0x10E9…`).
+
+### Scaling plan (2026-10-20 evening): not started; nothing urgent at today's numbers
 Done + live today: FTF accept fix (setMember updated the row instead of upserting: role NOT NULL), Feed with real
 posts / likes / comments (tables posts, post_likes, post_comments, view posts_feed; `posts` Edge Function, Privy
 login, 5 posts / 10 comments / 60 likes a minute), sample posts gone. Railway paused deploys platform-wide for a while
