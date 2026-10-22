@@ -3,7 +3,8 @@
 // picked up without a restart) and every router in the deployments file on Supabase Realtime the moment its block appears, so charts update without waiting for the
 // once-a-minute indexer. Stateless: storing trades stays the indexer's job (supabase/functions/indexer).
 //
-//   Primary: websocket log subscription (WS_URL; Elysium's official RPC has no websocket, the hypedexer node does).
+//   Primary: websocket log subscription when WS_URL is set (Elysium's official RPC has none; the hypedexer node
+//            stopped syncing at block 10,340,873 on 2026-10-21, so it is no longer a default). Unset: polling only.
 //   Fallback: HTTP polling of eth_getLogs every POLL_MS (RPC_URL) whenever the websocket is down.
 //   Output:   private Realtime channels "trades:<token>" and "trades:all", event "trade" (see src/watch/trades.mjs),
 //             plus event "graduated" {token, pair, trader, tx, ts} when a buy graduates a token (the app's overlay).
@@ -24,8 +25,8 @@ const dep = JSON.parse(readFileSync(new URL(env("DEPLOYMENTS", "../deployments/e
 const SUPABASE_URL = env("SUPABASE_URL", "https://yviymgfgaepmtijgyyyo.supabase.co");
 const SERVICE_KEY = env("SUPABASE_SERVICE_KEY");
 if (!SERVICE_KEY) throw new Error("SUPABASE_SERVICE_KEY is required (use ./script/run-watcher.sh)");
-const WS_URL = env("WS_URL", "wss://elysium-testnet-rpc.hypedexer.com/");
-const RPC_URL = env("RPC_URL", "https://testnet-rpc.elysium.kinetiq.xyz,https://elysium-testnet-rpc.hypedexer.com/");
+const WS_URL = env("WS_URL", "");
+const RPC_URL = env("RPC_URL", "https://testnet-rpc.elysium.kinetiq.xyz");
 const POLL_MS = Number(env("POLL_MS", 500));
 
 const lc = (a) => a.toLowerCase();
@@ -233,6 +234,7 @@ let wsHealthy = false;
 let ws = null;
 
 function subscribe() {
+  if (!WS_URL) return; // polling only
   ws ??= createPublicClient({ transport: webSocket(WS_URL, { keepAlive: { interval: 15_000 }, reconnect: { attempts: Infinity, delay: 2_000 } }) });
   unwatch = ws.watchEvent({
     address: addresses(),
@@ -250,6 +252,7 @@ function subscribe() {
 }
 function resubscribe() {
   unwatch?.();
+  unwatch = null;
   subscribe();
 }
 

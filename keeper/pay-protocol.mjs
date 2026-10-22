@@ -14,7 +14,7 @@ import { makeTransport } from "./src/rpc.mjs";
 
 const env = (k, d) => process.env[k] ?? d;
 const dep = JSON.parse(readFileSync(new URL(env("DEPLOYMENTS", "../deployments/elysium-testnet.json"), import.meta.url)));
-const RPC_URL = env("RPC_URL", "https://testnet-rpc.elysium.kinetiq.xyz,https://elysium-testnet-rpc.hypedexer.com/");
+const RPC_URL = env("RPC_URL", "https://testnet-rpc.elysium.kinetiq.xyz"); // hypedexer stopped syncing 2026-10-21
 // the least worth a payout tx: MIN_HYPE for the old HYPE world's vaults, MIN_USDC for the USDC world's
 const MIN_HYPE = env("MIN_HYPE", "0.01");
 const MIN_USDC = env("MIN_USDC", "1");
