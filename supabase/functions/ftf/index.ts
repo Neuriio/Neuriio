@@ -47,6 +47,7 @@ import {
 } from "../_shared/launchPass.ts";
 import { CORS, HttpError, internalError, json, privyAuth, userRow, type XUser } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
+import { rateLimit } from "../_shared/rateLimit.ts";
 
 const CHAIN_ID = Number(env("CHAIN_ID"));
 const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS")); // the current version: passes are signed for it
@@ -586,26 +587,34 @@ const ACTIONS: Record<string, (who: XUser, body: Body) => Promise<unknown>> = {
 
 // ------------------------------------------------------------------ entry
 
-const recent = new Map<string, number[]>(); // per X account, action timestamps (per function instance)
+// Reads (the app polls the inbox every 20 s) are limited in memory, per function instance; every action that changes
+// something is limited in the database (_shared/rateLimit.ts), across instances and restarts.
+const READS = new Set(["mine", "inbox", "hypeStatus"]);
+const recentReads = new Map<string, number[]>(); // per X account, read timestamps (per function instance)
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
   if (req.method !== "POST") return json(405, { error: "POST only" });
   try {
     const who = await xUserFromRequest(req);
-    const now = Date.now();
-    const times = (recent.get(who.xUserId) ?? []).filter((t) => now - t < 60_000);
-    if (times.length >= ACTIONS_PER_MINUTE) fail(429, "Too many actions, slow down");
-    recent.set(who.xUserId, [...times, now]);
-
     let body: Body;
     try {
       body = await req.json();
     } catch {
       return json(400, { error: "Invalid JSON" });
     }
-    const run = ACTIONS[String(body?.action)];
-    if (!run) return json(400, { error: `Unknown action. One of: ${Object.keys(ACTIONS).join(", ")}` });
+    const action = String(body?.action);
+    // own keys only: inherited names ("constructor", "toString") aren't actions
+    if (!Object.hasOwn(ACTIONS, action)) return json(400, { error: `Unknown action. One of: ${Object.keys(ACTIONS).join(", ")}` });
+    if (READS.has(action)) {
+      const now = Date.now();
+      const times = (recentReads.get(who.xUserId) ?? []).filter((t) => now - t < 60_000);
+      if (times.length >= ACTIONS_PER_MINUTE) fail(429, "Too many actions, slow down");
+      recentReads.set(who.xUserId, [...times, now]);
+    } else {
+      await rateLimit(db, "ftf", `ftf:${who.xUserId}`, ACTIONS_PER_MINUTE, 60, "Too many actions, slow down");
+    }
+    const run = ACTIONS[action];
     // keep the caller's user row fresh (handle, pfp, wallet): members are looked up there
     const { error } = await db.from("users").upsert(userRow(who), { onConflict: "privy_id" });
     if (error) dbError("users upsert", error.message);

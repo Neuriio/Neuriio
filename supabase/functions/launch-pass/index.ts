@@ -66,7 +66,8 @@ Deno.serve(async (req) => {
   try {
     who = await xUserFromRequest(req);
   } catch (e) {
-    return json(e instanceof HttpError ? e.status : 500, { error: (e as Error).message });
+    if (e instanceof HttpError) return json(e.status, { error: e.message });
+    return failed("login", (e as Error).message); // unexpected: details stay server-side
   }
   const { did, xUserId, handle, wallet: creator } = who;
 

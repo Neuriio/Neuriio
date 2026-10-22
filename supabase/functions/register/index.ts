@@ -48,6 +48,8 @@ Deno.serve(async (req) => {
       rank: points?.rank ?? null,
     });
   } catch (e) {
-    return json(e instanceof HttpError ? e.status : 500, { error: (e as Error).message });
+    if (e instanceof HttpError) return json(e.status, { error: e.message });
+    console.error(`register: ${(e as Error).message}`); // unexpected: details stay server-side
+    return json(500, { error: "Something went wrong, try again" });
   }
 });

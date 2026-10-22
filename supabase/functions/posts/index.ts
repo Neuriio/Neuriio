@@ -9,13 +9,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { CORS, HttpError, internalError, json, privyAuth, userRow } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
+import { rateLimit } from "../_shared/rateLimit.ts";
 
 const db = createClient(env("SUPABASE_URL"), env("NEURIIO_DB_KEY"), { auth: { persistSession: false } });
 const xUserFromRequest = privyAuth(env("PRIVY_APP_ID"), env("PRIVY_APP_SECRET"));
 
 const POST_MAX = 280;
-const PER_MINUTE = { create: 5, comment: 10, like: 60 } as Record<string, number>; // per X account (per instance)
-const recent = new Map<string, number[]>();
+// per X account per minute, counted in the database (_shared/rateLimit.ts)
+const PER_MINUTE: Record<string, number> = { create: 5, comment: 10, like: 60 };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -29,13 +30,9 @@ Deno.serve(async (req) => {
       return json(400, { error: "Invalid JSON" });
     }
     const action = String(body?.action);
-    if (!(action in PER_MINUTE)) return json(400, { error: "Unknown action. One of: create, like, comment" });
-
-    const now = Date.now();
-    const key = `${action}:${who.xUserId}`;
-    const times = (recent.get(key) ?? []).filter((t) => now - t < 60_000);
-    if (times.length >= PER_MINUTE[action]) throw new HttpError(429, "Too many, slow down");
-    recent.set(key, [...times, now]);
+    // own keys only: `in` also matched inherited names ("toString", "constructor"), which skipped the limit
+    if (!Object.hasOwn(PER_MINUTE, action)) return json(400, { error: "Unknown action. One of: create, like, comment" });
+    await rateLimit(db, "posts", `posts:${action}:${who.xUserId}`, PER_MINUTE[action], 60);
 
     if (action === "like") {
       const postId = String(body.postId ?? "");

@@ -1,4 +1,6 @@
 // POST /functions/v1/indexer   (run every minute by pg_cron; idempotent, so public is fine)
+// Errors go to the function logs only, never into the public response: viem's errors include the RPC URL, which may
+// carry an API key (security review 2026-10-22).
 // 1. Elysium, for every "world" (a registry and its quote token: the old HYPE world, the USDC world):
 //    Launched/FtfLaunched/Trade/Graduated from EVERY Launchpad version in the world's registry (listed on-chain,
 //    re-read each run, one cursor per registry), Swapped / CurveTraded from every router of that world, and pair
@@ -242,9 +244,17 @@ async function indexHyperliquid() {
 Deno.serve(async () => {
   // one run at a time; skips if another started < 50 s ago
   const { data: locked, error: lockErr } = await db.rpc("try_lock_indexer");
-  if (lockErr) return json(500, { error: lockErr.message });
+  if (lockErr) {
+    console.error(`indexer: lock: ${lockErr.message}`);
+    return json(500, { error: "failed" });
+  }
   if (!locked) return json(200, { skipped: "another run is in progress" });
 
+  /** Logs the details; the caller only learns that this part failed. */
+  const failed = (what: string, e: unknown) => {
+    console.error(`indexer: ${what}: ${(e as Error)?.message ?? e}`);
+    return "failed";
+  };
   const result: Record<string, unknown> = {};
   try {
     const usd = await hypeUsd();
@@ -257,19 +267,19 @@ Deno.serve(async () => {
       try {
         (result.elysium as unknown[]).push(await indexElysium(w, usd));
       } catch (e) {
-        (result.elysium as unknown[]).push({ registry: w.registry, error: (e as Error).message });
+        (result.elysium as unknown[]).push({ registry: w.registry, error: failed(`elysium ${w.registry}`, e) });
       }
     }
   } catch (e) {
-    result.elysiumError = (e as Error).message;
+    result.elysiumError = failed("elysium", e);
   }
   try {
     result.hyperliquid = await indexHyperliquid();
   } catch (e) {
-    result.hyperliquidError = (e as Error).message;
+    result.hyperliquidError = failed("hyperliquid", e);
   }
   const { data: awarded, error } = await db.rpc("award_points");
-  result.pointsAwarded = error ? `error: ${error.message}` : awarded;
+  result.pointsAwarded = error ? failed("award_points", error) : awarded;
   await db.rpc("unlock_indexer");
   return json(200, result);
 });
