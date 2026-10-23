@@ -8,5 +8,5 @@ interface INeuriioFactory {
 }
 
 interface INeuriioFeeVault {
-    function notifyPoolFee(address token) external;
+    function notifyPoolFee(address token, uint256 amount) external;
 }

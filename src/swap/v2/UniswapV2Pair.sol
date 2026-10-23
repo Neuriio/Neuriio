@@ -11,7 +11,8 @@ import './interfaces/INeuriio.sol'; // Neuriio
 
 // Neuriio fork of Uniswap V2 (v2-core v1.0.1). Changes are marked "Neuriio": the swap fee is 1% (was 0.30%), and
 // right after each swap the pair moves that fee out of the pool, in the quote token (USDC), to the factory's
-// NeuriioFees (80% stakers / 10% creator / 10% treasury). Traders get exactly V2's output for a 1% fee.
+// NeuriioFees. Buys get exactly V2's output for a 1% fee on the USDC in; sells pay 1% of the sale in USDC (the seller
+// receives 99% of V2's no-fee output; see _feeAndK), so a sell's fee no longer shrinks with its own price impact.
 contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
     using SafeMath  for uint;
     using UQ112x112 for uint224;
@@ -181,13 +182,7 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         uint amount0In = balance0 > _reserve0 - amount0Out ? balance0 - (_reserve0 - amount0Out) : 0;
         uint amount1In = balance1 > _reserve1 - amount1Out ? balance1 - (_reserve1 - amount1Out) : 0;
         require(amount0In > 0 || amount1In > 0, 'UniswapV2: INSUFFICIENT_INPUT_AMOUNT');
-        { // scope for reserve{0,1}Adjusted, avoids stack too deep errors
-        uint balance0Adjusted = balance0.mul(10000).sub(amount0In.mul(100)); // Neuriio: 1% fee (was 0.30%)
-        uint balance1Adjusted = balance1.mul(10000).sub(amount1In.mul(100)); // Neuriio
-        require(balance0Adjusted.mul(balance1Adjusted) >= uint(_reserve0).mul(_reserve1).mul(10000**2), 'UniswapV2: K'); // Neuriio
-        }
-
-        (balance0, balance1) = _takeFee(balance0, balance1, amount0In, amount1In); // Neuriio
+        (balance0, balance1) = _feeAndK(balance0, balance1, amount0In, amount1In); // Neuriio: 1% fee + the K check
         _update(balance0, balance1, _reserve0, _reserve1);
         emit Swap(msg.sender, amount0In, amount1In, amount0Out, amount1Out, to);
     }
@@ -205,24 +200,75 @@ contract UniswapV2Pair is IUniswapV2Pair, UniswapV2ERC20 {
         _update(IERC20(token0).balanceOf(address(this)), IERC20(token1).balanceOf(address(this)), reserve0, reserve1);
     }
 
-    // Neuriio: moves the 1% fee out of the pool in the quote token (USDC), to the NeuriioFees. With x = token balance,
-    // y = quote balance, ft/fq = the fee on the token/quote input (rounded down): the K check above guarantees
-    // (x - ft)(y - fq) >= k_before; we remove fq + ft's value at the post-swap price, ft * (y - fq) / x (rounded
-    // down), leaving x * (y - fq - ft * (y - fq) / x) >= (x - ft)(y - fq) >= k_before. So k never drops.
-    function _takeFee(uint balance0, uint balance1, uint amount0In, uint amount1In) private returns (uint, uint) {
-        address vault = INeuriioFactory(factory).feeVault();
+    // Neuriio: the 1% fee, always in the quote token (USDC), and V2's K check with it.
+    //   A buy (USDC in) pays 1% of the USDC in: V2's K check with a 1% fee on the input.
+    //   A sell (tokens in, USDC out) pays 1% of the sale in USDC: besides the `out` the trader took, the pool gives up
+    //   sellFee = out / 99 (rounded up), so the trader receives 99% of out + sellFee and the fee is 1% of it. The K check
+    //   takes sellFee off the USDC side and nothing off the token input. (2026-10-22: a sell used to pay 1% of the tokens
+    //   valued at the post-sell price, worth almost nothing on a big sell into a thin pool.)
+    //   Tokens in with no USDC out (a flash swap paid back in tokens) still pay 1% of the tokens, as their USDC value.
+    // Pairs without USDC (none exist: only the launchpad creates TOKEN/USDC pairs) keep V2's 1% on the inputs.
+
+    // One swap's flows in USDC/token terms, after the swap (memory, against stack-too-deep).
+    struct Flow {
+        bool quoteIs0;
+        uint y; // USDC balance
+        uint x; // token balance
+        uint quoteIn;
+        uint tokenIn;
+        uint sellFee;
+    }
+
+    function _feeAndK(uint balance0, uint balance1, uint amount0In, uint amount1In) private returns (uint, uint) {
         address quote = INeuriioFactory(factory).quote();
-        bool quoteIs0 = quote == token0;
-        if (vault == address(0) || (!quoteIs0 && quote != token1)) return (balance0, balance1); // fee stays, like V2
-        uint x = quoteIs0 ? balance1 : balance0;
-        uint y = quoteIs0 ? balance0 : balance1;
-        uint fq = (quoteIs0 ? amount0In : amount1In).mul(100) / 10000;
-        uint ft = (quoteIs0 ? amount1In : amount0In).mul(100) / 10000;
-        uint fee = fq.add(ft.mul(y.sub(fq)) / x);
-        if (fee == 0) return (balance0, balance1);
-        _safeTransfer(quote, vault, fee);
-        INeuriioFeeVault(vault).notifyPoolFee(quoteIs0 ? token1 : token0);
+        bool usdcPair = quote == token0 || quote == token1;
+        Flow memory f;
+        f.quoteIs0 = quote == token0 || !usdcPair; // without USDC, token0 stands in (no sell fee, nothing taken)
+        if (f.quoteIs0) {
+            (f.y, f.x, f.quoteIn, f.tokenIn) = (balance0, balance1, amount0In, amount1In);
+        } else {
+            (f.y, f.x, f.quoteIn, f.tokenIn) = (balance1, balance0, amount1In, amount0In);
+        }
+        if (usdcPair) f.sellFee = _sellFee(f);
+        _checkK(f);
+        if (usdcPair) _takeFee(f);
+        if (f.quoteIs0) return (f.y, f.x);
+        return (f.x, f.y);
+    }
+
+    // A sell's fee in USDC: 0 unless tokens came in and USDC went out. out = reserve + in - balance on the USDC side
+    // (exact: the pair's balance only moves by what was sent out and what came in).
+    function _sellFee(Flow memory f) private view returns (uint) {
+        if (f.tokenIn == 0) return 0;
+        (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // still the reserves before this swap
+        uint out = uint(f.quoteIs0 ? _reserve0 : _reserve1).add(f.quoteIn).sub(f.y);
+        return out == 0 ? 0 : out.add(98) / 99;
+    }
+
+    // V2's K check (in 1/10000ths) with the 1% fee: off each input, except that a sell's fee comes off the USDC side.
+    function _checkK(Flow memory f) private view {
+        (uint112 _reserve0, uint112 _reserve1,) = getReserves();
+        uint yAdjusted = f.y.mul(10000).sub(f.quoteIn.mul(100)).sub(f.sellFee.mul(10000));
+        uint xAdjusted = f.x.mul(10000).sub(f.sellFee > 0 ? 0 : f.tokenIn.mul(100));
+        require(yAdjusted.mul(xAdjusted) >= uint(_reserve0).mul(_reserve1).mul(10000**2), 'UniswapV2: K');
+    }
+
+    // Moves the fee out of the pool in USDC, to the NeuriioFees (with no vault set it stays in the pool, like V2):
+    // fq = 1% of the USDC in (rounded down), + sellFee on a sell, or + ft's value at the post-swap price for tokens in
+    // with no USDC out (ft = 1% of the tokens in, rounded down). k never drops (x, y = balances after the swap):
+    //   sell:  the K check gave (y - in/100 - sellFee) * x >= k_before, and we remove fq + sellFee <= in/100 + sellFee;
+    //   other: the K check gave (x - ft)(y - fq) >= k_before, and we remove fq + ft * (y - fq) / x (rounded down),
+    //          leaving x * (y - fq - ft * (y - fq) / x) >= (x - ft)(y - fq) >= k_before.
+    function _takeFee(Flow memory f) private {
+        address vault = INeuriioFactory(factory).feeVault();
+        if (vault == address(0)) return; // fee stays, like V2
+        uint fee = f.quoteIn.mul(100) / 10000;
+        if (f.sellFee > 0) fee = fee.add(f.sellFee);
+        else fee = fee.add((f.tokenIn.mul(100) / 10000).mul(f.y.sub(fee)) / f.x);
+        if (fee == 0) return;
+        _safeTransfer(f.quoteIs0 ? token0 : token1, vault, fee);
+        INeuriioFeeVault(vault).notifyPoolFee(f.quoteIs0 ? token1 : token0, fee); // Neuriio: names the amount
         emit FeeTaken(vault, fee);
-        return quoteIs0 ? (balance0.sub(fee), balance1) : (balance0, balance1.sub(fee));
+        f.y = f.y.sub(fee);
     }
 }

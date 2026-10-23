@@ -8,13 +8,14 @@ import {NeuriioPlatformToken} from "./NeuriioPlatformToken.sol";
 import {NeuriioStaking} from "./NeuriioStaking.sol";
 
 /// @notice Mints $NEURIIO, the only way it comes to exist (user, 2026-10-17): staking an X token earns that pool's
-/// USDC fees, and every $1 of fees its stakers earn mints `mintRate` $NEURIIO (25) to them, through NeuriioStaking.
+/// USDC fees, and every $1 of fees its stakers earn mints `mintRate` $NEURIIO (10 at launch) to them, through NeuriioStaking.
 /// The rate is never above MAX_MINT_RATE (25 per $1: user, 2026-10-20) and decays with the platform's growth, in PAPER's
 /// shape: flat until `flatUntil` ($1M) of total platform fees, then mintRate x (S / (S + h))^2, with h = platform fees
 /// past `flatUntil` and S = `decayScale`. Minting stops at the token's 1B supply cap (the last mint is cut to what's
 /// left). Every fee the NeuriioFees takes moves the curve on (curve fees too, though they mint nothing: nobody stakes a
-/// token before it graduates). The owner approves the fee vaults that report and can tune the curve (never above the
-/// max) until `freezeMintCurve()` locks it for good.
+/// token before it graduates). The owner approves the fee vaults that report until `lockVaults()` fixes that set for
+/// good (no new address can ever mint; removing a vault stays possible, it only stops minting), and can tune the curve
+/// (never above the max) until `freezeMintCurve()` locks it for good.
 contract NeuriioMinter is Ownable2Step {
     uint256 public constant MAX_MINT_RATE = 25e18; // $NEURIIO-wei per $1: never more than 25
 
@@ -22,10 +23,11 @@ contract NeuriioMinter is Ownable2Step {
     NeuriioStaking public immutable staking;
     uint256 public immutable quoteUnit; // 1 USDC in base units ($1)
 
-    uint256 public mintRate; // $NEURIIO-wei per $1 earned (25e18 = 25 $NEURIIO per $1)
+    uint256 public mintRate; // $NEURIIO-wei per $1 earned (10e18 = 10 $NEURIIO per $1)
     uint256 public flatUntil; // dollars x 1e18 of platform fees before the decay starts
     uint256 public decayScale; // dollars x 1e18: S in the decay
     bool public mintCurveFrozen;
+    bool public vaultsLocked;
     uint256 public totalFees; // dollars x 1e18 of platform fees so far: where the curve stands
     mapping(address vault => bool) public isVault;
 
@@ -33,10 +35,12 @@ contract NeuriioMinter is Ownable2Step {
     event VaultSet(address indexed vault, bool allowed);
     event MintCurveSet(uint256 mintRate, uint256 flatUntil, uint256 decayScale);
     event MintCurveFrozen();
+    event VaultsLocked();
 
     error NotVault();
     error InvalidParams();
     error MintCurveIsFrozen();
+    error VaultsAreLocked();
 
     constructor(address owner_, NeuriioStaking staking_, uint256 mintRate_, uint256 flatUntil_, uint256 decayScale_)
         Ownable(owner_)
@@ -75,9 +79,18 @@ contract NeuriioMinter is Ownable2Step {
 
     // ------------------------------------------------------------------ owner
 
+    /// @notice Approves (or removes) a fee vault that reports fees, and so mints. After `lockVaults()` none can be added.
     function setVault(address vault, bool allowed) external onlyOwner {
+        if (allowed && vaultsLocked) revert VaultsAreLocked();
         isVault[vault] = allowed;
         emit VaultSet(vault, allowed);
+    }
+
+    /// @notice Fixes the set of minting vaults forever (before mainnet): no new address can ever mint $NEURIIO.
+    /// Removing a vault stays possible (an off-switch: it only ever stops minting).
+    function lockVaults() external onlyOwner {
+        vaultsLocked = true;
+        emit VaultsLocked();
     }
 
     function setMintCurve(uint256 mintRate_, uint256 flatUntil_, uint256 decayScale_) external onlyOwner {

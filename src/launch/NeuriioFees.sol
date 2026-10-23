@@ -21,9 +21,10 @@ import {NeuriioMinter} from "../stake/NeuriioMinter.sol";
 /// treasury while nobody stakes $NEURIIO (or if NeuriioStaking ever fails, so trading never stops because of staking).
 /// An FTF's creator share is split equally between its 4 members; creators claim any time. The treasury and buyback
 /// shares wait here until both wallets are set, then anyone can `payProtocol()`.
-/// Fees arrive as a USDC transfer followed by a notify, so the vault credits whatever it holds above what it already
-/// owes (`held`). Changing the split means deploying a new NeuriioFees (script/replace-feevault.sh), which is public and
-/// leaves old balances claimable.
+/// Fees arrive as a USDC transfer followed by a notify that names the amount; only that amount is credited (user,
+/// 2026-10-23). USDC that reaches the vault any other way (sent straight to it) counts as nobody's fee and mints no
+/// $NEURIIO: anyone can `sweep()` it to the treasury. Changing the split means deploying a new NeuriioFees
+/// (script/replace-feevault.sh), which is public and leaves old balances claimable.
 /// Part of the permanent core: it serves every NeuriioPad version (a curve fee is accepted only from the token's own
 /// NeuriioPad, per the NeuriioRegistry, which also names the creators to pay).
 contract NeuriioFees is Ownable2Step, ReentrancyGuardTransient {
@@ -80,6 +81,7 @@ contract NeuriioFees is Ownable2Step, ReentrancyGuardTransient {
     event WalletsSet(address treasury, address buyback);
     event StakingFailed(address indexed token, uint256 amount);
     event MinterFailed(address indexed token, uint256 fee);
+    event Swept(address treasury, uint256 amount);
 
     error NotLaunchpad();
     error NotPair();
@@ -87,6 +89,7 @@ contract NeuriioFees is Ownable2Step, ReentrancyGuardTransient {
     error WalletsNotSet();
     error InvalidParams();
     error NothingToClaim();
+    error FeeNotReceived();
 
     constructor(
         address owner_,
@@ -107,17 +110,17 @@ contract NeuriioFees is Ownable2Step, ReentrancyGuardTransient {
 
     // ------------------------------------------------------------------ fee intake
 
-    /// @notice Curve fee: the token's own NeuriioPad (any version, approved or retired) transfers USDC here, then calls
-    /// this. Credits whatever arrived.
-    function notifyCurveFee(address token) external nonReentrant {
+    /// @notice Curve fee: the token's own NeuriioPad (any version, approved or retired) transfers `amount` USDC here,
+    /// then calls this. Credits exactly `amount`.
+    function notifyCurveFee(address token, uint256 amount) external nonReentrant {
         if (msg.sender != registry.launchpadOf(token) || msg.sender == address(0)) revert NotLaunchpad();
-        _intake(token, false);
+        _intake(token, false, amount);
     }
 
-    /// @notice Pool fee: the token's pair transfers USDC here, then calls this. Credits whatever arrived.
-    function notifyPoolFee(address token) external nonReentrant {
+    /// @notice Pool fee: the token's pair transfers `amount` USDC here, then calls this. Credits exactly `amount`.
+    function notifyPoolFee(address token, uint256 amount) external nonReentrant {
         if (msg.sender != factory.getPair(token, address(quote)) || msg.sender == address(0)) revert NotPair();
-        _intake(token, true);
+        _intake(token, true, amount);
     }
 
     // ------------------------------------------------------------------ payouts
@@ -145,6 +148,17 @@ contract NeuriioFees is Ownable2Step, ReentrancyGuardTransient {
         if (ba > 0) quote.safeTransfer(b, ba);
     }
 
+    /// @notice Sends USDC that reached the vault outside a fee (nobody's fee, never minted on) to the treasury.
+    /// Anyone can call it.
+    function sweep() external nonReentrant returns (uint256 amount) {
+        address t = treasuryWallet;
+        if (t == address(0)) revert WalletsNotSet();
+        amount = quote.balanceOf(address(this)) - held;
+        if (amount == 0) revert NothingToClaim();
+        emit Swept(t, amount);
+        quote.safeTransfer(t, amount);
+    }
+
     // ------------------------------------------------------------------ owner
 
     function setWallets(address treasury, address buyback) external onlyOwner {
@@ -156,9 +170,9 @@ contract NeuriioFees is Ownable2Step, ReentrancyGuardTransient {
 
     // ------------------------------------------------------------------ internals
 
-    function _intake(address token, bool fromPool) internal {
-        uint256 amount = quote.balanceOf(address(this)) - held;
+    function _intake(address token, bool fromPool, uint256 amount) internal {
         if (amount == 0) return;
+        if (quote.balanceOf(address(this)) - held < amount) revert FeeNotReceived();
         address[] memory creators = registry.creatorsOf(token);
         if (creators.length == 0) revert UnknownToken(token);
         Shares memory s;

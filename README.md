@@ -47,8 +47,8 @@ npm --prefix app install && npm --prefix app run dev   # needs VITE_PRIVY_APP_ID
 Testnet (Elysium, chain 99801): `script/deploy-core.sh` deploys the permanent core and the first `NeuriioPad`;
 `script/deploy-launchpad.sh` ships a new `NeuriioPad` version on the existing core; `script/replace-feevault.sh`
 swaps in a new `NeuriioFees`; `script/verify-world.sh` verifies everything on the explorer;
-`script/supabase-deploy.sh` points the backend at the current addresses. The web app and the watcher run on Railway from `Dockerfile` and
-`keeper/Dockerfile.watcher`.
+`script/supabase-deploy.sh` points the backend at the current addresses. The web app runs on Vercel (`app/vercel.json`);
+the watcher and the payout bot run on AWS EC2 (see HANDOFF.md).
 
 ## Disclaimer
 

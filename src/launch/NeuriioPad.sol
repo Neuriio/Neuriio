@@ -13,9 +13,9 @@ import {NeuriioToken} from "./NeuriioToken.sol";
 import {NeuriioRegistry} from "./NeuriioRegistry.sol";
 import {ISwapFactory, ISwapPair} from "../swap/interfaces.sol";
 
-/// The NeuriioFees side a curve fee goes to: the pad transfers the fee (USDC), then calls this.
+/// The NeuriioFees side a curve fee goes to: the pad transfers the fee (USDC), then calls this with its amount.
 interface ICurveFeeVault {
-    function notifyCurveFee(address token) external;
+    function notifyCurveFee(address token, uint256 amount) external;
 }
 
 /// @notice "Tokenize Accounts": a pump.fun-style launchpad priced in USDC. A token is either one person
@@ -28,8 +28,9 @@ interface ICurveFeeVault {
 /// are + links to their work; the profile itself lives off-chain). Tokens are memes: no promises. Launching is free:
 /// 1B supply, all held here. 793.1M are sold on a bonding curve, a constant-product curve over *virtual* reserves
 /// (`virtualQuote` USDC : 1.073B tokens at launch), so no seed liquidity is needed. Every trade pays a fee (`feeBps`, 1%
-/// at deploy) to the NeuriioFees, in USDC: 80% to stakers, 10% to the creator, 10% to the treasury (the same split after
-/// graduation, when the pool takes the same 1%). The buy that sells the last curve token graduates the token in the same
+/// at deploy) to the NeuriioFees, in USDC, split there: on the curve 50% $NEURIIO stakers / 30% KNTQ buyback / 10%
+/// creator / 10% treasury; in the pool after graduation (the pool takes the same 1%) 40% that token's stakers / 40%
+/// $NEURIIO stakers / 10% creator / 10% treasury. The buy that sells the last curve token graduates the token in the same
 /// tx: every USDC raised plus the remaining 206.9M tokens go into our pool on our Uniswap V2 fork (TOKEN/USDC,
 /// src/swap/v2) and the LP tokens are sent to the dead address (burned), so that liquidity is locked forever. The
 /// curve's final price equals the pool's opening price.
@@ -128,6 +129,9 @@ contract NeuriioPad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     address[] public allTokens;
 
     address public launchSigner;
+    /// May pause at once besides the owner (only pause: unpausing is the owner's). On mainnet the owner is a timelock
+    /// and the guardian the multisig, so an emergency stop doesn't wait for the timelock's delay.
+    address public guardian;
     mapping(address token => Profile) internal _profiles;
     mapping(address token => Ftf) internal _ftfs;
 
@@ -151,6 +155,7 @@ contract NeuriioPad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         uint256 virtualQuote
     );
     event LaunchSignerSet(address signer);
+    event GuardianSet(address guardian);
     event Trade(
         address indexed token,
         address indexed trader,
@@ -178,6 +183,7 @@ contract NeuriioPad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     error InvalidPass();
     error NotPassHolder();
     error InvalidMembers();
+    error NotOwnerOrGuardian();
 
     constructor(
         address owner_,
@@ -401,8 +407,16 @@ contract NeuriioPad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
         _setLaunchSigner(signer);
     }
 
-    /// @notice Emergency stop for launches and buys (and so graduations). Sells stay open so holders can always exit.
-    function pause() external onlyOwner {
+    /// @notice Who may pause at once besides the owner (address(0) = nobody).
+    function setGuardian(address guardian_) external onlyOwner {
+        guardian = guardian_;
+        emit GuardianSet(guardian_);
+    }
+
+    /// @notice Emergency stop for launches and buys (and so graduations), by the owner or the guardian. Sells stay open
+    /// so holders can always exit. Only the owner unpauses.
+    function pause() external {
+        if (msg.sender != owner() && msg.sender != guardian) revert NotOwnerOrGuardian();
         _pause();
     }
 
@@ -451,7 +465,7 @@ contract NeuriioPad is Ownable2Step, Pausable, ReentrancyGuard, EIP712 {
     function _payFee(address token, uint256 fee) internal {
         if (fee == 0) return;
         quote.safeTransfer(address(feeVault), fee);
-        feeVault.notifyCurveFee(token);
+        feeVault.notifyCurveFee(token, fee);
     }
 
     /// Curve sold out: all raised USDC + LP_SUPPLY tokens into a new V2 pair, LP tokens burned.

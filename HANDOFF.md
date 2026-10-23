@@ -1,4 +1,4 @@
-# Handoff — Neuriio (state as of 2026-10-21: USDC world LIVE on app.neuriio.xyz (testnet); NEXT CHAT: "FIRST THINGS NEXT SESSION" -> multisig + locks, then scaling (Railway exit done))
+# Handoff — Neuriio (state as of 2026-10-22: USDC world LIVE on app.neuriio.xyz (testnet); NEXT CHAT: mainnet readiness: Safe rehearsal DONE; next the internal audit, then the audit freeze, see "NEXT SESSION")
 
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 **Consolidated 2026-10-12:** finished work, old session logs, the paused PropAMM stack, superseded deployments and the
@@ -7,36 +7,143 @@ dropped Higgsfield prompts were removed from this file. The full previous versio
 security sweeps #1-4 in detail, the Uniswap V4 research and Appendix B/C video prompts).
 
 **Project name: Neuriio.** Local folder `/Users/von/Neuriio`; code in the **private** GitHub repo
-**https://github.com/finding-agi/Neuriio** (branch `main`). Railway redeploys the app + watcher on every push to `main`.
+**https://github.com/finding-agi/Neuriio** (branch `main`). Vercel deploys the app on every push to `main`; the EC2
+watcher + payout bot update with `/usr/local/bin/neuriio-update` (run via SSM). Railway is no longer used.
 
 ## USDC WORLD (live since 2026-10-18): contracts, backend (switch run), app (pushed 4701f76) and docs (88206f4)
 
 Final design (user, 2026-10-17 evening; memory "loss-mint-staking-plan"): tokens pair with USDC; every trade pays 1%
-(curve and pool, bots included: the fee is inside the new pools). Curve fees: 80% $NEURIIO stakers / 10% KNTQ buyback /
-10% treasury. Pool fees: 40% $NEURIIO stakers / 40% that token's stakers / 10% creator / 10% treasury. Staking an X
-token (opens at graduation) earns its USDC fees AND mints $NEURIIO: 100 per $1 earned, flat until $1M of total platform
-fees, then PAPER's decay (S = $120M). Staking $NEURIIO earns USDC only. Claimed $NEURIIO is staked automatically;
+(curve and pool, bots included: the fee is inside the new pools). Curve fees (final 2026-10-20, see "Fee split"):
+50% $NEURIIO stakers / 30% KNTQ buyback / 10% creators / 10% treasury. Pool fees: 40% $NEURIIO stakers / 40% that
+token's stakers / 10% creator / 10% treasury. Staking an X token (opens at graduation) earns its USDC fees AND mints
+$NEURIIO: 25 per $1 earned (set 2026-10-20, see "Neuriio cap"; 1B hard cap), flat until $1M of total platform fees,
+then PAPER's decay (S = $120M). Staking $NEURIIO earns USDC only. Claimed $NEURIIO is staked automatically;
 $NEURIIO can't be transferred. No loss-mint, boosts or locks. Contracts: `src/stake/` (NeuriioStaking,
 NeuriioMinter, NeuriioPlatformToken), `src/launch/NeuriioFees.sol` + `NeuriioPad.sol`, `src/swap/NeuriioRouter.sol`,
-`src/swap/v2` (USDC quote + 1% fee), `src/testnet/TestUSDC.sol`. 71 Foundry tests.
+`src/swap/v2` (USDC quote + 1% fee), `src/testnet/TestUSDC.sol`. 88 Foundry tests (+1 fork test).
 
-### FIRST THINGS NEXT SESSION (Fri 2026-10-24, when the user's tokens reset), in this order
-0. **Railway exit: DONE 2026-10-21 night.** Website on **Vercel** (project root `app`, `app/vercel.json`; vars
+### NEXT SESSION: MAINNET READINESS (user, 2026-10-22: get ready for mainnet now; the RPC switch is left for last)
+Goal (user): audit-ready as if mainnet were tomorrow, so launch = run ONE script with the audited code. Mainnet is a
+FRESH deploy (nothing moves from testnet: tokens, balances, addresses all start new; the app/Supabase/bots switch config).
+DONE IN CODE 2026-10-22 (not deployed: testnet keeps its contracts; NOT committed yet). 88 tests pass, fmt clean,
+NeuriioPad 19,862 B (4,714 B under EIP-170):
+- `NeuriioMinter.lockVaults()`: no new minting vault ever (removing one stays possible: off-switch).
+- Pool sells pay a true 1% of the sale in USDC (pair `_feeAndK`/`_sellFee`/`_checkK`/`_takeFee` on a memory `Flow`
+  struct against stack-too-deep; router `getSellAmountOut` = 99% of V2's no-fee output for `sell` + `quoteSell`; buys
+  and token flash swaps unchanged). Breaks V2-adapter math for SELLS only (interfaces.sol notes it).
+- Ownership model (user, 2026-10-22): TIMELOCK + EMERGENCY PAUSE. `NeuriioPad.guardian` (+ `setGuardian`, owner only):
+  owner or guardian can `pause()` at once; only the owner unpauses; the guardian has no other power.
+- `script/DeployMainnet.s.sol`: the whole mainnet stack in ONE run on the real USDC (no TestUSDC/faucet): deploy + wire,
+  wallets, guardian = Safe, extra reserved tickers, locks (`lockVaults`, `freezeMintCurve`, `lockMinter`), then a
+  TimelockController (0 delay + deployer as proposer/executor for one batch that accepts every ownership, gives the Safe
+  proposer/canceller/executor, revokes the deployer, sets the real delay); factory feeToSetter -> timelock. Ends with
+  `check()` reverting on anything off; the deployer keeps NO power. Refuses: testnet chain (unless ALLOW_TESTNET),
+  non-6-decimal USDC, SAFE without code, the testnet launch signer, TIMELOCK_DELAY < 1 day.
+- `test/DeployMainnet.t.sol` (7 tests) runs that script locally: owners/locks/roles, deployer powerless, Safe pauses
+  at once but unpause/admin changes wait the delay (early = revert), locks hold even for the timelock, launch ->
+  graduation -> pool sell (1% of the sale) -> payProtocol, bad settings refused. (Local chain quirk: warp first, the
+  timelock marks done ops with timestamp 1.) Also new: guardian test, lock tests, sell-fee tests (exact, big-sell,
+  direct-pair, flash swap, fuzz checks every fee). Stale fee-split comments in NeuriioPad/NeuriioStaking fixed.
+INTERNAL AUDIT (2026-10-23, done): `audit/SECURITY_AUDIT.md` + `audit/ARCHITECTURE.md`, tests in `test/audit/` (118
+tests pass). No Critical/High. Open: M-01 leaked launch-signer key (permanent identity squatting; only fast stop is
+pause), L-01 failing fee vault blocks sells, L-02 pool token flash swap dodges the fee, Info items (confirm the curve
+split 50/30/10/10 vs the 80/10/10 in the audit request). The separate review passes were stopped (cost; overkill).
+$NEURIIO FARMING (M-02; user, 2026-10-23): a whale can farm $NEURIIO by wash trading their own graduated token's pool
+(creator + sole staker + $NEURIIO staker get ~90% of the fees back). DONE IN CODE (not deployed, not committed):
+(1) NeuriioFees credits only the fee the pad/pair reports (`notifyCurveFee(token, amount)` /
+`notifyPoolFee(token, amount)`; pad + pair updated), so USDC sent straight to the vault mints nothing; anyone can
+`sweep()` it to the treasury; (2) deploy default MINT_RATE = 10 per $1 (`script/NeuriioConfig.sol`; code cap stays
+25). No daily mint cap for now. What's left costs ~2.5 cents per $NEURIIO by wash trading (test
+`test_washTradingCostPerNeuriio`). PLAN (user): watch for it rather than block it (the treasury earns 10% of every
+farmed fee, and $NEURIIO can't be traded while transfers are off); before enabling transfers or any airdrop, audit
+for sybil farming and cut those wallets' share. CAUTION: the contracts can't cut $NEURIIO already minted
+(NeuriioStaking has no owner), so the cut must happen in that later distribution, not on existing balances. These
+changes break compatibility with the live testnet contracts (old notify signature): any future testnet deploy must
+be the whole stack.
+SAFE (2026-10-22): Safe's canonical v1.3.0 contracts APPEARED on Elysium testnet today (23:16 UTC, deployed by
+0x3e79…736B via the CREATE2 deployer), byte-identical to Ethereum mainnet's; no Safe UI/tx service for Elysium. User
+chose a 2-OF-3 Safe (public addresses only; hardware wallets on separate devices; not Privy wallets). Tooling: `script/CreateSafe.s.sol` (checks Safe's code hashes first, creates the Safe
+from OWNERS/THRESHOLD/SALT_NONCE, reads it back), `script/SafeTx.s.sol` (`hash()` -> each signer sends
+`approveHash(hash)` from their own wallet, e.g. `cast send <SAFE> "approveHash(bytes32)" <hash> --ledger`; `exec()`
+checks the approvals and executes; anyone can send it). `test/fork/Rehearsal.t.sol` (FORK=true forge test --match-path
+test/fork/Rehearsal.t.sol) PASSES on a fork of testnet with the real Safe: create 2-of-3 -> DeployMainnet -> pause
+with 2 approvals -> unpause via the timelock (refused early, executed after the delay). DeployMainnet allows a delay
+down to 5 minutes ONLY on the testnet chain (rehearsals); mainnet needs at least 1 day. No other protocol on Elysium
+testnet uses a multisig/timelock (1,200 verified contracts checked; single EOAs own them; only the chain's bridge sits
+behind Arbitrum's UpgradeExecutor). On mainnet the same Safe address can be recreated (same owners, threshold, salt)
+once Safe's contracts are there (anyone can replay them via the CREATE2 deployer if needed).
+LIVE REHEARSAL ON TESTNET (2026-10-22): the Neuriio Safe `0x68Ed49C77dF7fB4928510d5Ac65C6074674D264E` (2 of 3; owners
+0x15f2…C577, 0x90F7…bea7, 0xaC0D…c2e7; salt nonce 0) exists; each signer got 0.01 testnet HYPE from the burner;
+DeployMainnet ran with ALLOW_TESTNET=true, TIMELOCK_DELAY=600 and a throwaway launch signer: a SEPARATE stack (the
+live app's contracts are untouched), addresses in `deployments/elysium-testnet-rehearsal.json` (timelock
+`0x6348…d8ed`, pad `0xf9e4…e2a0`). Every check passed on-chain: the timelock owns registry/pad/fees/minter/NEURIIO
+and is the factory's feeToSetter, guardian = Safe, the Safe holds proposer/canceller/executor, the deployer holds no
+role, all locks on, treasury + buyback = the Safe. Signing page `/safe` (unlisted; `app/src/components/SafePage.tsx` +
+`app/src/lib/safe.ts`; LOCAL ONLY so far, signers on other devices need it pushed): an owner opens an approval link
+`/safe?to=<contract>&data=<calldata>&nonce=<Safe nonce>&note=<text>`, connects Rabby/MetaMask (adds Elysium if
+missing), approves (`approveHash`), and anyone executes once 2 have approved (the last owner can "Approve & execute").
+It decodes the call into words (timelock schedule/execute included), lets owners approve ahead of the Safe's nonce,
+and shows when a timelocked action can run. PRACTICE RUN DONE (2026-10-23 UTC, the 3 signers via /safe from the
+user's Mac): pause executed 01:05:57; unpause scheduled 01:06:31; all 3 owners approved the execute early, the timelock
+held it until 01:16:31, executed 01:16:55 by 0x90F7…bea7 (tx 0xcb59ad69…). Checked on-chain: Safe nonce 3, every Safe
+execution succeeded, pad paused -> unpaused, the timelock operation marked done. The links were: (1) pause: to = pad, data
+`0x8456cb59`, nonce 0; (2) schedule the unpause: to = timelock, `schedule(pad, 0, 0x3f4ba83a, 0x0, salt, 600)`,
+nonce 1; (3) after 10 minutes, run it: to = timelock, `execute(pad, 0, 0x3f4ba83a, 0x0, salt)`, nonce 2; salt =
+`cast keccak "neuriio rehearsal unpause 1"`, calldata via `cast calldata`.
+Deploy-day inputs (env of DeployMainnet): USDC (Elysium mainnet), SAFE (deployed, signers 2-of-3 or 3-of-5 on
+separate devices), TREASURY_WALLET + BUYBACK_WALLET (suggest the Safe), LAUNCH_SIGNER (NEW key; its private key goes
+into Supabase `LAUNCH_SIGNER_KEY` for the mainnet functions), VIRTUAL_QUOTE (testnet 6,000e6), TIMELOCK_DELAY (172800 =
+48 h), optional RESERVED_TICKERS. From Elysium: chain ID, USDC address, Safe's canonical contracts on mainnet (on
+testnet since 2026-10-22; check with `cast code`), explorer for verification.
+Next, in order: (1) commit; (2) internal deep audit of the 8 Neuriio contracts + the pool's Neuriio fee code (see
+below) (RUNNING since 2026-10-23 in its own
+session "Deep audit of the Neuriio contracts": Fable review passes, every finding proven by a test in `test/audit/`,
+report in `audit/SECURITY_AUDIT.md` + `audit/ARCHITECTURE.md`, no code changed), then fix what the user picks, so the
+outside firm gets a commit hash that already has our own fixes; (3) freeze (user, 2026-10-23): ONE commit hash for the
+outside firm, scope = the 8 Neuriio contracts (NeuriioPad, NeuriioFees, NeuriioRegistry, NeuriioToken, NeuriioStaking,
+NeuriioMinter, NeuriioPlatformToken, NeuriioRouter) + the pool's Neuriio fee code; the hash comes from a separate private audit repo holding ONLY
+contracts + tests + scripts + foundry config (this repo also holds the app, Supabase code and this file); verify the
+firm first (they reached out unprompted). The pool's Neuriio fee code (user, 2026-10-23: in BOTH audits): the pool
+contract `src/swap/v2/UniswapV2Pair.sol` is no longer stock Uniswap: ~70 lines are ours (the 1% fee + this week's
+sell-fee fix: `_feeAndK`, `_sellFee`, `_checkK`, `_takeFee`, called from `swap()`), the K check that guards every
+graduated pool's liquidity; the rest of the fork is stock Uniswap V2 and stays out of scope. Then the professional
+audit; (4) off-chain mainnet switch prepared behind config (app chain/RPC/addresses, Supabase WORLDS +
+indexer start block, watcher DEPLOYMENTS, Privy chain, no faucet/testnet labels, HL_TESTNET=false); (5) deploy day: run
+DeployMainnet, verify sources, switch config, then the RPC switch (QuickNode for servers). Optional: record pool sell
+volume as the gross sale (out + fee) so fee/volume reads 1.000% for sells too.
+Also open: the big team's question; answer with the proof page (Phase 5 below) and the token page URL
+(they asked for our Elysium-mainnet token page URL, so they will check who controls the contracts): `https://app.neuriio.xyz/explore?t=<token address>` (a
+cleaner `/token/<address>` route with the old link redirecting is optional; mainnet domain not decided).
+Not pushed yet (2026-10-22): the CI formatting fix in `test/NeuriioPad.t.sol` (CI's `forge fmt --check` fails until
+it's pushed). Careful: `forge fmt` itself BREAKS that file (it moves the `// their curve-fee shares` comment into the
+for-loop header, commenting half of it out); the fix there is hand-written.
+Licensing: every contract file already says `SPDX-License-Identifier: MIT` (user is happy with that, no LICENSE file
+added); `src/swap/v2` is the Uniswap V2 fork and stays GPL-3.0 (its LICENSE is in that folder). Repo stays private.
+
+### Done 2026-10-21/22 (reference)
+- **Railway exit.** Website on **Vercel** (project root `app`, `app/vercel.json`; vars
    `VITE_ELYSIUM_RPC` + `VITE_PRIVY_APP_ID` as Config; Privy allowed origin `https://neuriio.vercel.app` added;
    Cloudflare `app` CNAME -> Vercel, DNS only). Live updates restored: app realtime uses the publishable key
    (942d561). Watcher on **AWS EC2** `i-03b1a86c4d1fff123` (us-west-2, t4g.micro, AL2023, account 137098073913):
    no inbound ports, managed via SSM Session Manager only, IMDSv2, encrypted disk; systemd `neuriio-watcher`
    (auto-restart) runs `/usr/local/bin/neuriio-watcher`, which reads SSM SecureStrings
    `/neuriio/watcher/supabase-secret-key` + `/neuriio/watcher/rpc-url` (keyed Conduit URL: keyless public RPC
-   rate-limits it) into memory; IAM role `neuriio-watcher-ec2` (SSM core + GetParameter on /neuriio/watcher/*);
+   rate-limits it) into memory; IAM role `neuriio-watcher-ec2` (SSM core + GetParameter on /neuriio/watcher/* and /neuriio/payout/*);
    SG `sg-0b87459f1442f8868`. Code: sparse clone of keeper+deployments via read-only GitHub deploy key
    `neuriio-watcher-ec2`; update = run `/usr/local/bin/neuriio-update` via SSM (git pull, npm ci
    --ignore-scripts, restart). Logs: `journalctl -u neuriio-watcher`. hypedexer RPC is DEAD (stuck at block
    10,340,873): removed from watcher + payout defaults (12dd4aa); watcher polls (no WS_URL).
-   Leftovers: delete Cloudflare `_railway-verify` TXT; delete the Railway project; user signed in to AWS as ROOT
-   -> create an admin IAM user with MFA; rotate the Conduit key (it's public in the browser anyway); move the payout
-   bot to EC2 with a new gas-only wallet (it still runs locally on the owner key).
-   **Security review 2026-10-22 (done, committed):** no critical/high; every live attack blocked. Fixed + deployed:
+- **Payout bot on EC2** (same box): systemd `neuriio-payout`, hourly `payProtocol()` on every fee vault, gas paid
+   by a gas-only wallet `0x2e5A15fe4587aF7E6ec49869eAd906F93BCCd225` (key in SSM `/neuriio/payout/gas-key`, ~0.02
+   HYPE covers thousands of runs). Paid ~$8,323 (2026-10-21) + $3,590 (2026-10-22) to `0x10E9…EEC3`. The owner key
+   `0xeF58…` no longer runs anywhere. KNTQ buy + burn of the buyback share is still manual.
+- **Optimization done:** "trades:all" batched into one message per second (charts stay per trade, fb3e191); tabs
+   hidden for 60 s close their live connections and catch up when shown; indexer checks Hyperliquid every 10 min with
+   one cursor query (runs ~24 s -> ~5 s; it was ~60% of all Supabase requests, 74dce9e). The rest of the scaling plan
+   is "later, when growth needs it" (section below), not a priority.
+- Small leftovers, any time: delete Cloudflare `_railway-verify` TXT and the Railway project; user signs in to AWS
+   as ROOT -> create an admin IAM user with MFA; rotate the Conduit key (it's public in the browser anyway).
+- **Security review 2026-10-22 (done, committed):** no critical/high; every live attack blocked. Fixed + deployed:
    indexer never returns error text (viem errors carry the RPC URL + key); posts/ftf action lookups use
    Object.hasOwn (`"toString"` skipped the post limit); write actions rate-limited in the DB
    (`hit_rate_limit`, `_shared/rateLimit.ts`, migration 20261022043242); anon/authenticated lost every non-SELECT
@@ -44,14 +151,8 @@ NeuriioMinter, NeuriioPlatformToken), `src/launch/NeuriioFees.sol` + `NeuriioPad
    checked + no upload cap, no full CSP on the site, functions can be spammed to burn the invocation quota,
    leaderboard is a security-definer view (by design), pg_net in public schema. Local migration files now match
    the remote history exactly (posts files renamed to 20261020195551/200400; same SQL, comments only differed).
-1. **Multisig + locks rollout** (below; why: a big team asked for our Elysium-mainnet token page URL, so they will
-   check who controls the contracts). Start with Phase 1.
-2. **Scaling plan** (the section after it).
-Also open: answer that team's URL question. Today's token page is `https://app.neuriio.xyz/explore?t=<token address>`;
-the user may want a cleaner `/token/<address>` route (old link redirecting) before outside teams hard-code it. Mainnet
-domain not decided.
 
-### Multisig + locks roadmap (written 2026-10-21; nothing done yet, nothing changed on-chain)
+### Multisig + locks roadmap (written 2026-10-21; SUPERSEDED by "NEXT SESSION" above, kept for reference)
 One wallet, `0xeF58…17a8`, owns everything today (Pad, Registry, Fees vaults x4, NEURIIO, Minter, TestUSDC,
 swap factory `feeToSetter`). All Ownable contracts are `Ownable2Step` -> NO redeploy except the Minter fix.
 Tokens, staking and router have no owner. On-chain today: `minterLocked=false`, `mintCurveFrozen=false`.
@@ -74,12 +175,11 @@ Fee is capped at 2% in code (`MAX_FEE_BPS`); `pause` keeps sells open.
   receives the pools' `feeTo` share, so nothing is missed.
 - **Phase 5: prove it.** Public page: each contract, its owner (Safe/timelock), what's locked, tx links. Send it to
   the team with the URL answer. Mainnet repeats this setup before any public launch.
-Payout bot: started 2026-10-21 in a local terminal tab (`./script/run-pay-protocol.sh`), hourly; first run paid
-~$8,323 USDC from 3 vaults to `0x10E9…EEC3`; vault `0x5cfb…` had a one-off RPC read error, pays next run. It runs on
-the `burner` keystore, which IS the owner key `0xeF58…` -> make a small gas-only wallet before moving it to Railway.
-KNTQ buy + burn is still manual (~$2.1K buyback share now in `0x10E9…`).
+The owner key no longer runs in any bot (the payout bot moved to EC2 with its own gas-only wallet, see "Done").
+Phase 1 check first: Safe was still absent on Elysium 2026-10-21; re-check `cast code` at the canonical Safe
+addresses before choosing between asking Safe and deploying it ourselves.
 
-### Scaling plan (2026-10-20 evening): not started; nothing urgent at today's numbers
+### Later, when growth needs it: scaling plan (NOT a priority; the cheap parts were done 2026-10-22, see "Done")
 Done + live today: FTF accept fix (setMember updated the row instead of upserting: role NOT NULL), Feed with real
 posts / likes / comments (tables posts, post_likes, post_comments, view posts_feed; `posts` Edge Function, Privy
 login, 5 posts / 10 comments / 60 likes a minute), sample posts gone. Railway paused deploys platform-wide for a while
@@ -517,7 +617,16 @@ Keys: **never paste a private key into chat**; the user types keystore passwords
   no existing balances.
 - **Before mainnet:** formal audit with the highest model (Fable; memory "audit-preference") -> public
   `docs/ARCHITECTURE.md` + `docs/SECURITY_AUDIT.md` -> professional audit + bug bounty; multisig + timelock;
-  Supabase Pro; legal review; hosting for the payout bot.
+  Supabase Pro; legal review. (Payout bot hosting: done, EC2 2026-10-22.)
+- **Pool SELL fee: FIXED IN CODE 2026-10-22, ships with the mainnet deploy (see NEXT SESSION).** Found 2026-10-22: pool buys pay exactly 1% (1,085 trades,
+  $11.15M -> $111.5K), pool sells only **0.348%** (468 trades, $9.24M -> $32.1K), the whole ~$60K gap between platform
+  fees ($152.9K) and 1% of volume ($212.8K). Cause: `_takeFee` (`src/swap/v2/UniswapV2Pair.sol:221`) charges 1% of
+  the INPUT; on a sell that's 1% of the tokens valued at the post-swap price (`ft * (y - fq) / x`), so a big sell into
+  a thin pool pays almost nothing (worst: a $646,759 sell paid $35). Data is fine: every pool trade has exactly one
+  on-chain `FeeTaken` and the indexer's volume (USDC out on sells) is right. Fix for mainnet: sells pay 1% of the USDC
+  they receive (fee from the quote output; buys unchanged), then check the K math, tests and the audit. Pairs can't be
+  upgraded, so it ships with the mainnet factory + pair (+ router); testnet stays as is. Until then the docs' "every
+  trade pays 1%" is only true for buys and curve trades.
 - Open: when posts become real, the Send recipient must come from `users` server-side; FTF launch points can be farmed
   with extra FTFs (user informed); balances read every token per viewer every 10 s (index holdings server-side at scale).
 

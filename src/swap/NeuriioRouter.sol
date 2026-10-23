@@ -102,7 +102,7 @@ contract NeuriioRouter is ReentrancyGuardTransient {
             (uint256 rQuote, uint256 rToken) = _reserves(pair);
             IERC20(token).safeTransferFrom(msg.sender, address(pair), tokensIn);
             uint256 received = IERC20(token).balanceOf(address(pair)) - rToken; // what the pool actually got
-            quoteOut = getAmountOut(received, rToken, rQuote);
+            quoteOut = getSellAmountOut(received, rToken, rQuote);
             if (quoteOut < minQuoteOut) revert Slippage(quoteOut, minQuoteOut);
             _swapOut(pair, address(quote), quoteOut, msg.sender);
             emit Swapped(token, msg.sender, msg.sender, false, quoteOut, received);
@@ -130,13 +130,26 @@ contract NeuriioRouter is ReentrancyGuardTransient {
             (quoteOut,) = _padOf(token).previewSell(token, tokensIn);
         } else {
             (uint256 rQuote, uint256 rToken) = _reserves(pair);
-            quoteOut = getAmountOut(tokensIn, rToken, rQuote);
+            quoteOut = getSellAmountOut(tokensIn, rToken, rQuote);
         }
     }
 
+    /// @notice A pool BUY (USDC in): V2's output for a 1% fee on the input, exactly what the pair allows.
     function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut) public pure returns (uint256) {
         uint256 inWithFee = amountIn * (10_000 - POOL_FEE_BPS);
         return inWithFee * reserveOut / (reserveIn * 10_000 + inWithFee);
+    }
+
+    /// @notice A pool SELL (tokens in): 99% of V2's no-fee output; the pair keeps 1% of the sale as its fee, in USDC.
+    /// (The pair's fee is out / 99 rounded up, and floor(0.99 g) + ceil(floor(0.99 g) / 99) <= g, so this always passes
+    /// its K check.)
+    function getSellAmountOut(uint256 tokensIn, uint256 reserveToken, uint256 reserveQuote)
+        public
+        pure
+        returns (uint256)
+    {
+        uint256 gross = tokensIn * reserveQuote / (reserveToken + tokensIn);
+        return gross * (10_000 - POOL_FEE_BPS) / 10_000;
     }
 
     /// The router never holds funds between calls, so a standing approval to a NeuriioPad (only ever pulling from the

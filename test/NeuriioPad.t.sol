@@ -13,6 +13,19 @@ import {NeuriioToken} from "../src/launch/NeuriioToken.sol";
 import {NeuriioRouter} from "../src/swap/NeuriioRouter.sol";
 import {NeuriioBase, IPair} from "./Base.t.sol";
 
+/// Borrows tokens from a pair in a flash swap and pays them back in tokens (tokens in, no USDC out).
+contract FlashBorrower {
+    function borrow(IPair pair, address token, uint256 amount, uint256 repay) external {
+        (uint256 a0, uint256 a1) = pair.token0() == token ? (amount, uint256(0)) : (uint256(0), amount);
+        pair.swap(a0, a1, address(this), abi.encode(token, repay));
+    }
+
+    function uniswapV2Call(address, uint256, uint256, bytes calldata data) external {
+        (address token, uint256 repay) = abi.decode(data, (address, uint256));
+        IERC20(token).transfer(msg.sender, repay);
+    }
+}
+
 /// The launchpad (priced in USDC), its curve, graduation, our V2 fork (TOKEN/USDC, 1% fee) and the fee vault's creator /
 /// treasury shares. The setup and the shared helpers live in Base.t.sol.
 contract NeuriioPadTest is NeuriioBase {
@@ -348,10 +361,10 @@ contract NeuriioPadTest is NeuriioBase {
         assertEq(vault.creatorBalance(creator) - creatorBefore, 0.1e6); // 10% of 1 USDC
         assertEq(usdc.balanceOf(address(vault)), vault.held());
 
-        // sell: fee = 1% of the tokens in, taken out as their USDC value
+        // sell: fee = 1% of the sale in USDC (out / 99, rounded up), 10% of it to the creator
         uint256 mid = vault.creatorBalance(creator);
         uint256 back = _tradeSell(bob, token, out);
-        assertApproxEqRel(vault.creatorBalance(creator) - mid, back * 100 / 9_900 / 10, 0.01e18);
+        assertEq(vault.creatorBalance(creator) - mid, (back + 98) / 99 * 1_000 / 10_000);
 
         // the creator claims in USDC
         uint256 owed = vault.creatorBalance(creator);
@@ -364,7 +377,8 @@ contract NeuriioPadTest is NeuriioBase {
 
     // ------------------------------------------------------------------ our Uniswap V2 fork (src/swap/v2)
 
-    /// An aggregator swapping on the pair directly (no router) gets V2's output for a 1% fee and pays the same fee.
+    /// A direct BUY on the pair (an aggregator, no router) gets V2's output for a 1% fee on the USDC in and pays that 1%.
+    /// (Direct sells: test_directPairSellNeedsTheSellMath.)
     function test_directPairSwapPaysFeeAndMatchesV2Math() public {
         address token = _graduated(alice);
         IPair pair = _pairOf(token);
@@ -391,6 +405,89 @@ contract NeuriioPadTest is NeuriioBase {
         assertEq(quoteIs0 ? r0 : r1, rQuote + amountIn - amountIn / 100); // the fee left the pool
     }
 
+    /// A pool sell pays 1% of the sale in USDC: the seller gets 99% of V2's no-fee output (the router's quote, exactly),
+    /// and the fee is out / 99, rounded up.
+    function test_poolSellPaysOnePercentOfTheSale() public {
+        address token = _graduated(alice);
+        uint256 tokens = _tradeBuy(bob, token, 1_000e6);
+        uint256 q = trade.quoteSell(token, tokens);
+        uint256 feesBefore = vault.totalFees();
+        uint256 back = _tradeSell(bob, token, tokens);
+        assertEq(back, q);
+        uint256 fee = vault.totalFees() - feesBefore;
+        assertEq(fee, (back + 98) / 99);
+        assertApproxEqAbs(fee * 100, back + fee, 100, "the fee is 1% of the sale (out + fee)");
+    }
+
+    /// The bug this fixes (2026-10-22): a big sell into a thin pool paid almost nothing, because its fee was 1% of the
+    /// tokens valued at the post-sell price. Now it pays 1% of the USDC it gets, however far it moves the price.
+    function test_bigPoolSellStillPaysOnePercent() public {
+        address token = _graduated(alice);
+        IPair pair = _pairOf(token);
+        uint256 tokens = IERC20(token).balanceOf(alice); // the graduating buy: several times the pool's tokens
+        uint256 feesBefore = vault.totalFees();
+        uint256 back = _tradeSell(alice, token, tokens);
+        uint256 fee = vault.totalFees() - feesBefore;
+        assertEq(fee, (back + 98) / 99);
+        // the old fee: 1% of the tokens at the price after the sell
+        (uint112 r0, uint112 r1,) = pair.getReserves();
+        (uint256 y, uint256 x) =
+            pair.token0() == address(usdc) ? (uint256(r0), uint256(r1)) : (uint256(r1), uint256(r0));
+        uint256 oldFee = tokens / 100 * y / x;
+        assertGt(fee, oldFee * 3, "the old fee would have been a fraction of 1%");
+    }
+
+    /// An aggregator selling on the pair directly has to use the sell math (99% of V2's no-fee output): V2's usual
+    /// fee-on-input amount is too much now, and so is a couple of wei over the sell quote.
+    function test_directPairSellNeedsTheSellMath() public {
+        address token = _graduated(alice);
+        IPair pair = _pairOf(token);
+        uint256 tokensIn = 50_000_000e18;
+        (uint112 r0, uint112 r1,) = pair.getReserves();
+        bool quoteIs0 = pair.token0() == address(usdc);
+        (uint256 rQuote, uint256 rTok) = quoteIs0 ? (uint256(r0), uint256(r1)) : (uint256(r1), uint256(r0));
+        uint256 out = trade.getSellAmountOut(tokensIn, rTok, rQuote);
+        uint256 v2Out = trade.getAmountOut(tokensIn, rTok, rQuote); // V2's math: 1% off the input
+        assertGt(v2Out, out);
+        uint256 kBefore = uint256(r0) * r1;
+        uint256 feesBefore = vault.totalFees();
+
+        vm.startPrank(alice);
+        IERC20(token).transfer(address(pair), tokensIn);
+        vm.expectRevert(bytes("UniswapV2: K"));
+        pair.swap(quoteIs0 ? v2Out : 0, quoteIs0 ? 0 : v2Out, alice, "");
+        vm.expectRevert(bytes("UniswapV2: K"));
+        pair.swap(quoteIs0 ? out + 2 : 0, quoteIs0 ? 0 : out + 2, alice, "");
+        uint256 before = usdc.balanceOf(alice);
+        pair.swap(quoteIs0 ? out : 0, quoteIs0 ? 0 : out, alice, "");
+        vm.stopPrank();
+
+        assertEq(usdc.balanceOf(alice) - before, out);
+        assertEq(vault.totalFees() - feesBefore, (out + 98) / 99);
+        (r0, r1,) = pair.getReserves();
+        assertGe(uint256(r0) * r1, kBefore);
+        assertEq(usdc.balanceOf(address(pair)), quoteIs0 ? r0 : r1);
+    }
+
+    /// A flash swap paid back in tokens (tokens in, no USDC out) still pays 1% of the tokens, as their USDC value.
+    function test_tokenFlashSwapStillPaysTheFee() public {
+        address token = _graduated(alice);
+        IPair pair = _pairOf(token);
+        FlashBorrower b = new FlashBorrower();
+        uint256 amount = 10_000_000e18;
+        vm.prank(alice);
+        IERC20(token).transfer(address(b), amount); // enough to pay back the loan + 1%
+        (uint112 r0, uint112 r1,) = pair.getReserves();
+        uint256 kBefore = uint256(r0) * r1;
+        uint256 feesBefore = vault.totalFees();
+        vm.expectRevert(bytes("UniswapV2: K"));
+        b.borrow(pair, token, amount, amount); // paying back only what was borrowed: no fee, refused
+        b.borrow(pair, token, amount, amount * 100 / 99 + 1);
+        assertGt(vault.totalFees(), feesBefore);
+        (r0, r1,) = pair.getReserves();
+        assertGe(uint256(r0) * r1, kBefore);
+    }
+
     function test_v2ForkAdmin() public {
         IPair pair = _pairOf(_graduated(alice));
         assertEq(pair.name(), "Neuriio LP");
@@ -411,10 +508,10 @@ contract NeuriioPadTest is NeuriioBase {
     function test_revert_onlyPairsAndLaunchpadFeedTheVault() public {
         address token = _launch();
         vm.expectRevert(NeuriioFees.NotPair.selector);
-        vault.notifyPoolFee(token);
+        vault.notifyPoolFee(token, 1);
         vm.prank(alice);
         vm.expectRevert(NeuriioFees.NotLaunchpad.selector);
-        vault.notifyCurveFee(token);
+        vault.notifyCurveFee(token, 1);
     }
 
     function testFuzz_poolFeeNeverShrinksK(uint256 seed) public {
@@ -426,12 +523,16 @@ contract NeuriioPadTest is NeuriioBase {
             seed = uint256(keccak256(abi.encode(seed, i)));
             (uint112 r0, uint112 r1,) = pair.getReserves();
             uint256 kBefore = uint256(r0) * r1;
+            uint256 feesBefore = vault.totalFees();
             if (seed % 2 == 0) {
-                trade.buy(token, bound(seed >> 8, 1e3, 5_000e6), 0, block.timestamp);
+                uint256 quoteIn = bound(seed >> 8, 1e3, 5_000e6);
+                trade.buy(token, quoteIn, 0, block.timestamp);
+                assertEq(vault.totalFees() - feesBefore, quoteIn / 100, "buy: 1% of the USDC in");
             } else {
                 uint256 bal = IERC20(token).balanceOf(bob);
                 if (bal == 0) continue;
-                trade.sell(token, bound(seed >> 8, 1e12, bal), 0, block.timestamp);
+                uint256 out = trade.sell(token, bound(seed >> 8, 1e12, bal), 0, block.timestamp);
+                assertEq(vault.totalFees() - feesBefore, (out + 98) / 99, "sell: 1% of the sale");
             }
             (r0, r1,) = pair.getReserves();
             assertGe(uint256(r0) * r1, kBefore);
@@ -474,7 +575,9 @@ contract NeuriioPadTest is NeuriioBase {
         _buy(bob, token, 20_000e6); // graduates into the V2 pool like any token
         assertTrue(_curve(token).graduated);
         uint256[4] memory before;
-        for (uint256 i; i < 4; i++) before[i] = vault.creatorBalance(ftfWallets[i]); // their curve-fee shares
+        for (uint256 i; i < 4; i++) {
+            before[i] = vault.creatorBalance(ftfWallets[i]); // their curve-fee shares
+        }
         assertGt(before[1], 0, "creators earn on the curve too");
         _tradeBuy(alice, token, 1_000e6); // pool fee 10 -> creators 1, split 4 ways
         uint256 each = vault.creatorBalance(ftfWallets[1]) - before[1];
@@ -484,7 +587,9 @@ contract NeuriioPadTest is NeuriioBase {
         }
         assertApproxEqAbs(vault.creatorBalance(ftfWallets[0]) - before[0], each, 3, "founder gets the rounding units");
         uint256 all;
-        for (uint256 i; i < 4; i++) all += vault.creatorBalance(ftfWallets[i]);
+        for (uint256 i; i < 4; i++) {
+            all += vault.creatorBalance(ftfWallets[i]);
+        }
         assertEq(vault.creatorEarned(token), all, "lifetime creator fees = the 4 balances (curve + pool)");
         // every member claims their own share
         for (uint256 i; i < 4; i++) {
@@ -630,7 +735,7 @@ contract NeuriioPadTest is NeuriioBase {
         // a version can't act for another version's tokens
         vm.prank(address(v2));
         vm.expectRevert(NeuriioFees.NotLaunchpad.selector);
-        vault.notifyCurveFee(curveTok);
+        vault.notifyCurveFee(curveTok, 1);
     }
 
     function _expectLaunchRevert(address who, uint64 xId, string memory handle, bytes4 sel) internal {
@@ -762,6 +867,37 @@ contract NeuriioPadTest is NeuriioBase {
         assertEq(IERC20(token).balanceOf(alice), 0);
     }
 
+    /// The guardian (the Safe on mainnet, while a timelock owns the pad) can pause at once; only the owner unpauses or
+    /// changes the guardian, and nobody else can pause.
+    function test_guardianPausesOnlyOwnerUnpauses() public {
+        address guardian = makeAddr("guardian");
+        vm.expectRevert(NeuriioPad.NotOwnerOrGuardian.selector);
+        pad.pause();
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        pad.setGuardian(guardian);
+        vm.prank(owner);
+        pad.setGuardian(guardian);
+        assertEq(pad.guardian(), guardian);
+
+        vm.startPrank(guardian);
+        pad.pause();
+        assertTrue(pad.paused());
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+        pad.unpause();
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
+        pad.setLaunchSigner(guardian); // the guardian has no other power
+        vm.stopPrank();
+        vm.prank(owner);
+        pad.unpause();
+        assertFalse(pad.paused());
+
+        vm.prank(owner);
+        pad.setGuardian(address(0)); // removed: it can't pause anymore
+        vm.prank(guardian);
+        vm.expectRevert(NeuriioPad.NotOwnerOrGuardian.selector);
+        pad.pause();
+    }
+
     function test_revert_feeCap() public {
         assertEq(pad.feeBps(), 100);
         vm.prank(owner);
@@ -801,11 +937,11 @@ contract NeuriioPadTest is NeuriioBase {
 
 /// A NeuriioFees that rejects everything (for the "broken vault" test).
 contract BrokenVault {
-    function notifyPoolFee(address) external pure {
+    function notifyPoolFee(address, uint256) external pure {
         revert("broken");
     }
 
-    function notifyCurveFee(address) external pure {
+    function notifyCurveFee(address, uint256) external pure {
         revert("broken");
     }
 }

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/// The pair: our Uniswap V2 fork (src/swap/v2), TOKEN/USDC, so existing V2 aggregator adapters work (fee = 100 bps).
+/// The pair: our Uniswap V2 fork (src/swap/v2), TOKEN/USDC. Buys use V2's math with a 1% fee on the input, so V2
+/// adapters work for them; sells pay 1% of the sale in USDC (NeuriioRouter.getSellAmountOut), which adapters must use.
 interface ISwapPair {
     function token0() external view returns (address);
     function token1() external view returns (address);
@@ -19,11 +20,6 @@ interface ISwapFactory {
     function feeVault() external view returns (address);
     function getPair(address tokenA, address tokenB) external view returns (address pair);
     function createPair(address tokenA, address tokenB) external returns (address pair);
-}
-
-/// Receives every pool's 1% fee (in USDC) and shares it out (NeuriioFees).
-interface IFeeVault {
-    function notifyPoolFee(address token) external;
 }
 
 /// Owner side of our V2 factory (src/swap/v2/UniswapV2Factory.sol); `feeToSetter` is the owner.

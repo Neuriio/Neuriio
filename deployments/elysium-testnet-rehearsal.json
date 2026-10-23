@@ -1,0 +1,18 @@
+{
+  "note": "Mainnet REHEARSAL on Elysium testnet (2026-10-22): script/DeployMainnet.s.sol with ALLOW_TESTNET and a 10-minute timelock. Not used by the app.",
+  "chainId": 99801,
+  "safe": "0x68Ed49C77dF7fB4928510d5Ac65C6074674D264E",
+  "safeOwners": ["0x15f27Ccd7db264c0Ae4f717e20C226557C75C577", "0x90F744bCC6F4650c212c51998a9D9b3cD46abea7", "0xaC0D3c6D062e669a17BB7ABc85e97AcC9d1Cc2e7"],
+  "safeThreshold": 2,
+  "usdc": "0xe83c3630cab1c3d1d3b19a1f6ee393618c690c7b",
+  "launchRegistry": "0x2aaf287948c969af25fbd5f4e76401aa4f089b24",
+  "swapFactory": "0xfb3dca966c78c3bb0a4d0b3b08eb4d75e4134fb6",
+  "staking": "0xeac74b6a1facf0d7dc84bff8fb58dfc96b309328",
+  "neuriio": "0xc09841F31D736E0881aD8E89eAE385c12b46835A",
+  "minter": "0xcb3b9b2f6d2c0fb87494e0abaa2b0a9968b9b1ab",
+  "feeVault": "0x42b7fee11cbb6d2a7c2fcac5b3fb847432321182",
+  "router": "0xbe8d983f0c85dd5c03d195dc5b52d31cde13ec86",
+  "launchpad": "0xf9e44e38244357afe3b838575cddb5c5082be2a0",
+  "timelock": "0x634877cba9111f80af7d3c5b0f0b18c40a6bd8ed",
+  "timelockDelaySeconds": 600
+}

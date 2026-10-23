@@ -347,6 +347,42 @@ contract NeuriioStakingTest is NeuriioBase {
         vm.stopPrank();
     }
 
+    /// The owner can fix the set of minting vaults for good: nothing new is ever added; removing one stays possible.
+    function test_lockVaults() public {
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, address(this)));
+        minter.lockVaults();
+        vm.startPrank(owner);
+        minter.lockVaults();
+        assertTrue(minter.vaultsLocked());
+        vm.expectRevert(NeuriioMinter.VaultsAreLocked.selector);
+        minter.setVault(alice, true);
+        assertFalse(minter.isVault(alice));
+        minter.setVault(address(vault), false); // the off-switch still works
+        assertFalse(minter.isVault(address(vault)));
+        vm.expectRevert(NeuriioMinter.VaultsAreLocked.selector);
+        minter.setVault(address(vault), true); // and can't be undone
+        vm.stopPrank();
+    }
+
+    /// After the lock, an address that was never approved can't mint: only the vaults set before it can.
+    function test_lockedVaultsStopAnyNewMinter() public {
+        vm.prank(owner);
+        minter.lockVaults();
+        vm.prank(alice);
+        vm.expectRevert(NeuriioMinter.NotVault.selector);
+        minter.onFee(address(1), 1e6, 1e6);
+    }
+
+    /// The approved vault keeps minting for stakers after the lock.
+    function test_lockedVaultsStillMint() public {
+        address token = _graduatedHeld();
+        _stake(alice, token, 1_000e18);
+        vm.prank(owner);
+        minter.lockVaults();
+        _tradeBuy(bob, token, 1_000e6);
+        assertGt(neuriio.totalSupply(), 0);
+    }
+
     /// A vault the minter doesn't know still shares fees; it just can't mint (and trading never stops).
     function test_unapprovedVaultStillTrades() public {
         address token = _graduatedHeld();

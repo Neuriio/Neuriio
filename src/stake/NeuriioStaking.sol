@@ -9,9 +9,9 @@ import {NeuriioPlatformToken} from "./NeuriioPlatformToken.sol";
 
 /// @notice Staking for a share of trading fees. One pool per staked token:
 ///   - every GRADUATED launched token (an X account or an FTF): its stakers share 40% of every fee that token's pool
-///     takes, in USDC, and the $NEURIIO those fees mint (NeuriioMinter: 100 per $1 at first). A token still on its
+///     takes, in USDC, and the $NEURIIO those fees mint (NeuriioMinter: 10 per $1 at launch). A token still on its
 ///     bonding curve can't be staked yet (staking opens at graduation).
-///   - $NEURIIO (NeuriioPlatformToken, deployed by this contract): its stakers share, in USDC, 80% of every curve fee and
+///   - $NEURIIO (NeuriioPlatformToken, deployed by this contract): its stakers share, in USDC, 50% of every curve fee and
 ///     40% of every pool fee, across all tokens. Staking $NEURIIO mints nothing.
 /// Stake or unstake any amount at any time, no lockup, and claim whenever you like: USDC goes to your wallet, $NEURIIO
 /// is staked for you. Rewards don't land in one go: each payment drips out over `DRIP` (1 hour) to whoever is staked while
