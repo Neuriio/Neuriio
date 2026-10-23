@@ -1,60 +1,23 @@
-# Neuriio
+# What is Neuriio
 
-Fair-launch token launchpad on [Elysium](https://elysium.kinetiq.xyz/docs/what-is-elysium). Creators tokenize their X
-account; builders launch a token with no presale, no insider allocation and liquidity locked forever.
+The evolution of launchpads are changing to what we get exposure to. The beginning launchpads allowed us to get exposure to any narrative or meme that surfaced the internet in real time. We are currently in a new meta of token launches that are backed by stocks and crypto onchain. This allows you to not only get exposure to the narrative but the underlying stock or crypto tied to it as well. We believe the next evolution is social exposure.
 
-## How a launch works
+## Social Exposure
 
-1. **Launch.** Log in with X; each X account can launch one token. Launching is free (gas only).
-2. **Bonding curve.** 1B supply; 793.1M tokens sell on a constant-product curve over virtual reserves, priced in HYPE.
-   Everyone buys from the same curve. Every curve trade pays a 0.75% fee.
-3. **Graduation.** When the last curve token sells, the same transaction moves all raised HYPE and the remaining
-   206.9M tokens into the token's own pool (a Uniswap V2 fork, paired with WHYPE). Only the launchpad can create pools,
-   so nobody can open one first at a bad price.
-4. **Locked liquidity.** All LP tokens are sent to `0x…dEaD`. Graduated pools charge 0.25% per swap.
+When $TRUMP and $MELANIA launched this was our first introduction into what is called "Social Exposure". The difficulty current launchpads face is authenticity. It was hard to believe these coins launched because anyone can launch a ticker and enter any info attached to make it seem legit. The market clearly showed immense interest for getting social exposure added to their portfolio once confirmed true, which leads us to tokenizing your X account.
 
-Creators earn a share of their token's trading fees in HYPE (20% of curve fees, 80% of pool fees), claimable from
-`NeuriioFees`.
+## Tokenize Account
 
-## Repository
+Your X account has data and information that holds social value and credibility in the world we live in today. On Neuriio, the only way to login is through X auth and the only token you can launch is the name of your X handle. This eliminates vamping and authenticity because only the X account owner can approve and launch the token. We also have the option to create a FTF (Friends Turned Fam) where you and 3 others upon approval can launch an FTF together to put everyone onchain.
 
-| Path | What |
-| --- | --- |
-| `src/launch/` | `NeuriioPad` (curve + graduation), `NeuriioRegistry` (permanent identity and versions), `NeuriioFees` (fee vault), `NeuriioToken` |
-| `src/swap/` | `NeuriioRouter` (every app trade, curve or pool, in USDC) and `v2/`: the Uniswap v2-core fork that holds graduated pools |
-| `src/stake/` | `NeuriioStaking` (stake graduated tokens or $NEURIIO for a share of fees), `NeuriioMinter` and `NeuriioPlatformToken` ($NEURIIO) |
-| `src/testnet/` | `TestUSDC` (testnet only; mintable by the faucet) |
-| `test/` | Foundry tests, including a solvency fuzz |
-| `script/` | Deploy scripts (Foundry + shell) and testnet tooling |
-| `app/` | Web app (React + Vite, Privy login), served by `app/serve.mjs` |
-| `keeper/` | `watcher.mjs` (live trades to the app) and `pay-protocol.mjs` (protocol fee payouts) |
-| `supabase/` | Database migrations and Edge Functions (launch passes, indexer, registration) |
-| `deployments/` | Addresses of the live testnet contracts, read by the app and the keeper |
+We are excited for everyone to gain social exposure to their favorite X accounts and FTFs to see what everyone unlocks and builds on top of. Social exposure is just the start and then you will own your own DeFi, which has never been done before.
 
-## Development
+> [!NOTE]
+> Neuriio is live on **Elysium testnet**. Testnet tokens, test USDC and testnet HYPE have no value.
 
-Requires [Foundry](https://book.getfoundry.sh) and Node 22.
+> [!WARNING]
+> Tokens on Neuriio are memes with no promise of value. They are not equity, shares or a claim on any person or company. Read the [Disclaimer](https://docs.neuriio.xyz/trust/disclaimer).
 
-```bash
-git clone --recurse-submodules https://github.com/finding-agi/Neuriio.git
-forge test                          # contracts
-npm --prefix keeper install && npm --prefix keeper test
-npm --prefix app install && npm --prefix app run dev   # needs VITE_PRIVY_APP_ID in app/.env.local
-```
-
-## Deployment
-
-Testnet (Elysium, chain 99801): `script/deploy-core.sh` deploys the permanent core and the first `NeuriioPad`;
-`script/deploy-launchpad.sh` ships a new `NeuriioPad` version on the existing core; `script/replace-feevault.sh`
-swaps in a new `NeuriioFees`; `script/verify-world.sh` verifies everything on the explorer;
-`script/supabase-deploy.sh` points the backend at the current addresses. The web app runs on Vercel (`app/vercel.json`);
-the watcher and the payout bot run on AWS EC2 (see HANDOFF.md).
-
-## Disclaimer
-
-Tokens launched on Neuriio are memes with no promise of value. They are not equity, shares or a claim on any person
-or company, and nothing here is investment advice.
-
-## License
-
-`src/swap/v2/` is a fork of Uniswap v2-core under its original license (`src/swap/v2/LICENSE`).
+<p align="center">
+  <a href="https://docs.neuriio.xyz"><img src="https://img.shields.io/badge/Read_the_docs-docs.neuriio.xyz-8C7D9F?style=for-the-badge" alt="Read the docs"></a>
+</p>
