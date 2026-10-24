@@ -4417,7 +4417,7 @@ a.ex-row {
 @media (min-width: 861px) {
   .ex-wide {
     margin: 176px 0 0;
-    padding: 0 12px;
+    padding: 0 12px 110px; /* bottom: room for the footer links */
   }
   /* the widget starts right under the header, whatever its height */
   .app-explore .ex-wide {
@@ -4455,7 +4455,7 @@ a.ex-row {
 @media (max-width: 860px) {
   .ex-wide {
     box-sizing: border-box;
-    padding: 0 8px;
+    padding: 0 8px 110px; /* bottom: room for the footer links */
   }
 }
 /* laptops: order and stake share the right column (stake under order), which scrolls if they don't both fit */
