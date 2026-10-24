@@ -914,11 +914,18 @@ contract NeuriioPadTest is NeuriioBase {
             seed = uint256(keccak256(abi.encode(seed, i)));
             address w = who[seed % 2];
             if (_curve(token).graduated) break;
+            // dust trades worth 0 on the other side revert ZeroAmount (correctly): skip them
             if ((seed >> 8) % 3 != 0) {
-                _buy(w, token, bound(seed >> 16, 1e3, 3_000e6));
+                uint256 quoteIn = bound(seed >> 16, 1e3, 3_000e6);
+                (uint256 tokensOut,,) = pad.previewBuy(token, quoteIn);
+                if (tokensOut > 0) _buy(w, token, quoteIn);
             } else {
                 uint256 bal = IERC20(token).balanceOf(w);
-                if (bal > 0) _sell(w, token, bound(seed >> 16, 1e12, bal));
+                if (bal >= 1e12) {
+                    uint256 amount = bound(seed >> 16, 1e12, bal);
+                    (uint256 quoteOut,) = pad.previewSell(token, amount);
+                    if (quoteOut > 0) _sell(w, token, amount);
+                }
             }
             NeuriioPad.Curve memory c = _curve(token);
             if (!c.graduated) {
