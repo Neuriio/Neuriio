@@ -25,7 +25,7 @@ roles and the internal security audit are in `audit/`.
 Requires [Foundry](https://book.getfoundry.sh) and Node 22.
 
 ```bash
-git clone --recurse-submodules https://github.com/finding-agi/Neuriio.git
+git clone --recurse-submodules https://github.com/Neuriio/Neuriio.git
 forge test                          # contracts
 npm --prefix keeper install && npm --prefix keeper test
 npm --prefix app install && npm --prefix app run dev   # needs VITE_PRIVY_APP_ID in app/.env.local

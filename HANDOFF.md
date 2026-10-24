@@ -1,5 +1,8 @@
 # Handoff — Neuriio (state as of 2026-10-22: USDC world LIVE on app.neuriio.xyz (testnet); NEXT CHAT: mainnet readiness: Safe rehearsal DONE; next the internal audit, then the audit freeze, see "NEXT SESSION")
 
+**Trade Arena (2026-10-24; escrow `src/arena/NeuriioArena.sol` + 31 tests written, not deployed):** 1v1 paper-perps duels for HYPE wagers behind the greyed "Trade" button;
+plan, decided rules and open questions in `TRADE_ARENA.md`.
+
 Read this first in a new session. `README.md` has per-step detail; this file is the current truth.
 **Consolidated 2026-10-12:** finished work, old session logs, the paused PropAMM stack, superseded deployments and the
 dropped Higgsfield prompts were removed from this file. The full previous version is in git:
@@ -7,7 +10,7 @@ dropped Higgsfield prompts were removed from this file. The full previous versio
 security sweeps #1-4 in detail, the Uniswap V4 research and Appendix B/C video prompts).
 
 **Project name: Neuriio.** Local folder `/Users/von/Neuriio`; code in the **private** GitHub repo
-**https://github.com/finding-agi/Neuriio** (branch `main`). Vercel deploys the app on every push to `main`; the EC2
+**https://github.com/Neuriio/Neuriio** (branch `main`). Vercel deploys the app on every push to `main`; the EC2
 watcher + payout bot update with `/usr/local/bin/neuriio-update` (run via SSM). Railway is no longer used.
 
 ## USDC WORLD (live since 2026-10-18): contracts, backend (switch run), app (pushed 4701f76) and docs (88206f4)
@@ -217,13 +220,14 @@ Added 2026-10-22 (Supabase stays the indexer; no new vendor):
    tx or when a panel opens.
 8. **Supabase Pro** before ~200 open tabs at once (free realtime connection cap; Pro 500) or 500K function
    calls/month (Pro 2M).
-9. **QuickNode** (if bought; Build $49 = 80M credits = ~4M calls at 20 credits each, 50 req/s; `eth_getLogs` max
-   10,000 blocks on paid plans, 5 on the free trial, which is why the indexer failed on it 2026-10-21): SERVERS ONLY.
-   Watcher on its wss subscription + a 30 s gap-filler poll (the current 500 ms polling alone would cost ~117M
-   credits/month), indexer, functions: ~15-30M credits/month. Before switching: indexer `MAX_BLOCKS` 50,000 -> at
-   most 10,000 (else stuck after any outage > ~50 min; Elysium makes ~190 blocks/min) and make the watcher's gap-filler
-   interval configurable. Browsers stay on the public Elysium RPC (limits are per visitor, no key to steal), the
-   Conduit key as fallback (step 2).
+9. **RPC provider = Conduit Pro** (decided 2026-10-22; QuickNode dropped). Pro $50/month = 1B CUs, 250,000 CU/s,
+   autoscaling $0.10 per 1M CUs over, 10 API keys (QuickNode Build was $49 for 80M credits, ~4M calls). Conduit
+   runs Elysium and leads the mainnet launch. Mainnet RPC `https://rpc-elysium-mainnet.t.conduit.xyz/<key>` (private
+   until launch: needs a key from the Elysium team; chain ID unconfirmed, ~99901). Separate keys for servers, browsers
+   and testnet. Watcher on wss + a 30 s gap-filler poll, indexer, functions: an estimated ~11M (100 users) to ~47M
+   (10,000 users) QuickNode-credit equivalents/month, a small share of 1B. Before switching: check Conduit's
+   `eth_getLogs` block-range limit against indexer `MAX_BLOCKS` 50,000 (Elysium makes ~190 blocks/min) and make the
+   watcher's gap-filler interval configurable.
 Measured 2026-10-22: logged-out Explore visitor ~8 RPC calls/min; logged-in trader ~40-50/min (balances, positions,
 order panel); watcher polling ~136/min. Target after 6-7: a handful per user (quotes while typing + own tx).
 Dedicated indexer (The Graph / Goldsky / Envio / Ponder): not now (works at this size; Elysium is new, hosted ones
