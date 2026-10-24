@@ -180,58 +180,67 @@ export function ExploreCard() {
   if (mobile)
     return (
       <div className="ex-grid">
-        {center}
-        <MobileTabs t={picked} hypeUsd={hypeUsd} price={picked ? live[picked.address] : undefined} onPick={pickPosition} />
+        <div className="ex-main">
+          {center}
+          <MobileTabs t={picked} hypeUsd={hypeUsd} price={picked ? live[picked.address] : undefined} onPick={pickPosition} />
+        </div>
       </div>
     );
 
   return (
     <div className="ex-grid">
-      <section className="panel ex-card ex-list-card">
-        <CardBg />
-        {!LANDING && <PlatformFees />}
-        <div className="ex-list-head">
-          <span>Top 25 · total volume</span>
-          <span>MCAP</span>
-        </div>
-        <ol className="ex-list">
-          {top?.map((t, i) => (
-            <li key={t.address}>
-              <button className={`ex-row${picked?.address === t.address ? " is-picked" : ""}`} onClick={() => setPicked(t)}>
-                <span className="ex-rank">{i + 1}</span>
-                <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
-                <span className="ex-row-names">
-                  <span className="ex-row-handle">{displayName(t)}</span>
-                  <Change t={t} price={live[t.address]} />
-                </span>
-                <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
-              </button>
-            </li>
-          ))}
-          {top && top.length === 0 && <li className="ex-empty">No tokens traded yet.</li>}
-          {!top && !error && <li className="ex-empty">Loading…</li>}
-          {error && <li className="ex-empty">Couldn't load tokens.</li>}
-        </ol>
-        {snapshotAt && <p className="ex-list-foot">Ranked {ago(snapshotAt)} · every minute</p>}
-      </section>
+      {/* one connected widget: list | chart | order | stake, split by lines inside; Positions stays its own widget
+          below (user, 2026-10-24). The trade page will reuse this shell. */}
+      <div className="ex-main">
+        <section className="panel ex-card ex-list-card">
+          <CardBg />
+          {!LANDING && <PlatformFees />}
+          <div className="ex-list-head">
+            <span>Top 25 · total volume</span>
+            <span>MCAP</span>
+          </div>
+          <ol className="ex-list">
+            {top?.map((t, i) => (
+              <li key={t.address}>
+                <button className={`ex-row${picked?.address === t.address ? " is-picked" : ""}`} onClick={() => setPicked(t)}>
+                  <span className="ex-rank">{i + 1}</span>
+                  <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
+                  <span className="ex-row-names">
+                    <span className="ex-row-handle">{displayName(t)}</span>
+                    <Change t={t} price={live[t.address]} />
+                  </span>
+                  <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
+                </button>
+              </li>
+            ))}
+            {top && top.length === 0 && <li className="ex-empty">No tokens traded yet.</li>}
+            {!top && !error && <li className="ex-empty">Loading…</li>}
+            {error && <li className="ex-empty">Couldn't load tokens.</li>}
+          </ol>
+          {snapshotAt && <p className="ex-list-foot">Ranked {ago(snapshotAt)} · every minute</p>}
+        </section>
 
-      {center}
+        {center}
+
+        {/* order + stake: two columns on wide screens, one scrolling column on laptops */}
+        <div className="ex-side">
+          <section className="panel ex-card ex-order-card">
+            <CardBg side="left" />
+            <OrderCard key={picked?.address} t={picked} hypeUsd={hypeUsd} />
+          </section>
+
+          {!LANDING && (
+            <section className="panel ex-card ex-stake-card">
+              <StakeCard key={picked?.address} t={picked} />
+            </section>
+          )}
+        </div>
+      </div>
 
       <section className="panel ex-card ex-positions-card">
         <CardBg side="top" />
         <PositionsCard hypeUsd={hypeUsd} onPick={pickPosition} />
       </section>
-
-      <section className="panel ex-card ex-order-card">
-        <CardBg side="left" />
-        <OrderCard key={picked?.address} t={picked} hypeUsd={hypeUsd} />
-      </section>
-
-      {!LANDING && (
-        <section className="panel ex-card ex-stake-card">
-          <StakeCard key={picked?.address} t={picked} />
-        </section>
-      )}
     </div>
   );
 }

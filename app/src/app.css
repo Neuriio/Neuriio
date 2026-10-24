@@ -4357,27 +4357,59 @@ a.ex-row {
   height: 38px;
   font-size: 13px;
 }
+/* what stakers earn: one small line right under the amount box (user, 2026-10-24: no box) */
+.ex-stake-earns {
+  margin: -4px 2px 0;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: rgba(236, 221, 255, 0.62);
+}
 .ex-stake-max {
   height: 24px;
   padding: 0 8px;
 }
-/* every width: as wide as the window, no gaps, flat cards. Each card has its own 1px lavender line (user,
-   2026-10-17); neighbors overlap by 1px so the line between two cards stays 1px, not 2 */
+/* every width: flat cards, no shadows. The top row (list | chart | order | stake) is ONE connected widget, .ex-main:
+   one 1px #ECDDFF line at 50% round the outside, its sections split by fainter lines inside. Positions is its own
+   widget below, same frame (user, 2026-10-24). Phones: the chart + the About/Trade/Stake/Positions tabs are the one
+   widget. .ex-main / .ex-side are layout-only (display: contents) outside .ex-wide (landing frame, /showcase). */
+.ex-main,
+.ex-side {
+  display: contents;
+}
 .ex-wide {
+  --ex-frame: rgba(236, 221, 255, 0.5);
+  --ex-split: rgba(236, 221, 255, 0.14);
   width: 100%;
 }
 .ex-wide .ex-grid {
-  gap: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 .ex-wide .ex-center {
   gap: 0;
 }
 .ex-wide .ex-card {
-  margin: 0 0 -1px;
-  background: #170f22;
-  border: 1px solid rgba(236, 221, 255, 0.5);
-  border-radius: 4px;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   box-shadow: none;
+}
+.ex-wide .ex-main,
+.ex-wide .ex-positions-card {
+  overflow: hidden;
+  background: #170f22;
+  border: 1px solid var(--ex-frame);
+  border-radius: 10px;
+}
+.ex-wide .ex-main {
+  display: flex;
+  flex-direction: column;
+}
+.ex-wide .ex-main > * + * {
+  border-top: 1px solid var(--ex-split);
 }
 .ex-wide .li-bg {
   display: none;
@@ -4385,27 +4417,32 @@ a.ex-row {
 @media (min-width: 861px) {
   .ex-wide {
     margin: 176px 0 0;
+    padding: 0 12px;
   }
-  /* the cards start right under the header, whatever its height */
+  /* the widget starts right under the header, whatever its height */
   .app-explore .ex-wide {
     margin-top: calc(var(--header-bottom) + 16px);
   }
-  .app-explore .ex-wide .ex-grid {
-    grid-template-rows: clamp(480px, calc(100vh - var(--header-bottom) - 48px), 900px) auto;
-  }
-  .ex-wide .ex-grid {
-    position: relative; /* the search bar centers on the page, above the cards */
+  .ex-wide .ex-main {
+    position: relative; /* the search bar centers on the page, above the widget */
+    display: grid;
     grid-template-columns:
       clamp(220px, 16vw, 300px) minmax(0, 1fr) clamp(250px, 17vw, 310px)
       clamp(250px, 17vw, 310px);
-    grid-template-rows: clamp(480px, calc(100vh - 200px), 900px) auto;
-    grid-template-areas:
-      "list chart order stake"
-      "positions positions positions positions";
+    grid-template-areas: "list chart order stake";
+    height: clamp(480px, calc(100vh - 200px), 900px);
   }
-  /* side by side: overlap the left neighbor's line too */
-  .ex-wide .ex-card {
-    margin-left: -1px;
+  .app-explore .ex-wide .ex-main {
+    height: clamp(480px, calc(100vh - var(--header-bottom) - 48px), 900px);
+  }
+  /* side by side: the inner lines run down, not across */
+  .ex-wide .ex-main > * + * {
+    border-top: 0;
+  }
+  .ex-wide .ex-center,
+  .ex-wide .ex-order-card,
+  .ex-wide .ex-stake-card {
+    border-left: 1px solid var(--ex-split);
   }
   .ex-wide .ex-center {
     position: static;
@@ -4414,12 +4451,34 @@ a.ex-row {
     min-height: 240px;
   }
 }
+/* phones: a small gutter so the widget's rounded frame shows */
+@media (max-width: 860px) {
+  .ex-wide {
+    box-sizing: border-box;
+    padding: 0 8px;
+  }
+}
+/* laptops: order and stake share the right column (stake under order), which scrolls if they don't both fit */
 @media (max-width: 1280px) and (min-width: 861px) {
-  .ex-wide .ex-grid {
+  .ex-wide .ex-main {
     grid-template-columns: clamp(220px, 20vw, 260px) minmax(0, 1fr) clamp(260px, 25vw, 300px);
-    grid-template-areas:
-      "list chart order"
-      "positions positions stake";
+    grid-template-areas: "list chart side";
+  }
+  .ex-wide .ex-side {
+    grid-area: side;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    border-left: 1px solid var(--ex-split);
+  }
+  .ex-wide .ex-side .ex-card {
+    flex: none;
+    overflow: visible;
+    border-left: 0;
+  }
+  .ex-wide .ex-stake-card {
+    border-top: 1px solid var(--ex-split);
   }
 }
 

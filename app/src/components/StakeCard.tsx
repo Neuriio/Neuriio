@@ -201,12 +201,7 @@ function StakeHalf({
             </button>
             <span className="ex-order-unit">{unit}</span>
           </span>
-          <dl className="ex-order-est">
-            <div>
-              <dt>Stakers earn</dt>
-              <dd>{earns}</dd>
-            </div>
-          </dl>
+          <p className="ex-stake-earns">Stakers earn {earns}</p>
         </>
       )}
 
