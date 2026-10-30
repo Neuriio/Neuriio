@@ -1,35 +1,38 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { PrivyProvider } from "@privy-io/react-auth";
-import { App } from "./App";
-import { elysiumTestnet } from "./chain";
 
-const appId = import.meta.env.VITE_PRIVY_APP_ID;
+// Site-wide pause: every page shows this and the app never loads, so visitors make no RPC, Privy or Supabase calls.
+// Set to false to bring the app back.
+const PAUSED = true;
 
-createRoot(document.getElementById("root")!).render(
-  appId ? (
-    <PrivyProvider
-      appId={appId}
-      config={{
-        // X only ("Tokenize Yourself": your X account is your identity + your one token); we create the
-        // Neuriio wallet for everyone, no wallet needed to sign in
-        loginMethods: ["twitter"],
-        // Privy's login / export pop-ups in our colors (lavender accent keeps white button text readable)
-        appearance: {
-          theme: "#120c1d",
-          accentColor: "#7f72a0",
-          logo: `${location.origin}/brand/logo.png`,
-          landingHeader: "Log in to Neuriio",
-          loginMessage: "Log in with X. We create your Neuriio wallet for you.",
-        },
-        embeddedWallets: { ethereum: { createOnLogin: "all-users" }, showWalletUIs: false },
-        defaultChain: elysiumTestnet,
-        supportedChains: [elysiumTestnet],
+if (PAUSED) {
+  document.body.style.margin = "0";
+  document.body.style.background = "#120c1d";
+  createRoot(document.getElementById("root")!).render(
+    <main
+      style={{
+        minHeight: "100dvh",
+        boxSizing: "border-box",
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "clamp(16px, 4vmin, 28px)",
+        textAlign: "center",
+        color: "#fff",
+        fontFamily: "Manrope, system-ui, sans-serif",
       }}
     >
-      <App />
-    </PrivyProvider>
-  ) : (
-    <p style={{ fontFamily: "system-ui", padding: 24 }}>Set VITE_PRIVY_APP_ID in app/.env.local, then restart.</p>
-  ),
-);
+      <img src="/brand/logo.png" alt="Neuriio" style={{ width: "clamp(56px, 12vmin, 96px)", height: "auto" }} />
+      <div>
+        <h1 style={{ margin: 0, fontSize: "clamp(24px, 6vmin, 44px)", fontWeight: 600 }}>Under construction</h1>
+        <p style={{ margin: "10px 0 0", fontSize: "clamp(14px, 2.6vmin, 18px)", color: "#b9aecb" }}>
+          We're building a new integration. Back soon.
+        </p>
+      </div>
+    </main>,
+  );
+} else {
+  void import("./live");
+}
