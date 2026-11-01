@@ -15,14 +15,16 @@ Scope (Solidity 0.8.28, OpenZeppelin Contracts 5.4.0):
 |---|---:|---|
 | `src/launch/NeuriioLauncher.sol` | 378 | Checks backend-signed passes and identity rules, launches through the adapter, optional first buy |
 | `src/launch/IAscendAdapter.sol` | 10 | The interface between the launcher and Ascend |
+| `src/launch/AscendAdapterBase.sol` | 41 | The adapter's safety rules, which don't depend on Ascend: only the launcher can call it, and it holds nothing after a buy |
 | `src/stake/NeuriioTokenStaking.sol` | 134 | Stake a launched token, earn USDC |
-| **Total** | **522** | |
+| **Total** | **563** | |
 
 `script/DeployAscend.s.sol` is the exact mainnet configuration; read it as the basis for access-control findings. The older
 contracts stay in the repo for a later return to our own launchpad and aren't deployed in this stack.
 
-**Not in scope, and not written yet: the real adapter.** Ascend hasn't shared its addresses or ABIs. The adapter will hold the only
-code that talks to Ascend, and needs its own review.
+**Not in this scope, and not written yet: the Ascend-specific part of the adapter.** Ascend hasn't shared its addresses or ABIs. That part
+extends `AscendAdapterBase` with two functions (`_launchOnAscend`, `_buyOnAscend`) plus whatever routing the deployer's fee share needs.
+It will hold the only code that talks to Ascend, and needs its own review.
 
 ## 2. Launch flow
 
@@ -91,9 +93,10 @@ token from a fake one, so a hostile adapter could take first-buy USDC during its
 rebasing tokens would break a pool's accounting, but only that pool's. Pools are isolated: a hostile or broken token can't reach
 another pool's tokens or USDC. USDC is assumed to behave as bridged USDC does; if it's paused, claims wait but stakes can still leave.
 
-**Requirements on the real adapter.** It must accept calls only from the launcher, or anyone could launch around the identity
-rules. It must send the tokens and any unused USDC to the buyer, keep no USDC (the launcher enforces this), and route the deployer's
-fee share to the `creators` it's given.
+**Requirements on the real adapter.** `AscendAdapterBase` already enforces the two that don't depend on Ascend: only the launcher can
+call it, or anyone could launch around the identity rules; and the tokens and any unused USDC go to the buyer, so it holds nothing after a buy.
+What's left for the Ascend-specific part: call Ascend correctly, approve Ascend only for what's being spent, add no other way to call
+in or move funds, and route the deployer's fee share to the `creators` it's given.
 
 ## 6. What Ascend still has to confirm
 

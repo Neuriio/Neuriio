@@ -12,8 +12,9 @@ supply-chain reasons); the outside firm should run them.
 |---|---:|
 | `src/launch/NeuriioLauncher.sol` | 378 |
 | `src/launch/IAscendAdapter.sol` | 10 |
+| `src/launch/AscendAdapterBase.sol` | 41 |
 | `src/stake/NeuriioTokenStaking.sol` | 134 |
-| **Total** | **522** |
+| **Total** | **563** |
 
 Compared with the last freeze (`audit-freeze-2026-10-23`): 1,243 nSLOC across 8 contracts, plus about 80 of pool fee code.
 
@@ -21,7 +22,7 @@ Code version: frozen in the commit tagged `audit-freeze-ascend-2026-11-01`.
 
 `script/DeployAscend.s.sol` was read as the mainnet configuration, and access-control findings are judged against it.
 
-Out of scope: the real adapter (not written; Ascend hasn't shared its contracts), Ascend's own contracts, the fee router
+Out of scope: the Ascend-specific part of the adapter (not written; Ascend hasn't shared its contracts), Ascend's own contracts, the fee router
 (`keeper/`), the backend, and the older contracts still in the repo. Where safety rests on them, the assumption is stated in the
 architecture document.
 
@@ -32,23 +33,23 @@ architecture document.
 2. Tests written for each area in `test/audit-ascend/` and `test/DeployAscend.t.sol`: unit, fuzz against independent versions of the
    rules, EIP-712 against Foundry's independent encoder, and handler-based invariant campaigns that keep their own books.
 3. The deploy script run for real against a local chain with `forge script`.
-4. A mutation check, to test the tests: 83 deliberate one-line breaks to the three contracts and the deploy script (a removed check, a
+4. A mutation check, to test the tests: 93 deliberate one-line breaks to the contracts and the deploy script (a removed check, a
    missing `onlyOwner` or `nonReentrant`, an off-by-one deadline, a dropped settle, a deployer left with power), each run against the test
-   suite. All 83 were caught. An earlier pass on the same approach found one gap (nothing tested that a pass's `founder` must be the
+   suite. All 93 were caught. An earlier pass on the same approach found one gap (nothing tested that a pass's `founder` must be the
    sender), now covered. Invariant campaigns ran shorter during this check, for speed.
 
 ## 3. Cantina's risk areas
 
 | # | Their area | Status now | Result | Tests |
 |---|---|---|---|---|
-| 1 | Graduation atomicity | No graduation. The equivalent: launch + first buy in one transaction | Whole or not at all. A failed launch, failed buy, or missed minimum leaves no trace and the pass stays usable. No reentry on any path | `AuditLauncherAdapter` |
+| 1 | Graduation atomicity | No graduation. The equivalent: launch + first buy in one transaction | Whole or not at all. A failed launch, failed buy, or missed minimum leaves no trace and the pass stays usable. No reentry on any path | `AuditLauncherAdapter`, `AuditAdapterBase` |
 | 2 | EIP-712 and signer trust | Same design | Digests match the independent encoder. No replay, cross-chain, cross-contract, or personal/FTF cross-use. No malleable or compact signatures. Deadlines hold to the second on both paths. Every field is signed. A leaked signer: see M-01 | `AuditLauncherSignatures` |
 | 3 | Identity uniqueness | In the launcher now | No collisions across X ID, wallet, handle or ticker. Handle and ticker rules match independent versions on generated input. Reserved tickers blocked in every casing and checked first | `AuditLauncherIdentity` |
 | 4 | Pool sell fee | Gone: Ascend's | Not applicable | |
 | 5 | Staking drip accounting | Single USDC stream | Exact shares, settle before every change, never overpays, only dust lost (at most 3 base units per reward in the fuzz test), nothing locked when everyone leaves. Invariants hold under random action | `AuditStakingAccounting`, `AuditInvariants` |
 | 6 | $NEURIIO cap and transfer lock | Gone: no token | Not applicable | |
-| 7 | Curve and pool routing | Gone. The equivalent: first-buy slippage and refunds | Minimum enforced, zero tokens refused, unused USDC returned, adapter can't keep USDC | `AuditLauncherAdapter` |
-| 8 | Upgradeability and governance | Replaceable adapter behind a timelock | Deployer never holds power (its ownership event goes straight to the timelock). Guardian can only pause. Owner changes wait 48 h. Removing an adapter only stops new launches. See I-02, I-04 | `DeployAscend` |
+| 7 | Curve and pool routing | Gone. The equivalent: first-buy slippage and refunds | Minimum enforced, zero tokens refused, unused USDC returned, adapter can't keep USDC | `AuditLauncherAdapter`, `AuditAdapterBase` |
+| 8 | Upgradeability and governance | Replaceable adapter behind a timelock | Deployer never holds power (its ownership event goes straight to the timelock). Guardian can only pause. Owner changes wait 48 h. Removing an adapter only stops new launches. Only the launcher can call the adapter. See I-02, I-04 | `DeployAscend`, `AuditAdapterBase` |
 | 9 | Pause mechanics | Launches only | Pause stops launches and nothing else. Staking has no pause, and only the owner can unpause | `DeployAscend` |
 | 10 | FTF structure | Same rules | Exactly 4 distinct members, founder first and sender, ticker rules and uniqueness. Member wallets reach the adapter | `AuditLauncherIdentity` |
 
@@ -63,6 +64,7 @@ Correction to their document: it says the signer has no on-chain rotation. `setL
 | F-03 | An adapter could return USDC, or an address with no code, as a launched token, which would then be stakeable | Refused with `BadAdapterToken` |
 | F-04 | If Ascend's launch needs extra parameters, the audited launcher would have had to change | `launchData`, signed into the pass and handed to the adapter |
 | F-05 | The launcher had no deploy path to judge governance against | `script/DeployAscend.s.sol`, with `check()` reading it all back on-chain |
+| F-06 | The adapter's most important rule, launcher-only access, was only a comment | `AscendAdapterBase` enforces it, and sends tokens and unused USDC to the buyer |
 
 ## 5. Open findings
 
@@ -126,6 +128,11 @@ Staking and launched tokens carry on.
 Fee-on-transfer tokens are counted correctly on the way in. A rebasing token would break its own pool's accounting, but no other pool's. To be confirmed
 with Ascend.
 
+### I-06: USDC donated to the adapter goes to the next buyer
+
+The base hands the buyer everything it holds after a buy, so nothing stays behind. A donation can't block a launch or be taken by calling the
+adapter directly; it just goes to whoever buys next.
+
 ## 6. Test results
 
 All pass. Fuzz tests run 1,024 times each.
@@ -135,12 +142,13 @@ All pass. Fuzz tests run 1,024 times each.
 | `test/audit-ascend/AuditLauncherSignatures.t.sol` | 10 |
 | `test/audit-ascend/AuditLauncherIdentity.t.sol` | 11 |
 | `test/audit-ascend/AuditLauncherAdapter.t.sol` | 16 |
+| `test/audit-ascend/AuditAdapterBase.t.sol` (the base through the real launcher, with Ascend mocked) | 17 |
 | `test/audit-ascend/AuditStakingAccounting.t.sol` | 20 |
 | `test/audit-ascend/AuditInvariants.t.sol` (staking: 4 invariants, 256 runs of 100 calls; launcher: 2, 128 runs of 40 calls) | 6 |
 | `test/DeployAscend.t.sol` | 15 |
 | `test/NeuriioLauncher.t.sol` | 57 |
 | `test/NeuriioTokenStaking.t.sol` | 27 |
-| **Total for this scope** | **162** |
+| **Total for this scope** | **179** |
 
 Not done: formal verification, Echidna or Medusa, Slither or Aderyn, or a fork test against Ascend (its contracts aren't available). Everything
 that touches Ascend here runs against a mock adapter, so **this audit says nothing about how the launcher behaves with Ascend's real contracts.**
