@@ -4,7 +4,7 @@
 
 * A token is not equity, shares, debt, a security, or a claim on any person, company, revenue or asset.
 * Creators owe holders nothing. Creators receive no token allocation and no share of any company's revenue through
-  Neuriio.
+  Neuriio; they earn only their share of trading fees, paid by Ascend.
 * Staking shares part of Neuriio's trading fee with stakers. Fees depend on trading activity, can be zero, and are not
   a promise of value or of any amount.
 * Neuriio, earned by staking, has no promised value.

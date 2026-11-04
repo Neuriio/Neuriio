@@ -22,7 +22,8 @@ Launching is free: you only pay gas. Each X account can launch **one** personal 
 4. **Launch.** You can add an optional first buy, in USDC, in the same transaction.
 
 Your token goes live in its Ascend pool immediately, shows up in Explore, and can be
-[staked](../trading/staking.md) right away.
+[staked](../trading/staking.md) right away. As its creator you earn part of every trade's fee in USDC; see
+[Creator fees](../trading/trading-and-fees.md#creator-fees).
 
 ## Rules
 

@@ -15,4 +15,6 @@ Ascend the same way as a personal token.
 
 * Exactly four members, founder included, each with their own X account.
 * Being in an FTF doesn't use up anyone's personal launch, and one person can be in more than one FTF.
+* The FTF's creator fees are split equally: **25% to each member**. See
+  [Creator fees](../trading/trading-and-fees.md#creator-fees).
 * FTFs follow the same [creator rules](../trust/creator-rules.md) as personal tokens.

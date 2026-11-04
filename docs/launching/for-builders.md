@@ -9,6 +9,8 @@ supply, or launch in public and risk snipers. Neuriio gives builders a fair laun
   the same terms, as everyone else.
 * **One token, tied to your X account.** Each X account can launch once, so your token is the only one launched
   through Neuriio under your name.
+* **Creator fees.** Your account earns part of every trade's fee, in USDC, from 0.35% to 0.75% of each trade as your
+  token grows. See [Creator fees](../trading/trading-and-fees.md#creator-fees).
 * **Staking for your community.** Holders can stake your token from launch to share 40% of Neuriio's fee on its trades,
   in USDC, and earn Neuriio. See [Staking](../trading/staking.md).
 
@@ -26,4 +28,5 @@ that way, and don't promise holders returns, buybacks or price targets.
 {% endhint %}
 
 * Buying your token doesn't send money to your company. Neuriio is not a way to raise money.
+* What your company earns is its creator share of trading fees.
 * Follow the [creator rules](../trust/creator-rules.md), and check your local rules before launching.

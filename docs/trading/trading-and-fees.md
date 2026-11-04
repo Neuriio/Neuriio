@@ -10,7 +10,7 @@ Every trade of a token launched through Neuriio pays **1.5%**:
 
 | Part | Fee | Goes to |
 | --- | --- | --- |
-| Ascend | 1% | Ascend, under its own rules |
+| Ascend | 1% | Part to the token's creator (see [Creator fees](#creator-fees)), the rest to Ascend |
 | Neuriio | 0.5% | Shared out as below |
 | **Total** | **1.5%** | |
 
@@ -33,6 +33,24 @@ through Neuriio costs nothing extra.
 If nobody is staking a token, its stakers' share goes to the treasury.
 
 Neuriio's share is collected in USDC and paid out to each token's stakers regularly.
+
+## Creator fees
+
+The creator of every token launched through Neuriio earns part of Ascend's 1%, paid by Ascend in USDC. An FTF's share is
+split equally between its four members.
+
+| Token's market cap | Creator's share of each trade |
+| --- | --- |
+| Under $40k | 0.35% (0.10% paid as trades happen, the rest held) |
+| $40k to $1M | 0.50% |
+| $1M to $10M | 0.55% |
+| $10M to $50M | 0.60% |
+| $50M+ | 0.75% |
+
+Below a $40k market cap, most of the creator's share is held. It's released once the token's average price stays above a
+$40k market cap for one hour within 14 days of launch. If that doesn't happen, or the token goes quiet (under a $5k market
+cap and under $1k of daily volume for 7 days), the held fees are lost to buybacks and support for the token. These are
+Ascend's rules; see [Ascend's docs](https://ascendlaunch.gitbook.io/docs/fees-and-revenue/creator-fee-release-and-takeovers).
 
 ## Protection on every trade
 
