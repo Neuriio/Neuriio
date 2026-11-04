@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import { HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import type { Logo } from "../components/LogoMarquee";
+import { poll } from "./poll";
 
 type Ticker = { label: string; coin: string; dex: string };
 
@@ -59,11 +60,10 @@ export function useTickerLogos(everyMs = 5_000): Logo[] {
         return next;
       });
     };
-    load();
-    const id = setInterval(load, PREV_DAY_EVERY_MS);
+    const stop = poll(load, PREV_DAY_EVERY_MS);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, []);
 
@@ -78,11 +78,10 @@ export function useTickerLogos(everyMs = 5_000): Logo[] {
         return next;
       });
     };
-    load();
-    const id = setInterval(load, everyMs);
+    const stop = poll(load, everyMs);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [everyMs]);
 
@@ -109,11 +108,10 @@ export function useHypeUsd(everyMs = 15_000): number {
         const v = Number(m.HYPE);
         if (alive && v > 0) setPx(v);
       }, () => {});
-    load();
-    const id = setInterval(load, everyMs);
+    const stop = poll(load, everyMs);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [everyMs]);
   return px;

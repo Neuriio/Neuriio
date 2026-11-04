@@ -12,6 +12,7 @@ import { amount as fmtAmount } from "../lib/format";
 import { useNeuriio } from "../lib/neuriio";
 import { elysiumProvider } from "../lib/tx";
 import { claimStaking, friendlyStakeError, stake, stakePosition, unstake, type StakePosition } from "../lib/stake";
+import { poll } from "../lib/poll";
 
 type Tab = "stake" | "unstake" | "claim";
 const TABS: { id: Tab; label: string }[] = [
@@ -77,11 +78,10 @@ function StakeHalf({
     if (DEMO) return setPos(demoPosition());
     let alive = true;
     const load = () => stakePosition(account, token).then((p) => alive && setPos(p), () => {});
-    load();
-    const id = setInterval(load, 10_000); // rewards drip in over an hour: every 10 s is plenty (the RPC rate-limits)
+    const stop = poll(load, 30_000, { onChain: true }); // rewards drip in over an hour: 30 s is plenty, and right after your own stake/claim
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [account, loggedIn, token, nonce]);
 

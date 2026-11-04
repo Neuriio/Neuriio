@@ -1,54 +1,16 @@
 // The fee router. The first tests are pure; the rest run it on a local chain (anvil) against the real NeuriioLauncher and
-// NeuriioTokenStaking, with Ascend mocked (test/mocks/MockAscendPool.sol). Needs `forge build` first.
+// NeuriioTokenStaking, with Ascend's fee path mocked (test/mocks/MockAscendFees.sol: per-token escrows paying our builder
+// fee with BuilderPaid). Needs `forge build` first.
 import { after, before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createPublicClient, createTestClient, createWalletClient, defineChain, http, publicActions } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { matchFees } from "../src/fees/match.mjs";
 import { planPayout } from "../src/fees/plan.mjs";
 import { memoryLedger } from "../src/fees/ledger.mjs";
 import { makeFeeRouter } from "../src/fees/router.mjs";
 import { applyEvent, balancesAt, emptyTally, makeNeuriioTally, MAX_REWARDS, memoryNeuriioStore, tallyFromJson, tallyToJson } from "../src/fees/neuriio.mjs";
-
-const pools = new Map([["0xa", "TOKEN_A"], ["0xb", "TOKEN_B"]]);
-const fee = (logIndex, from = "0xF") => ({ logIndex, from, amount: 1n });
-const swap = (pool, logIndex) => ({ pool, logIndex });
-
-test("match: a fee in a swap's transaction gets that token", () => {
-  const [r] = matchFees([fee(2)], [swap("0xa", 1)], pools);
-  assert.deepEqual([r.token, r.pool, r.reason], ["TOKEN_A", "0xa", null]);
-});
-
-test("match: no swap of ours stays unmatched", () => {
-  assert.equal(matchFees([fee(1)], [], pools)[0].reason, "no_swap");
-  assert.equal(matchFees([fee(1)], [swap("0xother", 0)], pools)[0].reason, "no_swap");
-});
-
-test("match: someone else's pool in the same transaction doesn't confuse it", () => {
-  assert.equal(matchFees([fee(5)], [swap("0xother", 1), swap("0xb", 2)], pools)[0].token, "TOKEN_B");
-});
-
-test("match: several of our pools pair up in order when there's one fee each", () => {
-  const rows = matchFees([fee(4), fee(2)], [swap("0xa", 1), swap("0xb", 3)], pools);
-  assert.deepEqual(rows.map((r) => [r.logIndex, r.token]), [[2, "TOKEN_A"], [4, "TOKEN_B"]]);
-});
-
-test("match: several pools with a different number of fees isn't guessed at", () => {
-  const rows = matchFees([fee(9)], [swap("0xa", 1), swap("0xb", 3)], pools);
-  assert.deepEqual([rows[0].token, rows[0].reason], [null, "ambiguous"]);
-});
-
-test("match: two fees in one pool's transaction both count", () => {
-  const rows = matchFees([fee(2), fee(4)], [swap("0xa", 1), swap("0xa", 3), swap("0xa", 5)], pools);
-  assert.deepEqual(rows.map((r) => r.token), ["TOKEN_A", "TOKEN_A"]);
-});
-
-test("match: fees from anyone but the fee source stay unmatched", () => {
-  assert.equal(matchFees([fee(2, "0xBAD")], [swap("0xa", 1)], pools, "0xF")[0].reason, "unknown_sender");
-  assert.equal(matchFees([fee(2, "0xf")], [swap("0xa", 1)], pools, "0xF")[0].token, "TOKEN_A");
-});
 
 test("plan: 40% per token by what it paid, the rest to treasury", () => {
   const p = planPayout([{ token: "A", amount: 750n }, { token: "B", amount: 250n }], new Map([["A", 1n], ["B", 1n]]));
@@ -193,15 +155,17 @@ before(async () => {
   const usdcA = artifact("NeuriioLauncher.t.sol", "TestToken");
   const launcherA = artifact("NeuriioLauncher.sol", "NeuriioLauncher");
   const stakingA = artifact("NeuriioTokenStaking.sol", "NeuriioTokenStaking");
-  const poolA = artifact("MockAscendPool.sol", "MockAscendPool");
+  const feesA = artifact("MockAscendFees.sol", "MockAscendFees");
   const adapterA = artifact("NeuriioLauncher.t.sol", "MockAdapter");
   const usdc = await deploy(usdcA);
   const launcher = await deploy(launcherA, [deployer.account.address, usdc, signer.address, deployer.account.address]);
   const adapter = await deploy(adapterA, [usdc]);
   await send(deployer, launcher, launcherA.abi, "setAdapter", [adapter]);
   const staking = await deploy(stakingA, [usdc, launcher]);
-  const pool = await deploy(poolA);
-  w = { usdc, usdcAbi: usdcA.abi, launcher, launcherAbi: launcherA.abi, staking, stakingAbi: stakingA.abi, pool, poolAbi: poolA.abi };
+  const fees = await deploy(feesA, [usdc]);
+  w = { usdc, usdcAbi: usdcA.abi, launcher, launcherAbi: launcherA.abi, staking, stakingAbi: stakingA.abi, fees, feesAbi: feesA.abi };
+  // the fee wallet is our builder address: every escrow pays it (fixed for all tests; balances reset between them)
+  w.feeWallet = await person();
 
   const launch = async (xId, handle) => {
     const creator = await person();
@@ -219,6 +183,13 @@ before(async () => {
   };
   w.a = await launch(1, "alpha");
   w.b = await launch(2, "bravo");
+  for (const t of [w.a, w.b]) {
+    await send(deployer, fees, feesA.abi, "register", [t.id, w.feeWallet.account.address]);
+    t.escrow = await pub.readContract({ address: fees, abi: feesA.abi, functionName: "escrowOf", args: [t.id] });
+  }
+  // an escrow on Ascend that names us as builder but isn't one of our launches (anyone can name an approved builder)
+  w.foreignPool = `0x${"ab".repeat(32)}`;
+  await send(deployer, fees, feesA.abi, "register", [w.foreignPool, w.feeWallet.account.address]);
   w.staker = await person();
   w.trader = await person();
   for (const t of [w.a.token, w.b.token]) {
@@ -226,7 +197,7 @@ before(async () => {
     await send(w.staker, t, usdcA.abi, "approve", [staking, 2n ** 256n - 1n]);
   }
   await send(deployer, usdc, usdcA.abi, "mint", [w.trader.account.address, 10n ** 15n]);
-  await send(w.trader, usdc, usdcA.abi, "approve", [pool, 2n ** 256n - 1n]);
+  await send(w.trader, usdc, usdcA.abi, "approve", [fees, 2n ** 256n - 1n]);
   snapshot = await tester.snapshot();
 });
 
@@ -236,7 +207,7 @@ let feeWallet, treasury, ledger, logs, startBlock;
 beforeEach(async () => {
   await tester.revert({ id: snapshot });
   snapshot = await tester.snapshot();
-  feeWallet = await person();
+  feeWallet = w.feeWallet;
   treasury = privateKeyToAccount(generatePrivateKey()).address;
   ledger = memoryLedger();
   logs = [];
@@ -250,12 +221,21 @@ const router = (over = {}, broadcast) =>
     ledger,
     broadcast,
     log: (ev, o) => logs.push({ ev, ...o }),
-    cfg: { usdc: w.usdc, staking: w.staking, launcher: w.launcher, poolManager: w.pool, treasury, fromBlock: startBlock, confirmations: 0, maxRange: 5000, minPayout: 1n, send: true, receiptTimeoutMs: 20_000, ...over },
+    cfg: { usdc: w.usdc, staking: w.staking, launcher: w.launcher, escrowFactory: w.fees, launchpad: w.fees, treasury, fromBlock: startBlock, confirmations: 0, maxRange: 5000, minPayout: 1n, minSettle: 1n, minClaim: 1n, send: true, receiptTimeoutMs: 20_000, ...over },
   });
-const trade = (poolIds, fees) => send(w.trader, w.pool, w.poolAbi, "trade", [poolIds, fees, w.usdc, feeWallet.account.address]);
+/** Trades whose fees leave `fees[i]` of builder fee waiting for `poolIds[i]`. */
+const trade = async (poolIds, fees) => {
+  for (let i = 0; i < poolIds.length; i++) await send(w.trader, w.fees, w.feesAbi, "trade", [poolIds[i], fees[i]]);
+};
+/** Ascend's side first (settle + claimBuilder, always with a normal router), then `r` reads what was paid. */
+const collectAndScan = async (r) => {
+  await router().collect();
+  await r.scan();
+};
 const stake = (token, amount = 10n ** 18n) => send(w.staker, w.staking, w.stakingAbi, "stake", [token, amount]);
 const usdcOf = (who) => pub.readContract({ address: w.usdc, abi: w.usdcAbi, functionName: "balanceOf", args: [who] });
 const dripping = (token) => pub.readContract({ address: w.staking, abi: w.stakingAbi, functionName: "dripping", args: [token] });
+const escrowAbi = artifact("MockAscendFees.sol", "MockCreatorEscrow").abi;
 const closeTo = (a, b) => assert.ok(a === b || a === b - 1n || a === b + 1n, `${a} vs ${b}`);
 
 test("chain: fees reach each token's stakers and treasury, and the stakers can claim", async () => {
@@ -264,7 +244,7 @@ test("chain: fees reach each token's stakers and treasury, and the stakers can c
   await trade([w.a.id], [750_000_000n]);
   await trade([w.b.id], [250_000_000n]);
   const r = router();
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
 
   closeTo(await dripping(w.a.token), 300_000_000n);
@@ -284,13 +264,13 @@ test("chain: running again pays nothing twice", async () => {
   await stake(w.a.token);
   await trade([w.a.id], [1_000_000n]);
   const r = router();
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   const fresh = router(); // and after a restart, reading from the start again
   await ledger.setCursor(startBlock);
-  await fresh.scan();
+  await collectAndScan(fresh);
   await fresh.pay();
   assert.equal(await usdcOf(treasury), 600_000n);
   assert.equal(ledger.runs.length, 1);
@@ -300,7 +280,7 @@ test("chain: running again pays nothing twice", async () => {
 test("chain: a token with no stakers sends everything to treasury", async () => {
   await trade([w.a.id], [1_000_000n]);
   const r = router();
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   assert.equal(await usdcOf(treasury), 1_000_000n);
   assert.equal(await dripping(w.a.token), 0n);
@@ -310,7 +290,7 @@ test("chain: stakers leaving after the plan sends their share to treasury", asyn
   await stake(w.a.token);
   await trade([w.a.id], [1_000_000n]);
   const r = router();
-  await r.scan();
+  await collectAndScan(r);
   const realCreate = ledger.createRun;
   ledger.createRun = async (...args) => {
     await send(w.staker, w.staking, w.stakingAbi, "unstake", [w.a.token, 10n ** 18n]);
@@ -322,26 +302,66 @@ test("chain: stakers leaving after the plan sends their share to treasury", asyn
   assert.equal(ledger.runs[0].status, "done");
 });
 
-test("chain: an unmatched fee stays in the wallet", async () => {
+test("chain: USDC sent straight to the wallet isn't a fee: it's left alone", async () => {
   await stake(w.a.token);
-  await send(deployer, w.usdc, w.usdcAbi, "mint", [feeWallet.account.address, 5_000_000n]); // arrives with no swap
+  await send(deployer, w.usdc, w.usdcAbi, "mint", [feeWallet.account.address, 5_000_000n]); // not from an escrow
   await trade([w.a.id], [1_000_000n]);
   const r = router();
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   assert.equal(await usdcOf(feeWallet.account.address), 5_000_000n);
   assert.equal(await usdcOf(treasury), 600_000n);
-  assert.ok(logs.some((l) => l.ev === "fee_unmatched" && l.reason === "no_swap"));
-  assert.ok(logs.some((l) => l.ev === "unmatched_held"));
+  assert.equal(ledger.receipts.size, 1);
 });
 
-test("chain: a pool that isn't ours stays unmatched", async () => {
-  await trade([`0x${"ab".repeat(32)}`], [1_000_000n]);
+test("chain: a payout from an escrow that isn't one of our launches is held, never paid out", async () => {
+  await trade([w.foreignPool], [1_000_000n]);
+  const foreign = await pub.readContract({ address: w.fees, abi: w.feesAbi, functionName: "escrowOf", args: [w.foreignPool] });
+  await send(w.trader, foreign, escrowAbi, "settle"); // the router only collects from our own escrows
+  await send(w.trader, foreign, escrowAbi, "claimBuilder");
   const r = router();
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   assert.equal(await usdcOf(feeWallet.account.address), 1_000_000n);
   assert.equal(ledger.runs.length, 0);
+  assert.ok(logs.some((l) => l.ev === "fee_unmatched" && l.reason === "not_our_launch"));
+  assert.ok(logs.some((l) => l.ev === "unmatched_held"));
+});
+
+test("attack: a fake BuilderPaid from someone's own contract records nothing, even posing as one of our pools", async () => {
+  const fakeA = artifact("MockAscendFees.sol", "FakeBuilderPaid");
+  const fake = await deploy(fakeA);
+  await send(w.trader, fake, fakeA.abi, "fire", [feeWallet.account.address, 10n ** 30n, `0x${"cd".repeat(32)}`]);
+  await send(w.trader, fake, fakeA.abi, "fire", [feeWallet.account.address, 10n ** 30n, w.a.id]); // claims our token's pool
+  const r = router();
+  await r.scan();
+  await r.pay();
+  assert.equal(ledger.receipts.size, 0, "fake payouts were recorded");
+  assert.equal(ledger.runs.length, 0);
+  assert.equal(logs.filter((l) => l.ev === "FAKE_BUILDER_PAID").length, 2);
+});
+
+test("chain: someone else claiming our builder fee for us (Ascend's crank) still counts", async () => {
+  await stake(w.a.token);
+  await trade([w.a.id], [1_000_000n]);
+  await send(w.trader, w.a.escrow, escrowAbi, "settle");
+  await send(w.trader, w.a.escrow, escrowAbi, "claimBuilder");
+  const r = router();
+  await r.scan();
+  await r.pay();
+  closeTo(await dripping(w.a.token), 400_000n);
+  assert.equal(await usdcOf(treasury), 600_000n);
+});
+
+test("chain: collect without SEND only logs, and small amounts wait", async () => {
+  await trade([w.a.id], [1_000_000n]);
+  await router({ send: false }).collect();
+  assert.ok(logs.some((l) => l.ev === "dry_run_settle"));
+  await router({ minSettle: 2_000_000n, minClaim: 2_000_000n }).collect();
+  assert.equal(await usdcOf(feeWallet.account.address), 0n);
+  await router({ minClaim: 2_000_000n }).collect(); // settles, but 1 USDC owed is under the minimum claim
+  assert.equal(await pub.readContract({ address: w.a.escrow, abi: escrowAbi, functionName: "builderOwed" }), 1_000_000n);
+  assert.equal(await usdcOf(feeWallet.account.address), 0n);
 });
 
 test("chain: crashing before a send resends the same transaction", async () => {
@@ -350,7 +370,7 @@ test("chain: crashing before a send resends the same transaction", async () => {
   const r = router({}, async () => {
     throw new Error("power cut");
   });
-  await r.scan();
+  await collectAndScan(r);
   await assert.rejects(r.pay(), /power cut/);
   const signed = ledger.runs[0].items[0].txHash;
   assert.ok(signed);
@@ -371,7 +391,7 @@ test("chain: crashing after a send doesn't pay twice", async () => {
     await real(raw);
     if (++sends === 2) throw new Error("power cut right after sending");
   });
-  await r.scan();
+  await collectAndScan(r);
   await assert.rejects(r.pay(), /power cut/);
   await router().pay();
   closeTo(await dripping(w.a.token), 400_000n);
@@ -383,7 +403,7 @@ test("chain: a run spending more than the wallet holds doesn't start", async () 
   await stake(w.a.token);
   await trade([w.a.id], [1_000_000n]);
   const r = router();
-  await r.scan();
+  await collectAndScan(r);
   await send(feeWallet, w.usdc, w.usdcAbi, "transfer", [treasury, 1n]); // someone took a little out
   await r.pay();
   assert.equal(ledger.runs.length, 0);
@@ -400,14 +420,14 @@ test("chain: a reverted transaction halts everything until a person looks", asyn
     if (++sends === 3) await tester.setCode({ address: w.usdc, bytecode: "0x60006000fd" });
     return pub.sendRawTransaction({ serializedTransaction: raw });
   });
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   await tester.setCode({ address: w.usdc, bytecode: code });
   assert.equal(ledger.runs[0].status, "halted");
   assert.ok(logs.some((l) => l.ev === "HALTED"));
 
   await trade([w.a.id], [1_000_000n]);
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   assert.equal(ledger.runs.length, 1);
   assert.ok(logs.some((l) => l.ev === "halted_waiting_for_a_person"));
@@ -418,7 +438,7 @@ test("chain: without SEND it only logs the plan", async () => {
   await stake(w.a.token);
   await trade([w.a.id], [1_000_000n]);
   const r = router({ send: false });
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   assert.equal(ledger.runs.length, 0);
   assert.equal(await usdcOf(feeWallet.account.address), 1_000_000n);
@@ -428,7 +448,7 @@ test("chain: without SEND it only logs the plan", async () => {
 test("chain: below the minimum waits for more", async () => {
   await trade([w.a.id], [1_000n]);
   const r = router({ minPayout: 1_000_000n });
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   assert.equal(ledger.runs.length, 0);
   assert.equal(await usdcOf(feeWallet.account.address), 1_000n);
@@ -436,18 +456,18 @@ test("chain: below the minimum waits for more", async () => {
 
 test("chain: a token launched after the router started is picked up", async () => {
   const r = router();
-  await r.scan();
+  await collectAndScan(r);
   await trade([w.b.id], [1_000_000n]);
-  await r.scan();
+  await collectAndScan(r);
   assert.equal([...ledger.receipts.values()][0].token.toLowerCase(), w.b.token.toLowerCase());
 });
 
-test("chain: two tokens traded in one transaction split in order", async () => {
+test("chain: two tokens: each fee goes to the stakers of the token whose escrow paid it", async () => {
   await stake(w.a.token);
   await stake(w.b.token);
   await trade([w.a.id, w.b.id], [1_000_000n, 3_000_000n]);
   const r = router();
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   closeTo(await dripping(w.a.token), 400_000n);
   closeTo(await dripping(w.b.token), 1_200_000n);
@@ -474,14 +494,14 @@ test("chain: Neuriio is exactly 100 x what the contract says each staker earned,
   await send(other, w.staking, w.stakingAbi, "stake", [w.a.token, 10n ** 18n]);
   const r = router();
   await trade([w.a.id], [750_000_000n]);
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   await later(1000);
   await send(w.staker, w.staking, w.stakingAbi, "unstake", [w.a.token, 10n ** 18n]);
   await later(500);
   await send(w.staker, w.staking, w.stakingAbi, "claim", [[w.a.token], me]);
   await trade([w.a.id], [250_000_000n]);
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   await later(1800);
   await send(other, w.staking, w.stakingAbi, "unstake", [w.a.token, 10n ** 18n]);
@@ -513,7 +533,7 @@ test("chain: Neuriio picks up where it left off, with the same result as one lon
   await stake(w.a.token);
   const r = router();
   await trade([w.a.id], [100_000_000n]);
-  await r.scan();
+  await collectAndScan(r);
   await r.pay();
   const store = memoryNeuriioStore();
   await tallyOf(store).scan();

@@ -13,7 +13,6 @@ import {
   describe,
   NEURIIO_SAFE,
   preApprovedSignatures,
-  PUBLIC_RPC,
   readSafe,
   SAFE_ABI,
   safePub,
@@ -22,6 +21,8 @@ import {
   type Described,
   type SafeState,
 } from "../lib/safe";
+import { poll } from "../lib/poll";
+import { ELYSIUM_RPC, PUBLIC_RPC } from "../lib/config";
 
 const EXPLORER = elysiumTestnet.blockExplorers.default.url;
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -62,7 +63,7 @@ async function switchToElysium(eth: EIP1193Provider) {
           chainId,
           chainName: "Elysium Testnet",
           nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
-          rpcUrls: [PUBLIC_RPC],
+          rpcUrls: [PUBLIC_RPC ?? ELYSIUM_RPC],
           blockExplorerUrls: [EXPLORER],
         },
       ],
@@ -104,9 +105,7 @@ export function SafePage() {
   }, [safe, link]);
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, 10_000);
-    return () => clearInterval(id);
+    return poll(load, 10_000);
   }, [load]);
 
   // keep the connected account in sync with the wallet

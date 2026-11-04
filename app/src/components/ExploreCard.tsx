@@ -16,7 +16,7 @@ import { ExternalLink, Search, UserRound } from "lucide-react";
 import { CATEGORIES, SECTORS } from "../lib/launch";
 import { CandleChart, type ChartControls } from "./CandleChart";
 import { subscribeTrades, useLivePrices } from "../lib/live";
-import { platformFees, tokenCreatorEarned } from "../lib/fees";
+import { tokenCreatorEarned } from "../lib/fees";
 import { formatUnits, type Address } from "viem";
 import { OrderCard } from "./OrderCard";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
@@ -26,7 +26,8 @@ import { ProfileBody, ProfileModal, useCreatorProfile } from "./ProfileModal";
 import { useIsMobile } from "../lib/media";
 import { Avatar } from "./Avatar";
 import { compactUsd, tinyPrice, usd } from "../lib/format";
-import { QUOTE } from "../lib/config";
+import { FEE_WALLET, QUOTE } from "../lib/config";
+import { elysiumTestnet } from "../chain";
 import {
   type Candle,
   candles,
@@ -38,12 +39,14 @@ import {
   getToken,
   handleOf,
   INTERVALS,
+  platformFees,
   type IntervalSeconds,
   searchTokens,
   tickerOf,
   topByTotalVolume,
   type TokenStat,
 } from "../lib/explore";
+import { poll } from "../lib/poll";
 
 const START = new URLSearchParams(location.search).get("t");
 
@@ -72,11 +75,10 @@ export function ExploreCard() {
         },
         (e) => alive && setError(String(e.message ?? e)),
       );
-    load();
-    const id = setInterval(load, 20_000); // the database re-ranks every minute
+    const stop = poll(load, 20_000); // the database re-ranks every minute
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, []);
 
@@ -89,10 +91,9 @@ export function ExploreCard() {
   useEffect(() => {
     if (!picked) return;
     const address = picked.address;
-    const id = setInterval(() => {
+    const load = () =>
       getToken(address, { chainFallback: false }).then((t) => t && setPicked((p) => (p?.address === address ? t : p)), () => {});
-    }, picked.fromChain ? 4_000 : 15_000);
-    return () => clearInterval(id);
+    return poll(load, picked.fromChain ? 4_000 : 15_000, { now: false });
   }, [picked?.address, picked?.fromChain]);
 
   // search as you type (debounced)
@@ -345,24 +346,33 @@ function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
   );
 }
 
-/** Every fee the platform has taken so far (NeuriioFees.totalFees, all vaults), in USDC; refreshed every 15 s. */
+/** Every USDC fee that has reached our fee wallet from Ascend (Neuriio's 0.5%), lifetime; refreshed every 15 s. Links to the wallet on
+ *  the explorer. With no wallet set yet (config FEE_WALLET) it reads $0 and makes no calls. */
 function PlatformFees() {
-  const [total, setTotal] = useState<number | null>(null);
+  const [total, setTotal] = useState<number | null>(FEE_WALLET ? null : 0);
   useEffect(() => {
     if (DEMO) return setTotal(48_213.37);
+    if (!FEE_WALLET) return;
     let alive = true;
-    const load = () => platformFees().then((w) => alive && setTotal(Number(formatUnits(w, QUOTE.decimals))), () => {});
-    load();
-    const id = setInterval(load, 15_000);
+    const load = () => platformFees().then((n) => alive && setTotal(n), () => {});
+    const stop = poll(load, 15_000);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, []);
+  const title = "Every fee Neuriio has received from trading (its 0.5% of each trade), shared with stakers, the KNTQ buyback and the treasury";
+  const value = <span className="ex-platform-value">{total === null ? "…" : usd(total)}</span>;
   return (
-    <div className="ex-platform" title="Every 1% trading fee taken so far, curve and pool, all tokens: shared with stakers, creators, the KNTQ buyback and the treasury">
+    <div className="ex-platform" title={title}>
       <span className="ex-platform-label">Platform fees</span>
-      <span className="ex-platform-value">{total === null ? "…" : usd(total * QUOTE.usd)}</span>
+      {FEE_WALLET ? (
+        <a className="ex-platform-link" href={`${elysiumTestnet.blockExplorers.default.url}/address/${FEE_WALLET}`} target="_blank" rel="noopener noreferrer">
+          {value}
+        </a>
+      ) : (
+        value
+      )}
     </div>
   );
 }
@@ -375,11 +385,10 @@ function useCreatorEarned(t: TokenStat) {
     if (DEMO) return setEarned((t.volume_usd / (LANDING ? SHOW_HYPE_USD : QUOTE.usd)) * 0.01 * 0.1); // demo: 10% of a 1% fee
     let alive = true;
     const load = () => tokenCreatorEarned(t.address as Address).then((w) => alive && setEarned(Number(formatUnits(w, QUOTE.decimals))), () => {});
-    load();
-    const id = setInterval(load, 15_000);
+    const stop = poll(load, 60_000);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [t.address, t.volume_usd]);
   return earned;
@@ -448,11 +457,10 @@ function TokenDetail({
     setData(null);
     const load = () => candles(t.address, interval, 300).then((c) => alive && setData(c), () => {});
     reloadCandles.current = load;
-    load();
-    const id = setInterval(load, 10_000);
+    const stop = poll(load, 10_000);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [t.address, interval]);
 

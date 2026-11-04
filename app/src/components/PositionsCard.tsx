@@ -18,6 +18,7 @@ import {
 import { compactUsd } from "../lib/format";
 import { tradeId, useLivePrices, useLiveTrades } from "../lib/live";
 import { Avatar } from "./Avatar";
+import { poll } from "../lib/poll";
 
 /** `bare`: no "Positions" title (the mobile tab card already names it). */
 export function PositionsCard({ hypeUsd, onPick, bare = false }: { hypeUsd: number; onPick: (address: string) => void; bare?: boolean }) {
@@ -50,11 +51,10 @@ export function PositionsCard({ hypeUsd, onPick, bare = false }: { hypeUsd: numb
     if (!loggedIn || !wallet) return setStored(null);
     let alive = true;
     const load = () => walletTrades(wallet).then((t) => alive && setStored(t), () => {});
-    load();
-    const id = setInterval(load, 15_000);
+    const stop = poll(load, 15_000);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [loggedIn, wallet]);
   useEffect(() => {

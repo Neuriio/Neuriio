@@ -5,6 +5,7 @@ import { elysiumTestnet } from "../chain";
 import { DEMO } from "../lib/explore";
 import { shortAddress } from "../lib/format";
 import { demoLaunchCheck, launchCheck, REASON_LABEL, type LaunchCheck } from "../lib/launchCheck";
+import { poll } from "../lib/poll";
 
 const pct = (n: number) => `${n >= 10 ? n.toFixed(1) : n.toFixed(2).replace(/\.?0+$/, "") || "0"}%`;
 const wallets = (n: number) => `${n} wallet${n === 1 ? "" : "s"}`;
@@ -21,11 +22,10 @@ export function LaunchCheckCard({ address }: { address: string }) {
     if (DEMO) return setCheck(demoLaunchCheck(address));
     let alive = true;
     const load = () => launchCheck(address).then((c) => alive && setCheck(c), () => alive && setCheck(null));
-    load();
-    const id = setInterval(load, 60_000);
+    const stop = poll(load, 60_000);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [address]);
 

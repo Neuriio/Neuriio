@@ -12,14 +12,26 @@
 // 3. link_trades(): tags new trades with their trader's X account. Trader activity is kept for how Neuriio will be earned
 //    (first piece: user, 2026-11-01); it isn't displayed anywhere.
 //
-// Secrets: WORLDS = JSON list of { registry, routers: [..], quote, decimals, usd: "hype" | "1", fromBlock }; or, for
+// 1b. An "ascend" world (Elysium mainnet, user 2026-11-04): launches from our NeuriioLauncher (Launched/FtfLaunched, each with its
+//    Ascend pool id) and every Swap in those pools from Ascend's Uniswap v4 PoolManager, with the fee from the Ascend launchpad's
+//    HookSwap; the trader is the transaction's sender (HookSwap's sender is the router).
+//
+// Secrets: WORLDS = JSON list of { registry, routers: [..], quote, decimals, usd: "hype" | "1", fromBlock } or, for mainnet,
+// { kind: "ascend", launcher, poolManager, hook, quote, decimals, fromBlock }; or, for
 // a single HYPE world, REGISTRY_ADDRESS + ROUTER_ADDRESSES (comma list; or ROUTER_ADDRESS) + WHYPE_ADDRESS +
 // INDEX_FROM_BLOCK. APP_REGISTRY (optional), RPC_URL, HL_TESTNET ("true"/"false")
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { createPublicClient, getAddress, http, parseAbi } from "npm:viem@2";
 import {
+  ascendSwapToRow,
   curveTradeToRow,
+  hookFeesByTx,
+  hookSwap,
+  launcherEvents,
+  launcherFtfLaunchedToToken,
+  launcherLaunchedToToken,
+  poolManagerSwap,
   type HlFill,
   hlFillToRow,
   ftfLaunchedToToken,
@@ -37,10 +49,19 @@ import { json } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
 
 
-type World = { registry: `0x${string}`; routers: `0x${string}`[]; quote: `0x${string}`; decimals: number; usd: "hype" | "1"; fromBlock: bigint };
-const WORLDS: World[] = Deno.env.get("WORLDS")
+type World = { kind?: "pad"; registry: `0x${string}`; routers: `0x${string}`[]; quote: `0x${string}`; decimals: number; usd: "hype" | "1"; fromBlock: bigint };
+type AscendWorld = { kind: "ascend"; registry: `0x${string}`; poolManager: `0x${string}`; hook: `0x${string}`; quote: `0x${string}`; decimals: number; fromBlock: bigint };
+const WORLDS: (World | AscendWorld)[] = Deno.env.get("WORLDS")
   // deno-lint-ignore no-explicit-any
-  ? JSON.parse(Deno.env.get("WORLDS")!).map((w: any) => ({
+  ? JSON.parse(Deno.env.get("WORLDS")!).map((w: any) => w.kind === "ascend" ? {
+    kind: "ascend",
+    registry: getAddress(w.launcher), // the launcher is this world's registry: token_stats lists what it launched
+    poolManager: getAddress(w.poolManager),
+    hook: getAddress(w.hook),
+    quote: getAddress(w.quote),
+    decimals: Number(w.decimals),
+    fromBlock: BigInt(w.fromBlock),
+  } : ({
     registry: getAddress(w.registry),
     routers: w.routers.map((r: string) => getAddress(r)),
     quote: getAddress(w.quote),
@@ -225,6 +246,95 @@ async function indexElysium(world: World, hypeUsd: number | null) {
   return { registry, from: Number(from), to: Number(to), launchpads: pads.length, launched: launched.length, trades: rows.length };
 }
 
+/** The Ascend world: our launcher's launches, then the swaps in their Ascend pools (ids filtered on the event's indexed topic,
+ *  in chunks, so we never read the rest of Ascend's market). */
+async function indexAscend(world: AscendWorld) {
+  const registry = world.registry.toLowerCase();
+  const q: Quote = { address: world.quote, decimals: world.decimals, usd: 1 };
+  const key = `elysium:registry:${registry}`;
+  const last = await getState(key);
+  const from = last ? BigInt(last) + 1n : world.fromBlock;
+  const head = await chain.getBlockNumber({ cacheTime: 0 });
+  if (from > head) return { registry, from: Number(from), to: Number(head), events: 0 };
+  const to = head - from > MAX_BLOCKS ? from + MAX_BLOCKS : head;
+
+  const launchLogs = await chain.getLogs({ address: world.registry, events: launcherEvents, fromBlock: from, toBlock: to });
+  const blocks = new Set<bigint>(launchLogs.map((l) => l.blockNumber!));
+  const tsOf = new Map<bigint, string>();
+  const stamp = (bs: Set<bigint>) =>
+    Promise.all([...bs].filter((b) => !tsOf.has(b)).map(async (b) => {
+      const blk = await chain.getBlock({ blockNumber: b });
+      tsOf.set(b, new Date(Number(blk.timestamp) * 1000).toISOString());
+    }));
+  await stamp(blocks);
+  const ts = (l: { blockNumber: bigint | null }) => tsOf.get(l.blockNumber!)!;
+
+  const launched = [
+    // deno-lint-ignore no-explicit-any
+    ...launchLogs.filter((l) => l.eventName === "Launched").map((l) => launcherLaunchedToToken(l as any, ts(l))),
+    // deno-lint-ignore no-explicit-any
+    ...launchLogs.filter((l) => l.eventName === "FtfLaunched").map((l) => launcherFtfLaunchedToToken(l as any, ts(l))),
+  ].map((t) => ({ ...t, registry }));
+  if (launched.length) {
+    const { error } = await db.from("tokens").upsert(launched, { onConflict: "address", ignoreDuplicates: true });
+    if (error) throw new Error(`tokens: ${error.message}`);
+  }
+  for (const t of launched.filter((x) => x.kind === "ftf")) await closeFtfDraft(t.address, t.symbol);
+
+  // every pool of ours: what's stored, plus what launched in this range
+  const stored = await selectAll<{ address: string; pair: string }>((a, b) =>
+    db.from("tokens").select("address, pair").eq("registry", registry).not("pair", "is", null).order("address").range(a, b)
+  );
+  const tokenOfPool = new Map<string, string>(stored.map((t) => [t.pair.toLowerCase(), t.address]));
+  for (const t of launched) tokenOfPool.set(t.pair, t.address);
+  const ids = [...tokenOfPool.keys()] as `0x${string}`[];
+  const swaps = [];
+  const hooks = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50);
+    const [s, h] = await Promise.all([
+      chain.getLogs({ address: world.poolManager, event: poolManagerSwap, args: { id: chunk }, fromBlock: from, toBlock: to }),
+      chain.getLogs({ address: world.hook, event: hookSwap, args: { poolId: chunk }, fromBlock: from, toBlock: to }),
+    ]);
+    swaps.push(...s);
+    hooks.push(...h);
+  }
+  await stamp(new Set(swaps.map((l) => l.blockNumber!)));
+  const txFrom = new Map<string, string>();
+  await Promise.all([...new Set(swaps.map((l) => l.transactionHash!))].map(async (h) => {
+    txFrom.set(h, (await chain.getTransaction({ hash: h })).from);
+  }));
+  // deno-lint-ignore no-explicit-any
+  const fees = hookFeesByTx(hooks as any, tokenOfPool, q);
+  const seen = new Map<string, number>();
+  const rows: TradeRow[] = [...swaps].sort((x, y) => Number(x.blockNumber! - y.blockNumber!) || x.logIndex! - y.logIndex!).map((l) => {
+    const pool = l.args.id!.toLowerCase();
+    const k = `${l.transactionHash}:${pool}`;
+    const n = seen.get(k) ?? 0;
+    seen.set(k, n + 1);
+    const fee = fees.get(k)?.[n] ?? null;
+    // deno-lint-ignore no-explicit-any
+    return ascendSwapToRow(l as any, tokenOfPool.get(pool)!, q, txFrom.get(l.transactionHash!)!, ts(l), fee);
+  });
+  await insertTrades(rows, "tx_hash,log_index");
+  await setState(key, to.toString());
+  return { registry, from: Number(from), to: Number(to), launched: launched.length, trades: rows.length };
+}
+
+/** An FTF that launched: copy its picture + category onto the token, then close its draft (matched by ticker; only one open
+ *  draft per ticker). */
+async function closeFtfDraft(address: string, symbol: string) {
+  const { data: draft } = await db.from("ftf_drafts").select("pfp_url, category").eq("status", "open").eq("ticker", symbol).maybeSingle();
+  if (draft) {
+    const { error: tErr } = await db.from("tokens").update({ pfp_url: draft.pfp_url, category: draft.category }).eq("address", address);
+    if (tErr) throw new Error(`ftf token: ${tErr.message}`);
+  }
+  const { error } = await db.from("ftf_drafts")
+    .update({ status: "launched", token: address, updated_at: new Date().toISOString() })
+    .eq("status", "open").eq("ticker", symbol);
+  if (error) throw new Error(`ftf draft: ${error.message}`);
+}
+
 /** Every row of a select, page by page (the API returns at most 1,000 rows per request). */
 async function selectAll<T>(query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) {
   const rows: T[] = [];
@@ -287,7 +397,7 @@ Deno.serve(async () => {
     result.elysium = [];
     for (const w of WORLDS) {
       try {
-        (result.elysium as unknown[]).push(await indexElysium(w, usd));
+        (result.elysium as unknown[]).push(w.kind === "ascend" ? await indexAscend(w) : await indexElysium(w, usd));
       } catch (e) {
         (result.elysium as unknown[]).push({ registry: w.registry, error: failed(`elysium ${w.registry}`, e) });
       }

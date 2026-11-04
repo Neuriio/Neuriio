@@ -5,6 +5,7 @@
 import { erc20Abi, keccak256, toBytes, zeroAddress, type Address } from "viem";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 import { CATEGORIES, type CategoryId, LAUNCHPAD, launchpadAbi as padViews, pub, REGISTRY, registryAbi, SECTORS, type SectorId } from "./launch";
+import { spotNow } from "./trade";
 
 export type TokenStat = {
   address: string;
@@ -172,37 +173,32 @@ export async function getToken(addressOrHandle: string, opts: { chainFallback?: 
   return opts.chainFallback === false ? null : tokenFromChain(v, byAddress);
 }
 
-const CURVE_TOKENS = 793_100_000;
-
 async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat | null> {
   const address = byAddress
     ? (v as Address)
     : await pub.readContract({ address: REGISTRY, abi: registryAbi, functionName: "tokenOfHandle", args: [keccak256(toBytes(v.toLowerCase()))] });
   if (!address || address === zeroAddress) return null;
-  // read it from the Launchpad version that launched it
-  const pad = await pub.readContract({ address: REGISTRY, abi: registryAbi, functionName: "launchpadOf", args: [address] });
-  if (pad === zeroAddress) return null;
-  const [curve, prof, isFtf] = await Promise.all([
-    pub.readContract({ address: pad, abi: padViews, functionName: "curves", args: [address] }),
-    pub.readContract({ address: pad, abi: padViews, functionName: "profile", args: [address] }),
-    pub.readContract({ address: pad, abi: padViews, functionName: "isFtf", args: [address] }).catch(() => false),
+  // our launcher's record, and the price in its Ascend pool (no curve: a token trades in its pool from launch)
+  const [prof, isFtf, spot] = await Promise.all([
+    pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "launchOf", args: [address] }),
+    pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "isFtf", args: [address] }).catch(() => false),
+    spotNow(address).catch(() => null),
   ]);
-  const [creator, graduated, vHype, vToken, , realToken] = curve;
-  if (creator === zeroAddress) return null;
-  const price = Number(vHype) / Number(vToken);
+  if (prof.creator === zeroAddress) return null;
+  const price = spot ?? 0;
   const common = {
     address: address.toLowerCase(),
     sector: null, // the indexer adds it within a minute (from the stored profile)
-    launchpad: pad.toLowerCase(),
-    creator: creator.toLowerCase(),
+    launchpad: LAUNCHPAD.toLowerCase(),
+    creator: prof.creator.toLowerCase(),
     launched_at: new Date().toISOString(),
-    graduated,
+    graduated: true, // in its pool from the start
     pair: null,
     graduated_at: null,
     price_hype: price,
     mcap_hype: price * 1e9,
     price_hype_24h_ago: price,
-    curve_progress: graduated ? 1 : 1 - Number(realToken) / 1e18 / CURVE_TOKENS,
+    curve_progress: 1,
     trades: 0,
     trades_24h: 0,
     volume_usd: 0,
@@ -213,7 +209,7 @@ async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat 
   };
   if (isFtf) {
     const [f, symbol] = await Promise.all([
-      pub.readContract({ address: pad, abi: padViews, functionName: "ftf", args: [address] }),
+      pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "ftf", args: [address] }),
       pub.readContract({ address, abi: erc20Abi, functionName: "symbol" }),
     ]);
     return {
@@ -246,6 +242,11 @@ async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat 
     x_name: card?.x_name ?? null,
     x_pfp_url: card?.x_pfp_url ?? null,
   };
+}
+
+/** Every USDC fee that has reached our fee wallet, lifetime (Supabase `platform_fees()`, from the fee router's records). */
+export async function platformFees(): Promise<number> {
+  return Number(await rest<number | string>("rpc/platform_fees", { method: "POST", body: "{}" }));
 }
 
 /** Candle sizes stored in the database (seconds). */
@@ -295,10 +296,7 @@ export async function getProfile(address: string): Promise<CreatorProfile | null
   const [tok] = await rest<{ profile_hash: string }[]>(`tokens?select=profile_hash&address=eq.${address.toLowerCase()}`);
   // not indexed yet: the profile hash is on-chain (the profile itself was stored when the launch pass was signed)
   const hash =
-    tok?.profile_hash ??
-    ((await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "isFtf", args: [address as Address] }).catch(() => false))
-      ? (await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "ftf", args: [address as Address] })).profileHash
-      : (await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "profile", args: [address as Address] })).profileHash);
+    tok?.profile_hash ?? (await pub.readContract({ address: LAUNCHPAD, abi: padViews, functionName: "launchOf", args: [address as Address] })).profileHash;
   if (!hash || /^0x0+$/.test(hash)) return null;
   const [row] = await rest<{ body: { about?: string; links?: { label: string; url: string }[] } }[]>(
     `creator_profiles?select=body&hash=eq.${hash}`,
@@ -555,34 +553,60 @@ function demoCandles(address: string, interval: number, limit: number): Candle[]
   const t = demoTokens().find((x) => x.address === address.toLowerCase());
   if (!t) return [];
   if (LANDING) return showcaseCandles(t, interval);
-  const r = rng(hash(address) + interval);
+  // one 5m history per token, merged into bigger candles, so every timeframe shows the same moves (user, 2026-11-03)
+  const fine = demoFiveMinute(t);
   const step = interval * 1000;
-  const end = Math.floor(Date.now() / step) * step;
-  const n = Math.max(2, Math.min(limit, Math.floor((end - Date.parse(t.launched_at)) / step) + 1));
-  const start = end - (n - 1) * step;
-  // random walk from the opening price that ends exactly at the current price
+  const out: Candle[] = [];
+  for (const c of fine) {
+    const bucket = new Date(Math.floor(Date.parse(c.bucket) / step) * step).toISOString();
+    const last = out[out.length - 1];
+    if (last?.bucket === bucket) {
+      last.high = Math.max(last.high, c.high);
+      last.low = Math.min(last.low, c.low);
+      last.close = c.close;
+      last.volume_hype += c.volume_hype;
+      last.volume_usd! += c.volume_usd!;
+      last.trades += c.trades;
+    } else out.push({ ...c, bucket });
+  }
+  return out.slice(-limit);
+}
+
+const FIVE_MIN = 300_000;
+const fiveMinCache = new Map<string, { end: number; candles: Candle[] }>();
+
+/** A token's demo price history in 5m candles, from launch to now: a random walk from the opening price that ends exactly at the
+ *  current price. Seeded by the token, so it's stable between reloads. */
+function demoFiveMinute(t: TokenStat): Candle[] {
+  const end = Math.floor(Date.now() / FIVE_MIN) * FIVE_MIN;
+  const cached = fiveMinCache.get(t.address);
+  if (cached?.end === end) return cached.candles;
+  const r = rng(hash(t.address));
+  const start = Math.floor(Date.parse(t.launched_at) / FIVE_MIN) * FIVE_MIN;
+  const n = Math.max(2, Math.floor((end - start) / FIVE_MIN) + 1);
   const walk = [Math.log(OPEN_PRICE)];
-  for (let i = 1; i <= n; i++) walk.push(walk[i - 1] + (r() - 0.46) * 0.08);
+  for (let i = 1; i <= n; i++) walk.push(walk[i - 1] + (r() - 0.46) * 0.03);
   const drift = (Math.log(t.price_hype) - walk[n]) / n;
   const px = walk.map((w, i) => Math.exp(w + drift * i));
-  const out: Candle[] = [];
+  const candles: Candle[] = [];
   for (let i = 0; i < n; i++) {
     const open = px[i];
     const close = px[i + 1];
-    const wick = 1 + r() * 0.03;
-    const volHype = r() * 3;
-    out.push({
-      bucket: new Date(start + i * step).toISOString(),
+    const wick = 1 + r() * 0.012;
+    const volHype = r() * 0.6;
+    candles.push({
+      bucket: new Date(start + i * FIVE_MIN).toISOString(),
       open,
       close,
       high: Math.max(open, close) * wick,
       low: Math.min(open, close) / wick,
       volume_hype: volHype,
       volume_usd: volHype * 90,
-      trades: 1 + Math.floor(r() * 12),
+      trades: Math.floor(r() * 4),
     });
   }
-  return out;
+  fiveMinCache.set(t.address, { end, candles });
+  return candles;
 }
 
 function demoProfile(address: string): CreatorProfile | null {

@@ -54,6 +54,7 @@ import {
 import { EASE_OUT } from "../lib/motion";
 import { QUOTE, SUPABASE_URL } from "../lib/config";
 import { fileToBase64, FTF_NAME_RE, FTF_TICKER_RE, ftfCall, type FtfPassResponse, type FtfView } from "../lib/ftf";
+import { poll } from "../lib/poll";
 
 // Dev-only previews with a sample profile and a simulated launch:
 //   localhost:5173/launch?demo      logged in (intro shows "Launch")
@@ -89,7 +90,7 @@ const FTF_SIZE = 4;
 const X_LABEL = /^(x|twitter)$/i; // a personal token's X link is its account's: nothing else can call itself that
 const STAGES = ["Checking your X account", "Launching on Elysium", "You're live"] as const;
 const QUICK_BUYS = ["0", "10", "50", "100"]; // USDC
-const TESTNET_PARAMS: CurveParams = { virtualQuote: 1000, feeBps: 100 }; // until the chain answers
+const TESTNET_PARAMS: CurveParams = { startPrice: 0, feeBps: 150 }; // until the chain answers (no estimate shown)
 
 type Link = { label: string; url: string };
 type Phase = { kind: "form" } | { kind: "launching"; stage: number } | { kind: "live"; token: Address | null } | { kind: "error"; message: string };
@@ -207,12 +208,11 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
       launchBalances(address)
         .then((b) => alive && setBalance({ usdc: Number(formatUnits(b.usdc, QUOTE.decimals)), gas: Number(formatEther(b.gas)) }))
         .catch(() => {});
-    load();
-    if (current !== "launch") return () => void (alive = false);
-    const id = setInterval(load, 10_000);
+    // off the Launch step: one read; on it, every 20 s while visible and right after this browser's own transactions
+    const stop = poll(load, current === "launch" ? 20_000 : null, { onChain: current === "launch" });
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [address, current]);
   const tokenFor = getAccessToken ?? (async () => null);
@@ -235,8 +235,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   }, [mode]);
   useEffect(() => {
     if (mode !== "ftf" || current !== "members" || !ftf.draft) return;
-    const id = setInterval(() => loadFtf().catch(() => {}), 4_000);
-    return () => clearInterval(id);
+    return poll(() => loadFtf().catch(() => {}), 4_000, { now: false });
   }, [mode, current, ftf.draft?.id]);
 
   async function ftfDo(action: string, body: Record<string, unknown>) {

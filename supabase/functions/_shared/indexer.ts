@@ -253,3 +253,139 @@ export function hlFillToRow(fill: HlFill, wallet: string): TradeRow | null {
     ts: new Date(fill.time).toISOString(),
   };
 }
+
+// ------------------------------------------------------------------ Ascend (Elysium mainnet, user 2026-11-04)
+// Tokens launch through our NeuriioLauncher into Ascend's Uniswap v4 pools (one PoolManager, the Ascend launchpad as hook).
+// There's no curve: a token trades in its pool from launch (graduated = true, `pair` holds the v4 pool id).
+
+export const launcherEvents = parseAbi([
+  "event Launched(address indexed token, address indexed creator, uint64 indexed xUserId, string handle, uint8 category, bytes32 profileHash, bytes32 pool)",
+  "event FtfLaunched(address indexed token, address indexed founder, string name, string ticker, uint64[4] memberXIds, address[4] members, bytes32 profileHash, bytes32 pool)",
+]);
+/** Uniswap v4 PoolManager: the AMM's part of a swap, from the swapper's side (negative = paid in), and the price after. */
+export const poolManagerSwap = parseAbi([
+  "event Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)",
+])[0];
+/** Ascend's launchpad (the hook): each swap's fee, in the pair asset's slot (the PoolManager's Swap reports an LP fee of 0). */
+export const hookSwap = parseAbi([
+  "event HookSwap(bytes32 indexed poolId, address indexed sender, int128 amount0, int128 amount1, uint128 hookLPfeeAmount0, uint128 hookLPfeeAmount1)",
+])[0];
+
+/** A launch through NeuriioLauncher -> tokens row. No opening price is stored: the first trade sets it. */
+export function launcherLaunchedToToken(
+  log: Log<{ token: string; creator: string; xUserId: bigint; handle: string; category: number; profileHash: string; pool: string }>,
+  ts: string,
+) {
+  const a = log.args;
+  return {
+    address: lc(a.token),
+    launchpad: lc(log.address),
+    kind: "individual",
+    name: null,
+    member_x_user_ids: null,
+    x_user_id: a.xUserId.toString(),
+    creator: lc(a.creator),
+    handle: a.handle,
+    symbol: a.handle.toUpperCase(),
+    category: CATEGORIES[a.category],
+    profile_hash: a.profileHash,
+    launch_tx: log.transactionHash,
+    launch_block: Number(log.blockNumber),
+    launched_at: ts,
+    graduated: true,
+    graduated_at: ts,
+    pair: lc(a.pool),
+    virtual_hype: null,
+  };
+}
+
+export function launcherFtfLaunchedToToken(
+  log: Log<{ token: string; founder: string; name: string; ticker: string; memberXIds: readonly bigint[]; profileHash: string; pool: string }>,
+  ts: string,
+) {
+  const a = log.args;
+  return {
+    address: lc(a.token),
+    launchpad: lc(log.address),
+    kind: "ftf",
+    name: a.name,
+    x_user_id: null,
+    member_x_user_ids: a.memberXIds.map((x) => x.toString()),
+    creator: lc(a.founder),
+    handle: a.ticker.toLowerCase(),
+    symbol: a.ticker,
+    category: null,
+    profile_hash: a.profileHash,
+    launch_tx: log.transactionHash,
+    launch_block: Number(log.blockNumber),
+    launched_at: ts,
+    graduated: true,
+    graduated_at: ts,
+    pair: lc(a.pool),
+    virtual_hype: null,
+  };
+}
+
+const Q192 = 1n << 192n;
+/** Quote per whole token from a v4 sqrtPriceX96 (currency1 per currency0, base units), as a 36-decimal string. */
+export function sqrtPriceToQuote(sqrtPriceX96: bigint, token: string, q: Quote): string | null {
+  if (sqrtPriceX96 === 0n) return null;
+  const sq = sqrtPriceX96 * sqrtPriceX96;
+  const scale = 10n ** BigInt(18 - q.decimals) * 10n ** 36n;
+  const raw = lc(token) < lc(q.address) ? (sq * scale) / Q192 : (Q192 * scale) / sq;
+  return formatUnits(raw, 36);
+}
+
+const abs = (v: bigint) => (v < 0n ? -v : v);
+
+/** A swap in one of our tokens' Ascend pools -> trades row. `hookFee`: the fee in the quote token (from HookSwap), or null.
+ *  A buy pays the fee on top of what the AMM took; a sell's fee comes out of what the AMM paid; either way `quote_amount` is
+ *  the trade's whole USDC side, fee included. */
+export function ascendSwapToRow(
+  log: Log<{ amount0: bigint; amount1: bigint; sqrtPriceX96: bigint }>,
+  token: string,
+  q: Quote,
+  txFrom: string,
+  ts: string,
+  hookFee: bigint | null,
+): TradeRow {
+  const a = log.args;
+  const tokenIs0 = lc(token) < lc(q.address);
+  const [tokenDelta, quoteDelta] = tokenIs0 ? [a.amount0, a.amount1] : [a.amount1, a.amount0];
+  const isBuy = quoteDelta < 0n; // the swapper paid USDC in
+  const fee = hookFee ?? 0n;
+  const quote = amt(isBuy ? abs(quoteDelta) + fee : abs(quoteDelta), q);
+  return {
+    venue: "pool",
+    trader: lc(txFrom),
+    market: lc(token),
+    side: isBuy ? "buy" : "sell",
+    size: formatEther(abs(tokenDelta)),
+    quote_amount: quote,
+    usd_value: usd(quote, q),
+    fee: hookFee == null ? null : amt(hookFee, q),
+    tx_hash: log.transactionHash,
+    log_index: log.logIndex,
+    block_number: Number(log.blockNumber),
+    ts,
+    price_hype: sqrtPriceToQuote(a.sqrtPriceX96, token, q),
+    curve_sold: null,
+  };
+}
+
+/** The quote-token fee of each HookSwap, keyed `tx:poolId`, in log order (paired with that tx's Swaps in the same pool). */
+export function hookFeesByTx(
+  logs: Log<{ poolId: string; hookLPfeeAmount0: bigint; hookLPfeeAmount1: bigint }>[],
+  tokenOfPool: Map<string, string>,
+  q: Quote,
+) {
+  const out = new Map<string, bigint[]>();
+  for (const l of [...logs].sort((x, y) => x.logIndex - y.logIndex)) {
+    const token = tokenOfPool.get(lc(l.args.poolId));
+    if (!token) continue;
+    const fee = lc(token) < lc(q.address) ? l.args.hookLPfeeAmount1 : l.args.hookLPfeeAmount0;
+    const key = `${l.transactionHash}:${lc(l.args.poolId)}`;
+    out.set(key, [...(out.get(key) ?? []), fee]);
+  }
+  return out;
+}

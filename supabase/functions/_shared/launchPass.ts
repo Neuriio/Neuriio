@@ -1,5 +1,5 @@
 // Pure launch-pass logic (no I/O): category mapping, profile validation + canonical form, EIP-712 types.
-// Must match src/launch/NeuriioPad.sol (LaunchPass struct, Category enum, EIP712 domain).
+// Must match src/launch/NeuriioLauncher.sol (LaunchPass struct, Category enum, EIP712 domain).
 
 import { keccak256, toBytes } from "npm:viem@2";
 
@@ -33,9 +33,13 @@ export const launchPassTypes = {
     { name: "handle", type: "string" },
     { name: "category", type: "uint8" },
     { name: "profileHash", type: "bytes32" },
+    { name: "launchData", type: "bytes" },
     { name: "deadline", type: "uint256" },
   ],
 } as const;
+
+/** What our launches pass to the Ascend adapter: nothing (it fixes the fee, the builder and the salt itself). */
+export const LAUNCH_DATA = "0x" as const;
 
 export function launchpadDomain(chainId: number, launchpad: `0x${string}`) {
   return { name: "Neuriio Launchpad", version: "1", chainId, verifyingContract: launchpad } as const;
@@ -95,7 +99,7 @@ function validAboutAndLinks(input: ProfileInput): { about: string; links: Link[]
 }
 
 // ------------------------------------------------------------------ FTF (Friends Turned Fam)
-// Must match NeuriioPad.sol: FtfPass, _checkFtfName, _checkFtfTicker (4 members, founder first).
+// Must match NeuriioLauncher.sol: FtfPass, _checkFtfName, _checkFtfTicker (4 members, founder first).
 
 export const FTF_MEMBERS = 4;
 export const FTF_NAME_RE = /^[A-Za-z0-9_.&'-]+( [A-Za-z0-9_.&'-]+)*$/; // single spaces inside, none at the ends
@@ -109,6 +113,7 @@ export const ftfPassTypes = {
     { name: "memberXIds", type: "uint64[4]" },
     { name: "members", type: "address[4]" },
     { name: "profileHash", type: "bytes32" },
+    { name: "launchData", type: "bytes" },
     { name: "deadline", type: "uint256" },
   ],
 } as const;

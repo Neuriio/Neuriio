@@ -5463,3 +5463,9 @@ a.ex-row {
   opacity: 0.5;
   cursor: default;
 }
+.ex-platform-link {
+  text-decoration: none;
+}
+.ex-platform-link:hover .ex-platform-value {
+  text-decoration: underline;
+}

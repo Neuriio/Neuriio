@@ -13,6 +13,7 @@ import { useIsMobile } from "../lib/media";
 import { DEMO, displayName, EARLY_MAX_MCAP, earlyTokens, maturedTokens, trendingTokens, type TokenStat } from "../lib/explore";
 import { Avatar } from "./Avatar";
 import { Change } from "./ExploreCard";
+import { poll } from "../lib/poll";
 
 type ListId = "early" | "matured" | "trending";
 const LISTS: { id: ListId; title: string; sub: string; empty: string; load: () => Promise<TokenStat[]>; fits?: (mcap: number) => boolean }[] = [
@@ -74,11 +75,10 @@ function TokenList({ list }: { list: (typeof LISTS)[number] }) {
         },
         () => alive && setError(true),
       );
-    load();
-    const id = setInterval(load, 20_000);
+    const stop = poll(load, 20_000);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [list]);
 

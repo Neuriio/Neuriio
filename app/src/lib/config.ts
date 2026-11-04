@@ -1,27 +1,41 @@
-// The USDC world (2026-10-17): tokens are priced and traded in test USDC. Push this app together with
-// ./script/supabase-deploy.sh switch (go-live); the live site is still the HYPE world (elysium-testnet-hype.json) until
-// then. Data requests name this world's registry (lib/explore.ts), so it lists the right tokens before the switch too.
+// Elysium MAINNET, the Ascend world (2026-11-04): tokens launch through our NeuriioLauncher into Ascend's Uniswap v4 pools and
+// trade there in USDC. Our contract addresses are null in deployments/elysium-mainnet.json until they're deployed; until then
+// launching, trading and staking can't work (demo mode `?demo` still does). The testnet world (elysium-testnet.json) is retired.
 import type { Address } from "viem";
-import deployment from "../../../deployments/elysium-testnet.json";
+import deployment from "../../../deployments/elysium-mainnet.json";
 
-/** What launched tokens trade against and are priced in: test USDC, counted as $1. (Supabase's `price_hype` /
- *  `volume_hype` columns and the app's `hypeUsd` props now carry this quote, not HYPE.) */
+const addr = (a: string | null | undefined) => (a ?? "0x0000000000000000000000000000000000000000") as Address;
+
+/** What launched tokens trade against and are priced in: USDC (bridged Circle USDC), counted as $1. (Supabase's `price_hype` /
+ *  `volume_hype` columns and the app's `hypeUsd` props carry this quote, not HYPE: old names.) */
 export const QUOTE = { symbol: "USDC", address: deployment.usdc as Address, decimals: 6, usd: 1 } as const;
 
-/** Elysium testnet RPC for the app's reads and the wallet's sends (chain.ts). With our Conduit API key (build-time
- *  VITE_ELYSIUM_RPC: Railway variable, and app/.env.local locally; never in git; either the bare key or the full URL
- *  with "/<key>") the per-visitor rate limit is lifted (a 150-request burst: all answered, against ~60% without it).
- *  The key ships in the page like any frontend RPC key: restrict it to our domains in the Conduit dashboard. Without
- *  it: the public URL. (The third-party hypedexer node blocks browsers with CORS; the keeper still uses it.) */
-const PUBLIC_RPC = "https://testnet-rpc.elysium.kinetiq.xyz";
+/** Our contracts (null until deployed: reads then go to the zero address and fail quietly). */
+export const LAUNCHER = addr(deployment.launcher);
+export const STAKING = addr(deployment.staking);
+export const DEPLOYED = !!deployment.launcher;
+/** Ascend's mainnet contracts (its docs, Mainnet contracts). */
+export const ASCEND = Object.fromEntries(
+  Object.entries(deployment.ascend).filter(([, v]) => typeof v === "string"),
+) as Record<"launchpad" | "escrowFactory" | "seatFactory" | "poolManager" | "universalRouter" | "v4Quoter" | "stateView" | "permit2" | "multicall3", Address>;
+export const EXPLORER = deployment.explorer;
+
+/** Elysium mainnet RPC for the app's reads and the wallet's sends (chain.ts): our Conduit key (build-time VITE_ELYSIUM_RPC:
+ *  a Vercel variable, and app/.env.local locally; never in git; the bare key or the full URL). Elysium has no public RPC
+ *  (partner access until its public launch), so there's no keyless fallback. The key ships in the page like any frontend RPC
+ *  key: restrict it to our domains in the Conduit dashboard. */
+const MAINNET_RPC_BASE = "https://rpc-elysium-mainnet.t.conduit.xyz";
+/** A keyless public RPC to try first, if Elysium publishes one (VITE_ELYSIUM_PUBLIC_RPC); null: our key only. */
+const publicSetting = (import.meta.env.VITE_ELYSIUM_PUBLIC_RPC ?? "").trim();
+export const PUBLIC_RPC: string | null = publicSetting && publicSetting !== "off" ? publicSetting : null;
 const rpcSetting = (import.meta.env.VITE_ELYSIUM_RPC ?? "").trim();
 export const ELYSIUM_RPC: string = !rpcSetting
-  ? PUBLIC_RPC
+  ? MAINNET_RPC_BASE
   : /^https?:\/\//.test(rpcSetting)
     ? rpcSetting
-    : `${PUBLIC_RPC}/${rpcSetting.replace(/^\/+/, "")}`; // a bare key
+    : `${MAINNET_RPC_BASE}/${rpcSetting.replace(/^\/+/, "")}`; // a bare key
 
-export const HL_TESTNET = true;
+export const HL_TESTNET = false;
 
 /** Supabase project (launch passes, registration, points). Functions use the Privy token. */
 export const SUPABASE_URL = "https://yviymgfgaepmtijgyyyo.supabase.co";
@@ -35,7 +49,7 @@ export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FegCC3kuFI9k3EsEP2TGYA_z
  * The builder account needs >= 100 USDC perps account value (testnet: the burner/inventory account).
  */
 export const HL_BUILDER = {
-  address: deployment.hlBuilder as `0x${string}`,
+  address: ((deployment as { hlBuilder?: string }).hlBuilder ?? "0x0000000000000000000000000000000000000000") as `0x${string}`,
   fees: { perp: 1, spot: 1, outcome: 1 },
 };
 
@@ -43,13 +57,19 @@ export const HL_BUILDER = {
 export const SHOWN_TOKENS = ["HYPE", "KNTQ", "USDC"];
 
 /**
- * ERC-20s the Neuriio wallet can hold on Elysium testnet. Native (gas) HYPE is added on top.
- * USDC is our test USDC (what every token trades against); KNTQ is the real testnet KNTQ,
- * bridged from HyperEVM through Elysium's canonical bridge (L2GatewayRouter.calculateL2TokenAddress).
+ * ERC-20s the Neuriio wallet can hold on Elysium mainnet. Native (gas) HYPE is added on top.
+ * USDC is bridged Circle USDC (what every token trades against); KNTQ is Kinetiq's token (Ascend's pair-asset list).
  */
 export const ELYSIUM_TOKENS = [
-  { symbol: "KNTQ", address: "0x9856148d9CAcf40F12BCAA9357ca016Ba5B0ED19" as `0x${string}`, decimals: 18 },
+  { symbol: "KNTQ", address: "0xe45a355d9e9cAd2aD85F2d03E3eE3102A036acF0" as `0x${string}`, decimals: 18 },
   { symbol: "USDC", address: QUOTE.address, decimals: QUOTE.decimals },
 ] as const;
+
+/**
+ * Our builder address = the fee router's wallet (user, 2026-11-04): Ascend pays our 0.5% here, per token, from each token's
+ * escrow. Explore's "Platform fees" counter is everything that has arrived, as the fee router records it (Supabase
+ * `platform_fees()`), and links to this wallet on the explorer.
+ */
+export const FEE_WALLET: Address | null = deployment.builder as Address;
 
 export { deployment };

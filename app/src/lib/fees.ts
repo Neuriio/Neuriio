@@ -1,55 +1,31 @@
-// Creator fees: the creator's share of a launched token's fees (10% of every 1% fee, on the curve and in the pool: user,
-// 2026-10-20) builds up in NeuriioFees in USDC on Elysium (an FTF's share is split equally between its 4 members).
-// `claim` sends it to the Neuriio wallet.
-import { parseAbi, type Address, type EIP1193Provider, zeroAddress } from "viem";
-import { confirmed, walletClientFor } from "./tx";
-import { deployment } from "./config";
-import { pub, REGISTRY, registryAbi } from "./launch";
+// Creator fees on Ascend (user, 2026-11-04): the creator's share of Ascend's 1% fee builds up in each token's own CreatorEscrow
+// on Ascend, paid to the creator (an FTF: to its seat, which splits it 4 ways). Below a $40k market cap most of it is held until
+// the token qualifies (Ascend's docs, Creator fee release). Claiming happens on Ascend's escrow, not through us.
+import { parseAbi, type Address } from "viem";
+import { ASCEND } from "./config";
+import { pub } from "./launch";
+import { poolIdOf, poolKeyOf } from "./trade";
 
-export const FEE_VAULT = deployment.feeVault as Address;
-/** Every FeeVault we ever pointed fees at, current first. A replaced vault keeps its creators' balances claimable, so
- *  balances and lifetime earnings add up across all of them. */
-const FEE_VAULTS: Address[] = [
-  FEE_VAULT,
-  ...(((deployment as { feeVaults?: string[] }).feeVaults ?? []) as Address[]).filter((v) => v.toLowerCase() !== FEE_VAULT.toLowerCase()),
-];
-
-const vaultAbi = parseAbi([
-  "function creatorBalance(address) view returns (uint256)",
-  "function creatorEarned(address token) view returns (uint256)",
-  "function claim(address to) returns (uint256)",
-  "function totalFees() view returns (uint256)",
+const factoryAbi = parseAbi(["function escrowOf(bytes32 poolId) view returns (address)"]);
+const escrowAbi = parseAbi([
+  "function recipient() view returns (address)",
+  "function claimable(address account) view returns (uint256)",
+  "function held() view returns (uint256)",
 ]);
 
-/** USDC (base units) waiting to be claimed, and whether this wallet launched its own token. */
-export async function creatorFees(wallet: Address) {
-  const [balances, token] = await Promise.all([
-    Promise.all(FEE_VAULTS.map((v) => pub.readContract({ address: v, abi: vaultAbi, functionName: "creatorBalance", args: [wallet] }))),
-    pub.readContract({ address: REGISTRY, abi: registryAbi, functionName: "tokenOfCreator", args: [wallet] }),
+/** A token's CreatorEscrow on Ascend. */
+export async function escrowOf(token: Address): Promise<Address> {
+  return pub.readContract({ address: ASCEND.escrowFactory, abi: factoryAbi, functionName: "escrowOf", args: [poolIdOf(poolKeyOf(token))] });
+}
+
+/** The creator fees a token has waiting (USDC base units): what its creator can claim now plus what's held until it qualifies.
+ *  Not lifetime: claimed fees drop out (lifetime needs the escrow's Settled events, from the indexer). */
+export async function tokenCreatorEarned(token: Address): Promise<bigint> {
+  const escrow = await escrowOf(token);
+  const recipient = await pub.readContract({ address: escrow, abi: escrowAbi, functionName: "recipient" });
+  const [claimable, held] = await Promise.all([
+    pub.readContract({ address: escrow, abi: escrowAbi, functionName: "claimable", args: [recipient] }),
+    pub.readContract({ address: escrow, abi: escrowAbi, functionName: "held" }),
   ]);
-  return { claimable: balances.reduce((a, b) => a + b, 0n), launched: token !== zeroAddress };
-}
-
-/** Lifetime creator fees a token has earned (USDC base units, all its creators together). */
-export async function tokenCreatorEarned(token: Address) {
-  const all = await Promise.all(FEE_VAULTS.map((v) => pub.readContract({ address: v, abi: vaultAbi, functionName: "creatorEarned", args: [token] })));
-  return all.reduce((a, b) => a + b, 0n);
-}
-
-/** Every fee the platform has taken, lifetime (USDC base units, every vault: curve and pool, all tokens). */
-export async function platformFees() {
-  const all = await Promise.all(FEE_VAULTS.map((v) => pub.readContract({ address: v, abi: vaultAbi, functionName: "totalFees" })));
-  return all.reduce((a, b) => a + b, 0n);
-}
-
-/** Claims to the wallet itself from every vault that holds a balance for the wallet (usually just the current one). */
-export async function claimCreatorFees(provider: EIP1193Provider, account: Address) {
-  let hash: `0x${string}` | null = null;
-  for (const v of FEE_VAULTS) {
-    const bal = await pub.readContract({ address: v, abi: vaultAbi, functionName: "creatorBalance", args: [account] });
-    if (bal === 0n) continue;
-    hash = await walletClientFor(provider, account).writeContract({ address: v, abi: vaultAbi, functionName: "claim", args: [account] });
-    await confirmed(hash);
-  }
-  return hash;
+  return claimable + held;
 }

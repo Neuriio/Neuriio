@@ -101,3 +101,49 @@ export function liveTrades(logs, { launchpads, routers, quote: quoteToken, whype
   }
   return { trades, graduated };
 }
+
+// ------------------------------------------------------------------ Ascend (Elysium mainnet, user 2026-11-04)
+// Our tokens trade in Ascend's Uniswap v4 pools: one PoolManager, its Swap names the pool id; amounts are from the swapper's
+// side (negative = paid in) and sqrtPriceX96 is the price after. Same message shape as above; the trader is filled in by the
+// watcher from the transaction (the Swap's sender is the router). The stored copy (supabase indexer) has the same id.
+export const ascendSwapEvent = parseAbi([
+  "event Swap(bytes32 indexed id, address indexed sender, int128 amount0, int128 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick, uint24 fee)",
+])[0];
+
+const Q192 = 1n << 192n;
+/** quote per whole token from a v4 sqrtPriceX96 (currency1 per currency0, base units), as a JS number. */
+export function sqrtPriceOf(sqrtPriceX96, tokenIs0, decimals) {
+  if (sqrtPriceX96 === 0n) return null;
+  const sq = sqrtPriceX96 * sqrtPriceX96;
+  const scale = 10n ** BigInt(18 - decimals) * 10n ** 36n;
+  return Number(formatUnits(tokenIs0 ? (sq * scale) / Q192 : (Q192 * scale) / sq, 36));
+}
+
+/** One batch of Ascend PoolManager Swap logs -> live trades of our tokens (`poolToken`: pool id -> token, lowercase). */
+export function ascendLiveTrades(logs, { poolToken, quote, decimals = 6 }, ts) {
+  const q = lc(quote);
+  const abs = (v) => (v < 0n ? -v : v);
+  const out = [];
+  for (const l of [...logs].sort((a, b) => (a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : Number(a.blockNumber - b.blockNumber)))) {
+    if (l.eventName !== "Swap") continue;
+    const token = poolToken.get(lc(l.args.id));
+    if (!token) continue;
+    const tokenIs0 = token < q;
+    const [tokenDelta, quoteDelta] = tokenIs0 ? [l.args.amount0, l.args.amount1] : [l.args.amount1, l.args.amount0];
+    const isBuy = quoteDelta < 0n;
+    out.push({
+      tx: l.transactionHash,
+      logIndex: l.logIndex,
+      block: Number(l.blockNumber),
+      ts,
+      token,
+      venue: "pool",
+      side: isBuy ? "buy" : "sell",
+      trader: null,
+      hype: Number(formatUnits(abs(quoteDelta), decimals)),
+      tokens: Number(formatUnits(abs(tokenDelta), 18)),
+      priceHype: sqrtPriceOf(l.args.sqrtPriceX96, tokenIs0, decimals),
+    });
+  }
+  return out;
+}

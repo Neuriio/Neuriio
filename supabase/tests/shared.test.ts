@@ -433,3 +433,58 @@ test("referral: a Verify signature checks out only for the wallet, code and acco
   assert.ok(!(await check({ address: owner.address, message: verifyMessage("OTHER", account, owner.address), signature })));
   assert.ok(!(await check({ address: owner.address, message: verifyMessage("HYPERX", "0x2222222222222222222222222222222222222222", owner.address), signature })));
 });
+
+test("launch passes: the signed types match NeuriioLauncher's EIP-712 type strings word for word", async () => {
+  const { launchPassTypes, ftfPassTypes, LAUNCH_DATA } = await import("./launchPass.ts");
+  const { readFileSync } = await import("node:fs");
+  const sol = readFileSync(new URL("../../src/launch/NeuriioLauncher.sol", import.meta.url), "utf8");
+  const typeString = (name: string, fields: readonly { name: string; type: string }[]) => `${name}(${fields.map((f) => `${f.type} ${f.name}`).join(",")})`;
+  assert.ok(sol.includes(`"${typeString("LaunchPass", launchPassTypes.LaunchPass)}"`), "LaunchPass type string differs from the launcher's");
+  assert.ok(sol.includes(`"${typeString("FtfPass", ftfPassTypes.FtfPass)}"`), "FtfPass type string differs from the launcher's");
+  assert.equal(LAUNCH_DATA, "0x");
+});
+
+// ------------------------------------------------------------------ Ascend (mainnet) indexing
+const USDC6 = { address: "0x8000000000000000000000000000000000000008", decimals: 6, usd: 1 };
+const TOK_LO = "0x1000000000000000000000000000000000000001"; // sorts before USDC: the token is currency0
+const TOK_HI = "0xf00000000000000000000000000000000000000f"; // after: the token is currency1
+
+test("ascend: v4 sqrtPrice -> USDC per whole token, whichever side the token sorts", async () => {
+  const { sqrtPriceToQuote } = await import("./indexer.ts");
+  // $0.00001 a token = 1e-17 USDC base units per token wei
+  const sqrt = (x: number) => BigInt(Math.round(Math.sqrt(x) * 2 ** 96));
+  const lo = Number(sqrtPriceToQuote(sqrt(1e-17), TOK_LO, USDC6));
+  assert.ok(Math.abs(lo - 0.00001) / 0.00001 < 1e-9, `${lo}`);
+  const hi = Number(sqrtPriceToQuote(sqrt(1e17), TOK_HI, USDC6)); // currency1 = token: 1e17 token wei per USDC base unit
+  assert.ok(Math.abs(hi - 0.00001) / 0.00001 < 1e-9, `${hi}`);
+  assert.equal(sqrtPriceToQuote(0n, TOK_LO, USDC6), null);
+});
+
+test("ascend: a buy's USDC side includes the hook fee; a sell's doesn't add it", async () => {
+  const { ascendSwapToRow } = await import("./indexer.ts");
+  const base = { address: "0xPM", transactionHash: "0xabc" as const, logIndex: 4, blockNumber: 7n };
+  // token = currency0: a buy pays USDC (amount1 < 0) and receives tokens (amount0 > 0)
+  const buy = ascendSwapToRow({ ...base, args: { amount0: 5n * 10n ** 22n, amount1: -985_000n, sqrtPriceX96: 2n ** 96n } }, TOK_LO, USDC6, "0xTRADER", "t", 15_000n);
+  assert.deepEqual([buy.side, buy.quote_amount, buy.fee, buy.size, buy.trader], ["buy", "1", "0.015", "50000", "0xtrader"]);
+  const sell = ascendSwapToRow({ ...base, args: { amount0: -(5n * 10n ** 22n), amount1: 1_000_000n, sqrtPriceX96: 2n ** 96n } }, TOK_LO, USDC6, "0xT", "t", 15_000n);
+  assert.deepEqual([sell.side, sell.quote_amount, sell.fee], ["sell", "1", "0.015"]);
+  // token = currency1: a buy pays USDC through amount0
+  const buyHi = ascendSwapToRow({ ...base, args: { amount0: -985_000n, amount1: 5n * 10n ** 22n, sqrtPriceX96: 2n ** 96n } }, TOK_HI, USDC6, "0xT", "t", null);
+  assert.deepEqual([buyHi.side, buyHi.quote_amount, buyHi.fee], ["buy", "0.985", null]);
+});
+
+test("ascend: hook fees pair up by transaction and pool, from the USDC slot", async () => {
+  const { hookFeesByTx } = await import("./indexer.ts");
+  const pools = new Map([["0xpool_lo", TOK_LO], ["0xpool_hi", TOK_HI]]);
+  const log = (poolId: string, logIndex: number, f0: bigint, f1: bigint) => ({ address: "0xHOOK", transactionHash: "0xt" as const, logIndex, blockNumber: 1n, args: { poolId, hookLPfeeAmount0: f0, hookLPfeeAmount1: f1 } });
+  const m = hookFeesByTx([log("0xPOOL_LO", 3, 0n, 30n), log("0xpool_hi", 1, 20n, 0n), log("0xpool_lo", 2, 0n, 10n), log("0xother", 0, 9n, 9n)], pools, USDC6);
+  assert.deepEqual(m.get("0xt:0xpool_lo"), [10n, 30n]);
+  assert.deepEqual(m.get("0xt:0xpool_hi"), [20n]);
+  assert.equal(m.size, 2);
+});
+
+test("ascend: a launch through NeuriioLauncher trades in its pool from the start", async () => {
+  const { launcherLaunchedToToken } = await import("./indexer.ts");
+  const t = launcherLaunchedToToken({ address: "0xLAUNCHER", transactionHash: "0xl" as const, logIndex: 0, blockNumber: 9n, args: { token: "0xTOKEN", creator: "0xC", xUserId: 42n, handle: "Alice", category: 1, profileHash: "0xp", pool: "0xPOOL" } }, "t");
+  assert.deepEqual([t.address, t.launchpad, t.symbol, t.graduated, t.pair, t.virtual_hype, t.x_user_id], ["0xtoken", "0xlauncher", "ALICE", true, "0xpool", null, "42"]);
+});

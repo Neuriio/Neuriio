@@ -1,26 +1,26 @@
-// Staking (src/stake/NeuriioStaking.sol), from the Explore stake card: X tokens (once graduated), whose stakers share 40%
-// of that token's pool fees in USDC. Rewards drip in over an hour. Staking approves the staking contract once (unlimited,
-// sent silently like the router's). Neuriio is a points ledger now, not a token (lib/points.ts), so nothing here reads it.
+// Staking (src/stake/NeuriioTokenStaking.sol), from the Explore stake card: any token launched through Neuriio, from launch.
+// Its stakers share 40% of our 0.5% fee on that token's trades, in USDC, paid in by the fee router; rewards drip in over an
+// hour. Staking approves the staking contract once (unlimited, sent silently). Neuriio is a tally (lib/neuriio.ts), not here.
 import { erc20Abi, maxUint256, parseAbi, type Address, type EIP1193Provider } from "viem";
-import { deployment } from "./config";
+import { STAKING as STAKING_ADDRESS } from "./config";
 import { pub } from "./launch";
 import { confirmed, nonceAfter, walletClientFor } from "./tx";
 
-export const STAKING = deployment.staking as Address;
+export const STAKING = STAKING_ADDRESS;
 
 const stakingAbi = parseAbi([
   "function stake(address token, uint256 amount)",
   "function unstake(address token, uint256 amount)",
-  "function claim(address[] tokens, address to) returns (uint256 usdc, uint256 neuriio)",
+  "function claim(address[] tokens, address to) returns (uint256 usdc)",
   "function stakedOf(address user, address token) view returns (uint256)",
   "function totalStaked(address token) view returns (uint256)",
-  "function earned(address user, address token) view returns (uint256 usdc, uint256 neuriio)",
+  "function earned(address user, address token) view returns (uint256)",
   "function isStakeable(address token) view returns (bool)",
 ]);
 
 /** One pool, for one wallet: what's in the wallet, staked, and earned so far (USDC base units). */
 export type StakePosition = {
-  open: boolean; // stakeable (an X token: graduated)
+  open: boolean; // stakeable (launched through Neuriio)
   wallet: bigint; // the token in the wallet
   staked: bigint;
   totalStaked: bigint;
@@ -30,7 +30,7 @@ export type StakePosition = {
 
 export async function stakePosition(user: Address, token: Address): Promise<StakePosition> {
   const s = { address: STAKING, abi: stakingAbi } as const;
-  const [open, wallet, staked, totalStaked, [usdc], gas] = await Promise.all([
+  const [open, wallet, staked, totalStaked, usdc, gas] = await Promise.all([
     pub.readContract({ ...s, functionName: "isStakeable", args: [token] }),
     pub.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [user] }),
     pub.readContract({ ...s, functionName: "stakedOf", args: [user, token] }),
@@ -66,7 +66,7 @@ export async function claimStaking(provider: EIP1193Provider, account: Address, 
 
 /** Readable errors for staking. */
 export function friendlyStakeError(message: string) {
-  if (/NotStakeable/i.test(message)) return "Staking opens after graduation.";
+  if (/NotStakeable/i.test(message)) return "Only tokens launched through Neuriio can be staked.";
   if (/NothingToClaim/i.test(message)) return "Nothing to claim yet.";
   if (/InsufficientStake/i.test(message)) return "That's more than you have staked.";
   if (/insufficient funds/i.test(message)) return "Not enough HYPE for gas.";

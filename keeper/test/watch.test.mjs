@@ -110,3 +110,20 @@ test("USDC pool buy through the router: 6-decimal amount, price from Sync", () =
   assert.deepEqual([t.venue, t.trader, t.hype, t.tokens], ["pool", "0xcafe", 100, 7_000_000]);
   close(t.priceHype, 2933 / 199_900_000);
 });
+
+// ------------------------------------------------------------------ Ascend
+test("ascend: a v4 Swap in one of our pools becomes a live trade; other pools are ignored", async () => {
+  const { ascendLiveTrades } = await import("../src/watch/trades.mjs");
+  const quote = "0x8000000000000000000000000000000000000008";
+  const lo = "0x1000000000000000000000000000000000000001"; // token sorts first: currency0
+  const hi = "0xf00000000000000000000000000000000000000f";
+  const poolToken = new Map([["0xaa", lo], ["0xbb", hi]]);
+  const sw = (id, amount0, amount1, logIndex) => ({ eventName: "Swap", address: "0xPM", transactionHash: "0xt", logIndex, blockNumber: 5n, args: { id, amount0, amount1, sqrtPriceX96: 2n ** 96n } });
+  const trades = ascendLiveTrades([sw("0xBB", -2_000_000n, 3n * 10n ** 18n, 2), sw("0xaa", 10n ** 18n, -1_000_000n, 1), sw("0xcc", 1n, -1n, 0)], { poolToken, quote, decimals: 6 }, 123);
+  assert.deepEqual(trades.map((t) => [t.token, t.side, t.hype, t.tokens, t.logIndex]), [
+    [lo, "buy", 1, 1, 1],
+    [hi, "buy", 2, 3, 2],
+  ]);
+  assert.equal(trades[0].priceHype, 1e12); // 1 USDC base unit per token wei = $1e12 a token (just checks the scaling)
+  assert.equal(trades[0].trader, null);
+});

@@ -12,13 +12,17 @@
 //             persistent Realtime websocket (~75-135 ms to a viewer, measured 2026-09-29) instead of the REST
 //             broadcast endpoint (~300-490 ms); REST only while a token's channel is still joining.
 //
+//   Ascend mode (a deployments file with "ascend", i.e. ../deployments/elysium-mainnet.json; user 2026-11-04): follows only
+//            Swap logs from Ascend's Uniswap v4 PoolManager for our tokens' pool ids (from NeuriioLauncher, re-read each
+//            minute), and fills each trade's trader from its transaction. No curve, no graduations.
+//
 // env: SUPABASE_URL, SUPABASE_SERVICE_KEY (the project's secret key, sb_secret_...; run-watcher.sh fetches it via the CLI),
 //      WS_URL, RPC_URL ("primary,fallback"), POLL_MS (default 500), DEPLOYMENTS (default ../deployments/elysium-testnet.json)
 import { readFileSync } from "node:fs";
 import { RealtimeClient } from "@supabase/realtime-js";
 import { createPublicClient, parseAbi, parseEventLogs, webSocket } from "viem";
 import { makeTransport } from "./src/rpc.mjs";
-import { liveTrades, priceOf, watchEvents } from "./src/watch/trades.mjs";
+import { ascendLiveTrades, ascendSwapEvent, liveTrades, priceOf, watchEvents } from "./src/watch/trades.mjs";
 
 const env = (k, d) => process.env[k] ?? d;
 const dep = JSON.parse(readFileSync(new URL(env("DEPLOYMENTS", "../deployments/elysium-testnet.json"), import.meta.url)));
@@ -30,9 +34,11 @@ const RPC_URL = env("RPC_URL", "https://testnet-rpc.elysium.kinetiq.xyz");
 const POLL_MS = Number(env("POLL_MS", 500));
 
 const lc = (a) => a.toLowerCase();
+const ASCEND_MODE = !!dep.ascend;
 const ctx = {
+  poolToken: new Map(), // Ascend mode: pool id -> token, from NeuriioLauncher
   launchpads: new Set(), // every Launchpad version (LaunchRegistry.launchpads), loaded below
-  routers: new Set((dep.routers ?? [dep.swapRouter]).map(lc)),
+  routers: new Set((dep.routers ?? (dep.swapRouter ? [dep.swapRouter] : [])).map(lc)),
   quote: lc(dep.usdc ?? dep.whype), // the world's quote token: USDC (the old world: WHYPE)
   decimals: 18, // read from the quote token below
   pairToken: new Map(), // pair -> token, filled from the factory, then from Graduated events
@@ -78,6 +84,46 @@ async function loadLaunchpads() {
   return changed;
 }
 const addresses = () => [...ctx.launchpads, ...ctx.routers, ...ctx.pairToken.keys()];
+
+const launcherAbi = parseAbi([
+  "struct Launch { address creator; uint64 xUserId; uint8 category; bytes32 profileHash; bytes32 pool; string handle; }",
+  "function allTokensLength() view returns (uint256)",
+  "function allTokens(uint256) view returns (address)",
+  "function launchOf(address token) view returns (Launch)",
+]);
+/** Ascend mode: every token our launcher launched and its pool id; true if new ones appeared. */
+async function loadPools() {
+  const n = Number(await http.readContract({ address: dep.launcher, abi: launcherAbi, functionName: "allTokensLength" }));
+  let changed = false;
+  for (let i = ctx.poolToken.size; i < n; i++) {
+    const token = lc(await http.readContract({ address: dep.launcher, abi: launcherAbi, functionName: "allTokens", args: [BigInt(i)] }));
+    const { pool } = await http.readContract({ address: dep.launcher, abi: launcherAbi, functionName: "launchOf", args: [token] });
+    ctx.poolToken.set(lc(pool), token);
+    changed = true;
+  }
+  return changed;
+}
+/** Ascend mode: the PoolManager's Swaps in our pools, for a block range (topic filter on the pool id, in chunks). */
+async function ascendLogs(fromBlock, toBlock) {
+  const ids = [...ctx.poolToken.keys()];
+  const out = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    out.push(...(await http.getLogs({ address: dep.ascend.poolManager, event: ascendSwapEvent, args: { id: ids.slice(i, i + 50) }, fromBlock, toBlock })));
+  }
+  return out;
+}
+/** Ascend mode: the trader of each trade is its transaction's sender (one read per transaction). */
+async function fillTraders(trades) {
+  const from = new Map();
+  await Promise.all([...new Set(trades.map((t) => t.tx))].map(async (hash) => {
+    try {
+      from.set(hash, lc((await http.getTransaction({ hash })).from));
+    } catch (e) {
+      log("tx_error", { tx: hash, error: e.shortMessage ?? e.message });
+    }
+  }));
+  for (const t of trades) t.trader = from.get(t.tx) ?? null;
+}
 
 // ------------------------------------------------------------------ broadcast
 
@@ -192,9 +238,17 @@ async function handle(logs, source) {
   for (const [n, group] of [...byBlock].sort((a, b) => Number(a[0] - b[0]))) {
     const received = Date.now();
     const ts = timestampOf(group);
-    const { trades: raw, graduated } = liveTrades(group, ctx, ts);
-    const trades = await completePoolTrades(raw, ts);
-    await priceMissing(trades, n);
+    let trades, graduated;
+    if (ASCEND_MODE) {
+      trades = ascendLiveTrades(group, ctx, ts);
+      graduated = [];
+      await fillTraders(trades);
+    } else {
+      const live = liveTrades(group, ctx, ts);
+      graduated = live.graduated;
+      trades = await completePoolTrades(live.trades, ts);
+      await priceMissing(trades, n);
+    }
     await broadcast(trades);
     await broadcastGraduated(graduated); // after its trades, so charts already show the last curve buy
     if (trades.length) log("trades", { block: Number(n), n: trades.length, source, ms: Date.now() - received });
@@ -261,10 +315,12 @@ let ws = null;
 
 function subscribe() {
   if (!WS_URL) return; // polling only
+  if (ASCEND_MODE && !ctx.poolToken.size) return; // nothing launched yet
   ws ??= createPublicClient({ transport: webSocket(WS_URL, { keepAlive: { interval: 15_000 }, reconnect: { attempts: Infinity, delay: 2_000 } }) });
   unwatch = ws.watchEvent({
-    address: addresses(),
-    events: watchEvents,
+    ...(ASCEND_MODE
+      ? { address: dep.ascend.poolManager, event: ascendSwapEvent, args: { id: [...ctx.poolToken.keys()] } }
+      : { address: addresses(), events: watchEvents }),
     onLogs: (logs) => {
       wsHealthy = true;
       handle(logs, "ws").catch((e) => log("handle_error", { error: e.message }));
@@ -292,7 +348,9 @@ async function poll() {
     const quiet = wsHealthy ? 2n : 0n; // leave the newest blocks to the websocket when it's up
     if (head - quiet > polled) {
       const to = head - quiet > polled + 500n ? polled + 500n : head - quiet;
-      const logs = await http.getLogs({ address: addresses(), events: watchEvents, fromBlock: polled + 1n, toBlock: to });
+      const logs = ASCEND_MODE
+        ? await ascendLogs(polled + 1n, to)
+        : await http.getLogs({ address: addresses(), events: watchEvents, fromBlock: polled + 1n, toBlock: to });
       await handle(logs, "poll");
       polled = to;
     }
@@ -305,6 +363,20 @@ async function poll() {
 // ------------------------------------------------------------------ start
 
 ctx.decimals = Number(await http.readContract({ address: ctx.quote, abi: parseAbi(["function decimals() view returns (uint8)"]), functionName: "decimals" }));
+if (ASCEND_MODE) {
+  await loadPools();
+  // join the newest tokens' channels now, so their next trade already goes out over the websocket
+  for (const token of [...ctx.poolToken.values()].slice(-(MAX_CHANNELS - 1))) channelFor(`trades:${token}`);
+  log("start", { mode: "ascend", launcher: dep.launcher, poolManager: dep.ascend.poolManager, quote: ctx.quote, decimals: ctx.decimals, tokens: ctx.poolToken.size, ws: WS_URL });
+  subscribe();
+  poll();
+  // a new launch: watch its pool too (no restart needed)
+  setInterval(() => {
+    loadPools()
+      .then((changed) => changed && (log("pools", { tokens: ctx.poolToken.size }), resubscribe()))
+      .catch((e) => log("pools_error", { error: e.shortMessage ?? e.message }));
+  }, 60_000).unref();
+} else {
 await loadLaunchpads();
 await loadPairs();
 // join the newest tokens' channels now, so their next trade already goes out over the websocket
@@ -322,3 +394,4 @@ setInterval(() => {
     .then((changed) => changed && (log("launchpads", { launchpads: [...ctx.launchpads] }), resubscribe()))
     .catch((e) => log("launchpads_error", { error: e.shortMessage ?? e.message }));
 }, 60_000).unref();
+}

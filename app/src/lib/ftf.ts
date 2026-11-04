@@ -6,6 +6,7 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import type { CategoryId, SectorId } from "./launch";
 import { SUPABASE_URL } from "./config";
+import { poll } from "./poll";
 
 export const DEMO = import.meta.env.DEV && new URLSearchParams(location.search).has("demo");
 
@@ -38,10 +39,11 @@ export type FtfPassResponse = {
     memberXIds: string[];
     members: `0x${string}`[];
     profileHash: `0x${string}`;
+    launchData: `0x${string}`;
     deadline: string;
   };
   signature: `0x${string}`;
-  launchpad: `0x${string}`; // the NeuriioPad the pass is signed for
+  launchpad: `0x${string}`; // the NeuriioLauncher the pass is signed for
 };
 type NoticeFrom = { x_user_id: string; x_handle?: string; x_name?: string | null; x_pfp_url?: string | null };
 export type Notice =
@@ -113,10 +115,9 @@ export function useNotificationsPoller() {
       return;
     }
     refreshFn = refresh;
-    refresh();
-    const id = setInterval(refresh, 20_000);
+    const stop = poll(refresh, 20_000);
     return () => {
-      clearInterval(id);
+      stop();
       refreshFn = null;
     };
   }, [on, refresh]);

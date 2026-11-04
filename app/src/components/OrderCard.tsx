@@ -14,6 +14,7 @@ import { QUOTE } from "../lib/config";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { elysiumProvider } from "../lib/tx";
 import { LaunchCheckCard } from "./LaunchCheckCard";
+import { poll } from "../lib/poll";
 
 const QUICK_BUY = ["5", "25", "100", "250"]; // USDC, until you set your own (the pencil)
 const QUICK_KEY = "neuriio.quickBuy";
@@ -79,11 +80,10 @@ export function OrderCard({ t, hypeUsd, fixedSide }: { t: TokenStat | null; hype
         // approve the router in the background now, so the trade itself is one transaction
         if (wallet) prepareTrading(() => elysiumProvider(wallet), account, t.address as Address, b);
       }, () => {});
-    load();
-    const id = setInterval(load, 15_000);
+    const stop = poll(load, 60_000, { onChain: true });
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [t?.address, account, loggedIn, nonce]);
 
@@ -357,11 +357,10 @@ function TradeBars({ address, nonce }: { address: string; nonce: number }) {
         }
         if (alive) setDays([...byDay].map(([day, vol]) => ({ day, vol })));
       }, () => {});
-    load();
-    const id = setInterval(load, 60_000);
+    const stop = poll(load, 60_000);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [address, nonce]);
   return (

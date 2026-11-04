@@ -15,7 +15,7 @@
 //   remove  { draftId, xUserId }       founder removes someone (not after launch)
 //   leave   { draftId }                a member leaves (not the founder)
 //   cancel  { draftId }                founder cancels the draft
-//   pass    { draftId }                founder, with exactly 4 accepted: a signed FtfPass for Launchpad.launchFtf
+//   pass    { draftId }                founder, with exactly 4 accepted: a signed FtfPass for NeuriioLauncher.launchFtf
 //
 // Testnet HYPE requests (the header button; admins = app_config.hype_admins, they see requests in their inbox):
 //   hypeStatus {}                      your latest request: { status: none | pending | sent | dismissed, at, claimed,
@@ -39,6 +39,7 @@ import {
   canonicalFtfProfile,
   FTF_MEMBERS,
   ftfPassTypes,
+  LAUNCH_DATA,
   launchpadDomain,
   PASS_TTL_SECONDS,
   validFtfIdentity,
@@ -51,7 +52,7 @@ import { PfpError, type PfpPrint, printImage, printPictureAt } from "../_shared/
 
 const CHAIN_ID = Number(env("CHAIN_ID"));
 const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS")); // the current version: passes are signed for it
-const REGISTRY = getAddress(env("REGISTRY_ADDRESS")); // FTF tickers + reserved tickers, across every version
+const REGISTRY = LAUNCHPAD; // NeuriioLauncher keeps FTF tickers + reserved tickers itself
 const signer = privateKeyToAccount(env("LAUNCH_SIGNER_KEY") as `0x${string}`);
 const chain = createPublicClient({ transport: http(env("RPC_URL")) });
 const db = createClient(env("SUPABASE_URL"), env("NEURIIO_DB_KEY"), { auth: { persistSession: false } });
@@ -64,10 +65,19 @@ const ACTIONS_PER_MINUTE = 30; // per X account
 const padAbi = parseAbi([
   "function launchSigner() view returns (address)",
 ]);
+/** Launches are open when the launcher isn't paused and has its Ascend adapter plugged in. */
+async function launchesOpen(): Promise<boolean> {
+  const [paused, adapter] = await Promise.all([
+    chain.readContract({ address: LAUNCHPAD, abi: openAbi, functionName: "paused" }),
+    chain.readContract({ address: LAUNCHPAD, abi: openAbi, functionName: "adapter" }),
+  ]);
+  return !paused && adapter !== zeroAddress;
+}
+const openAbi = parseAbi(["function paused() view returns (bool)", "function adapter() view returns (address)"]);
+
 const registryAbi = parseAbi([
   "function tokenOfFtfTicker(bytes32) view returns (address)",
   "function reservedTicker(bytes32) view returns (bool)",
-  "function isLaunchpad(address) view returns (bool)",
 ]);
 
 type Draft = {
@@ -413,7 +423,7 @@ async function pass(who: XUser, body: Body) {
   if (await tickerTakenOnChain(d.ticker)) fail(409, `$${d.ticker} is already an FTF`);
   const [onchainSigner, approved] = await Promise.all([
     chain.readContract({ address: LAUNCHPAD, abi: padAbi, functionName: "launchSigner" }),
-    chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "isLaunchpad", args: [LAUNCHPAD] }),
+    launchesOpen(),
   ]);
   if (!approved || onchainSigner.toLowerCase() !== signer.address.toLowerCase()) fail(503, "Launches are paused");
 
@@ -443,6 +453,7 @@ async function pass(who: XUser, body: Body) {
     memberXIds: ordered.map((m) => BigInt(m.x_user_id)) as [bigint, bigint, bigint, bigint],
     members: wallets.map((w) => getAddress(w!)) as [`0x${string}`, `0x${string}`, `0x${string}`, `0x${string}`],
     profileHash: d.profile_hash as `0x${string}`,
+    launchData: LAUNCH_DATA,
     deadline,
   };
   if (message.founder.toLowerCase() !== who.wallet.toLowerCase()) fail(409, "Launch it from your own Neuriio wallet");
@@ -477,7 +488,7 @@ const faucet = faucetKey
     transport: http(env("RPC_URL")),
   })
   : null;
-/** The world's USDC: the current NeuriioPad's quote token (read once). */
+/** The world's USDC: the launcher's quote token (read once). */
 let usdcAddress: `0x${string}` | null = null;
 async function usdc() {
   usdcAddress ??= await chain.readContract({ address: LAUNCHPAD, abi: parseAbi(["function quote() view returns (address)"]), functionName: "quote" });

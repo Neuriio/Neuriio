@@ -1,13 +1,13 @@
 // POST /functions/v1/launch-pass
 //   headers: Authorization: Bearer <Privy access token>
 //   body:    { category: "trader" | ..., profile: { about, links: [{ label, url }] } }
-//   200:     { pass, signature, profileHash, launchpad, chainId }  -> Launchpad.launch(pass, signature, minTokensOut)
+//   200:     { pass, signature, profileHash, launchpad, chainId }  -> NeuriioLauncher.launch(pass, signature, quoteIn, minTokensOut)
 //
 // Verifies the Privy login, reads the user's X account + Neuriio (embedded) wallet from Privy, stores the profile,
 // and signs a LaunchPass. The chain enforces one token per X user / wallet / handle; we pre-check to fail early. No pass is
 // signed for a ticker sharing its first 4 characters with one already launched, or for a copy of a launched picture.
 //
-// Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET, LAUNCH_SIGNER_KEY, LAUNCHPAD_ADDRESS, CHAIN_ID, RPC_URL
+// Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET, LAUNCH_SIGNER_KEY, LAUNCHPAD_ADDRESS (the NeuriioLauncher), CHAIN_ID (99901), RPC_URL
 // (SUPABASE_URL is provided by Supabase; NEURIIO_DB_KEY = the project's sb_secret key, set 2026-10-21 after the Railway leak.)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -18,6 +18,7 @@ import {
   CATEGORIES,
   chainCategory,
   type Category,
+  LAUNCH_DATA,
   launchpadDomain,
   launchPassTypes,
   PASS_TTL_SECONDS,
@@ -32,7 +33,7 @@ const PRIVY_APP_ID = env("PRIVY_APP_ID");
 const PRIVY_APP_SECRET = env("PRIVY_APP_SECRET");
 const CHAIN_ID = Number(env("CHAIN_ID"));
 const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS")); // the current version: passes are signed for it
-const REGISTRY = getAddress(env("REGISTRY_ADDRESS")); // identity across every version
+const REGISTRY = LAUNCHPAD; // NeuriioLauncher keeps identity itself (one token per X account / wallet / handle)
 const signer = privateKeyToAccount(env("LAUNCH_SIGNER_KEY") as `0x${string}`);
 const chain = createPublicClient({ transport: http(env("RPC_URL")) });
 const db = createClient(env("SUPABASE_URL"), env("NEURIIO_DB_KEY"), { auth: { persistSession: false } });
@@ -51,12 +52,21 @@ function failed(what: string, detail: string) {
 }
 
 const launchpadAbi = parseAbi(["function launchSigner() view returns (address)"]);
+/** Launches are open when the launcher isn't paused and has its Ascend adapter plugged in. */
+async function launchesOpen(): Promise<boolean> {
+  const [paused, adapter] = await Promise.all([
+    chain.readContract({ address: LAUNCHPAD, abi: openAbi, functionName: "paused" }),
+    chain.readContract({ address: LAUNCHPAD, abi: openAbi, functionName: "adapter" }),
+  ]);
+  return !paused && adapter !== zeroAddress;
+}
+const openAbi = parseAbi(["function paused() view returns (bool)", "function adapter() view returns (address)"]);
+
 const registryAbi = parseAbi([
   "function tokenOfXUser(uint64) view returns (address)",
   "function tokenOfCreator(address) view returns (address)",
   "function tokenOfHandle(bytes32) view returns (address)",
   "function reservedTicker(bytes32) view returns (bool)",
-  "function isLaunchpad(address) view returns (bool)",
 ]);
 
 Deno.serve(async (req) => {
@@ -106,7 +116,7 @@ Deno.serve(async (req) => {
     reg("tokenOfCreator", creator),
     reg("tokenOfHandle", keccak256(toBytes(handle.toLowerCase()))),
     chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "reservedTicker", args: [keccak256(toBytes(handle.toUpperCase()))] }),
-    chain.readContract({ address: REGISTRY, abi: registryAbi, functionName: "isLaunchpad", args: [LAUNCHPAD] }),
+    launchesOpen(),
     chain.readContract({ address: LAUNCHPAD, abi: launchpadAbi, functionName: "launchSigner" }),
   ]);
   const mine = [byX, byWallet].find((a) => a !== zeroAddress);
@@ -158,6 +168,7 @@ Deno.serve(async (req) => {
     handle,
     category: chainCategory(category),
     profileHash: profile.hash,
+    launchData: LAUNCH_DATA,
     deadline,
   };
   const signature = await signer.signTypedData({

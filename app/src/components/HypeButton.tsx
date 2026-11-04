@@ -13,6 +13,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { Check, Droplet, ExternalLink, X } from "lucide-react";
 import { DEMO, ftfCall, type HypeClaim, type HypeStatus } from "../lib/ftf";
 import { EASE_OUT } from "../lib/motion";
+import { poll } from "../lib/poll";
 
 const AGAIN_MS = 24 * 60 * 60 * 1000;
 const AMOUNT = "0.2";
@@ -45,8 +46,7 @@ export function HypeButton() {
   // while a manual request is open, check every minute so "Requested" turns into "HYPE sent"
   useEffect(() => {
     if (st?.status !== "pending") return;
-    const id = setInterval(load, 60_000);
-    return () => clearInterval(id);
+    return poll(load, 60_000, { now: false });
   }, [st?.status, load]);
 
   if (!on || !st) return null;

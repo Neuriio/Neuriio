@@ -3,7 +3,8 @@
 import type { ConnectedWallet } from "@privy-io/react-auth";
 import { createWalletClient, custom, type Address, type EIP1193Provider, type Hash } from "viem";
 import { elysiumTestnet } from "../chain";
-import { pub } from "./launch";
+import { keyedFor, pub, viaKey } from "./launch";
+import { chainChanged } from "./poll";
 
 /** The Privy wallet's provider, switched to Elysium. */
 export async function elysiumProvider(wallet: ConnectedWallet): Promise<EIP1193Provider> {
@@ -22,7 +23,10 @@ export async function nonceAfter(hash: Hash) {
 
 /** Waits for a transaction and throws if it reverted. */
 export async function confirmed(hash: Hash) {
-  const receipt = await pub.waitForTransactionReceipt({ hash });
+  // our key while waiting and for 5 s after: the receipt and the balance reads right after come from the same up-to-date node
+  const receipt = await viaKey(() => pub.waitForTransactionReceipt({ hash }));
+  keyedFor(5_000);
+  chainChanged(); // balances, positions and stakes re-read now (lib/poll.ts), reverted or not: gas was spent
   if (receipt.status !== "success") throw new Error("Transaction reverted");
   return receipt;
 }

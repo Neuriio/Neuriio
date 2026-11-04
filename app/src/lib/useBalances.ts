@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { fetchBalances, type Balances } from "./balances";
+import { poll } from "./poll";
 
-/** Polls the wallet's balances while an address is known. Keeps the last good value on errors. */
-export function useBalances(address: Address | undefined, everyMs = 10_000) {
+/** The wallet's balances while an address is known: read on open, right after this browser's own transactions, when
+ *  the tab is shown again, and every `everyMs` while visible (catches tokens someone else sent). Hidden tabs don't
+ *  read. Keeps the last good value on errors. */
+export function useBalances(address: Address | undefined, everyMs = 60_000) {
   const [balances, setBalances] = useState<Balances | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,11 +18,10 @@ export function useBalances(address: Address | undefined, everyMs = 10_000) {
       fetchBalances(address)
         .then((b) => alive && (setBalances(b), setError(null)))
         .catch((e: Error) => alive && setError(e.message));
-    load();
-    const id = setInterval(load, everyMs);
+    const stop = poll(load, everyMs, { onChain: true });
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [address, everyMs]);
 

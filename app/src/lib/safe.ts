@@ -17,15 +17,14 @@ import {
   type Hex,
 } from "viem";
 import { elysiumTestnet } from "../chain";
-import { ELYSIUM_RPC } from "./config";
+import { ELYSIUM_RPC, PUBLIC_RPC } from "./config";
 
 /** Reads: Elysium's public RPC first (it rate-limits bursts per visitor), the app's own RPC as the backup; contract
  *  reads made together go out as one multicall. */
-export const PUBLIC_RPC = "https://testnet-rpc.elysium.kinetiq.xyz";
 export const safePub = createPublicClient({
   chain: elysiumTestnet,
   batch: { multicall: true },
-  transport: fallback([http(PUBLIC_RPC), http(ELYSIUM_RPC)]),
+  transport: PUBLIC_RPC ? fallback([http(PUBLIC_RPC), http(ELYSIUM_RPC)]) : http(ELYSIUM_RPC),
 });
 
 /** The Neuriio Safe on Elysium testnet (2026-10-22): 2 of 3. */

@@ -25,6 +25,7 @@ import { profileOf, type Profile } from "../lib/profile";
 import { tokenCreatorEarned } from "../lib/fees";
 import { CATEGORIES, launchedTokenOf, SECTORS } from "../lib/launch";
 import { DEMO, displayName, getToken, handleOf, searchTokens, tickerOf, topTokens, type TokenStat } from "../lib/explore";
+import { poll } from "../lib/poll";
 
 type Post = {
   id: string;
@@ -81,11 +82,10 @@ export function FeedCard() {
         ([r, mine]) => alive && setList(r.map((x) => ({ ...toPost(x), liked: mine.has(x.id) }))),
         () => {},
       );
-    load();
-    const id = setInterval(load, 15_000);
+    const stop = poll(load, 15_000);
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [myX]);
   const patch = (id: string, f: (p: Post) => Post) => {

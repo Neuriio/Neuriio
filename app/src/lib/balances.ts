@@ -30,7 +30,7 @@ function arrange(byToken: Map<string, TokenBalance>): VenueBalance {
 }
 
 /** token name -> USD price, from each TOKEN/USDC spot market on that HyperCore network.
- *  Cached 60 s per network: spotMetaAndAssetCtxs is a weight-20 call and balances refresh every 10 s. */
+ *  Cached 60 s per network: spotMetaAndAssetCtxs is a weight-20 call and several panels read balances. */
 const priceCache = new Map<InfoClient, { at: number; prices: Promise<Map<string, number>> }>();
 const PRICE_TTL_MS = 60_000;
 function spotPrices(client: InfoClient) {

@@ -11,6 +11,7 @@ import { compactUsd, shortAddress, usd } from "../lib/format";
 import { DEMO_HISTORY, DEMO_PORTFOLIO, fetchPortfolio, recordSnapshot, type Portfolio, type Snapshot } from "../lib/portfolio";
 import { WALLETS } from "../lib/wagmi";
 import { DotNumber } from "./DotNumber";
+import { poll } from "../lib/poll";
 
 export function PortfolioPanel() {
   const { authenticated } = usePrivy();
@@ -50,11 +51,10 @@ export function PortfolioPanel() {
         },
         () => {},
       );
-    load();
-    const id = setInterval(load, 30_000);
+    const stop = poll(load, 60_000, { onChain: true });
     return () => {
       alive = false;
-      clearInterval(id);
+      stop();
     };
   }, [key]);
 
