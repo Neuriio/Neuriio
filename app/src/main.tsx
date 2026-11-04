@@ -4,7 +4,8 @@ import { Paused } from "./Paused";
 
 // Site-wide pause: every page shows this and the app never loads, so visitors make no RPC, Privy or Supabase calls.
 // Local dev always loads the app. Set to false to bring the app back in production.
-const PAUSED = !import.meta.env.DEV;
+// Unpaused 2026-11-04 for someone to look around (user); set back to !import.meta.env.DEV afterwards.
+const PAUSED = false;
 
 if (PAUSED) {
   document.body.style.margin = "0";
