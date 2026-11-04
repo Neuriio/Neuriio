@@ -1,5 +1,5 @@
 // /launch — "Tokenize yourself". First a single Launch button (flickering dot square), then the center card: live token
-// preview on the left, short steps on the right (type -> sector -> profile -> launch; the button opens on Sector). Launch = our backend signs a one-time pass for your X account, then your
+// preview on the left, short steps on the right (type -> category -> profile -> launch; the button opens on Category). Launch = our backend signs a one-time pass for your X account, then your
 // Neuriio wallet sends Launchpad.launch (with an optional first buy). Your token is always "@handle" / HANDLE.
 // Tokens are memes: the copy says back / support / trade, never invest.
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -7,28 +7,24 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowLeft,
   ArrowRight,
-  Atom,
-  Bot,
-  BrainCircuit,
   Brush,
+  Building2,
   ChartCandlestick,
   Check,
   ExternalLink,
   Flame,
   Hammer,
-  Landmark,
+  Laugh,
   LoaderCircle,
+  Lock,
   Megaphone,
-  MemoryStick,
   Microscope,
-  Orbit,
   Plus,
   Rocket,
   Upload,
   UserRound,
   Users,
   X,
-  Zap,
 } from "lucide-react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { formatEther, formatUnits, type Address, type EIP1193Provider } from "viem";
@@ -41,13 +37,10 @@ import {
   ABOUT_MIN,
   CATEGORIES,
   type CategoryId,
-  curveProgress,
   type CurveParams,
-  estimateFirstBuy,
   fetchCurveParams,
   approveFirstBuy,
   checkPassPad,
-  graduationMcap,
   LAUNCHPAD,
   launchArgs,
   launchBalances,
@@ -57,8 +50,6 @@ import {
   launchpadAbi,
   MAX_LINKS,
   requestLaunchPass,
-  SECTORS,
-  type SectorId,
 } from "../lib/launch";
 import { EASE_OUT } from "../lib/motion";
 import { QUOTE, SUPABASE_URL } from "../lib/config";
@@ -78,31 +69,24 @@ const ICONS: Record<CategoryId, typeof Flame> = {
   influencer: Megaphone,
   builder: Hammer,
   creator: Brush,
-};
-const SECTOR_ICONS: Record<SectorId, typeof Flame> = {
-  robotics: Bot,
-  quantum: Atom,
-  finance: Landmark,
-  ai: BrainCircuit,
-  energy: Zap,
-  memory: MemoryStick,
-  space: Orbit,
+  meme_account: Laugh,
+  founders: Building2,
 };
 type Mode = "personal" | "ftf";
-// "sector" is two parts in one step: the sector, then how you're active in it (the category)
-type StepId = "type" | "members" | "sector" | "profile" | "launch";
+type StepId = "type" | "members" | "category" | "profile" | "launch";
 const STEP_IDS: Record<Mode, StepId[]> = {
-  personal: ["type", "sector", "profile", "launch"],
-  ftf: ["type", "members", "sector", "profile", "launch"],
+  personal: ["type", "category", "profile", "launch"],
+  ftf: ["type", "members", "category", "profile", "launch"],
 };
 const STEP_LABEL: Record<StepId, string> = {
   type: "Type",
   members: "Members",
-  sector: "Sector",
+  category: "Category",
   profile: "Profile",
   launch: "Launch",
 };
 const FTF_SIZE = 4;
+const X_LABEL = /^(x|twitter)$/i; // a personal token's X link is its account's: nothing else can call itself that
 const STAGES = ["Checking your X account", "Launching on Elysium", "You're live"] as const;
 const QUICK_BUYS = ["0", "10", "50", "100"]; // USDC
 const TESTNET_PARAMS: CurveParams = { virtualQuote: 1000, feeBps: 100 }; // until the chain answers
@@ -169,7 +153,7 @@ type ViewProps = {
 
 function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider }: ViewProps) {
   const reduce = useReducedMotion();
-  // the Launch button opens on Sector, as a personal token (user, 2026-10-17); Back reaches Type for an FTF
+  // the Launch button opens on Category, as a personal token (user, 2026-10-17); Back reaches Type for an FTF
   const [mode, setMode] = useState<Mode | null>("personal");
   const [personalToken, setPersonalToken] = useState<Address | null>(null);
   const [step, setStep] = useState(1);
@@ -180,11 +164,10 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   const [invites, setInvites] = useState(["", "", ""]);
   const [ftfBusy, setFtfBusy] = useState(false);
   const [ftfError, setFtfError] = useState<string | null>(null);
-  const [sector, setSector] = useState<SectorId | null>(null);
-  const [sectorPart, setSectorPart] = useState<"sector" | "role">("sector");
   const [category, setCategory] = useState<CategoryId | null>(null);
   const [about, setAbout] = useState("");
-  const [links, setLinks] = useState<Link[]>([{ label: "X", url: `https://x.com/${handle}` }]);
+  const xLink: Link = { label: "X", url: `https://x.com/${handle}` };
+  const [links, setLinks] = useState<Link[]>([xLink]);
   const [firstBuy, setFirstBuy] = useState("0");
   const [agreed, setAgreed] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: "form" });
@@ -206,6 +189,11 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
     setMode((m) => (m === "personal" ? null : m));
     setStep((i) => (mode === "personal" ? 0 : i));
   }, [personalToken]);
+
+  // a personal token's first link is always its X account, locked (user, 2026-11-01). An FTF has no one account, so its links stay open.
+  useEffect(() => {
+    if (mode === "personal" && links[0]?.url !== xLink.url) setLinks([xLink, ...links.filter((l) => l.url !== xLink.url)]);
+  }, [mode]);
 
   const ids = STEP_IDS[mode ?? "personal"];
   const current = ids[step];
@@ -235,10 +223,6 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
     const v = await ftfCall<FtfView>(tokenFor, "mine");
     setFtf(v);
     if (v.draft) {
-      if (v.draft.sector) {
-        setSector(v.draft.sector);
-        setSectorPart("role");
-      }
       if (v.draft.category) setCategory(v.draft.category);
       if (v.draft.about) setAbout(v.draft.about);
       if (v.draft.links?.length) setLinks(v.draft.links);
@@ -293,11 +277,11 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   }
 
   const buy = Number(firstBuy) || 0;
-  const est = useMemo(() => estimateFirstBuy(buy, params), [buy, params]);
   // tickers read in lower case with no "$" (user, 2026-10-18); on-chain they're in caps
   const ticker = (mode === "ftf" ? ftf.draft?.ticker ?? ftfTicker.trim() : handle).toLowerCase() || "ticker";
   const cleanLinks = links.filter((l) => l.label.trim() && l.url.trim());
-  const linksOk = cleanLinks.every((l) => /^https:\/\/\S+\.\S+/.test(l.url.trim()));
+  const fakeX = (l: Link, i: number) => mode === "personal" && i > 0 && X_LABEL.test(l.label.trim());
+  const linksOk = cleanLinks.every((l) => /^https:\/\/\S+\.\S+/.test(l.url.trim())) && !links.some(fakeX);
   const aboutLen = about.trim().length;
   const ftfTickerOk = FTF_TICKER_RE.test(ftfTicker.trim());
   const ftfNameOk = ftfName.trim().length > 0 && ftfName.trim().length <= 32 && FTF_NAME_RE.test(ftfName.trim());
@@ -307,7 +291,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   const canNext = {
     type: mode !== null && !(mode === "personal" && personalToken),
     members: acceptedCount === FTF_SIZE,
-    sector: sector !== null && category !== null && sectorPart === "role",
+    category: category !== null,
     profile: aboutLen >= ABOUT_MIN && aboutLen <= ABOUT_MAX && linksOk,
     launch: agreed && buy >= 0,
   }[current];
@@ -344,7 +328,6 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
       const token = await getAccessToken!();
       if (!token) throw new Error("Session expired, log in again");
       const pass = await requestLaunchPass(token, {
-        sector: sector!,
         category: category!,
         profile: { about: about.trim(), links: cleanLinks.map((l) => ({ label: l.label.trim(), url: l.url.trim() })) },
       });
@@ -401,24 +384,11 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
               <span className="lp-members-count">{acceptedCount}/{FTF_SIZE} in</span>
             </div>
           )}
-          <div className={`lp-chip${sector ? "" : " lp-chip-empty"}`}>
-            {sector
-              ? [SECTORS.find((x) => x.id === sector)!.label, category && CATEGORIES.find((c) => c.id === category)!.label].filter(Boolean).join(" · ")
-              : "Pick a sector"}
-          </div>
-          <CurveChart progress={curveProgress(buy, params)} />
+          <div className={`lp-chip${category ? "" : " lp-chip-empty"}`}>{category ? CATEGORIES.find((c) => c.id === category)!.label : "Pick a category"}</div>
           <dl className="lp-stats">
             <div>
               <dt>Supply</dt>
               <dd>1B</dd>
-            </div>
-            <div>
-              <dt>Graduates at</dt>
-              <dd>${mcap(graduationMcap(params))} mcap</dd>
-            </div>
-            <div>
-              <dt>Curve fee</dt>
-              <dd>{params.feeBps / 100}%</dd>
             </div>
           </dl>
           <p className="lp-meme">No promise of value.</p>
@@ -569,7 +539,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                       )}
                       <p className="lp-est">
                         {acceptedCount === FTF_SIZE
-                          ? "All 4 are in. Next: sector, profile and picture."
+                          ? "All 4 are in. Next: category, profile and picture."
                           : `${acceptedCount}/${FTF_SIZE} in. Waiting for everyone to accept from their notifications.`}
                       </p>
                     </>
@@ -578,39 +548,9 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                 </motion.div>
               )}
 
-              {phase.kind === "form" && current === "sector" && sectorPart === "sector" && (
-                <motion.div key="s0-sector" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
-                  <p className="lp-q">{isFtf ? "What sector is this FTF?" : "What sector are you?"}</p>
-                  <div className="lp-cats lp-sectors">
-                    {SECTORS.map((x) => {
-                      const Icon = SECTOR_ICONS[x.id];
-                      return (
-                        <button
-                          key={x.id}
-                          className={`lp-cat${sector === x.id ? " is-on" : ""}`}
-                          onClick={() => {
-                            setSector(x.id);
-                            setSectorPart("role");
-                          }}
-                        >
-                          <Icon size={16} strokeWidth={1.8} />
-                          <span className="lp-cat-label">{x.label}</span>
-                          <span className="lp-cat-hint">{x.hint}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-
-              {phase.kind === "form" && current === "sector" && sectorPart === "role" && (
-                <motion.div key="s0-role" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
-                  <p className="lp-q">
-                    {isFtf ? "How is this FTF active in the sector?" : "How are you active in the sector?"}
-                    <button className="link-btn lp-sector-pick" onClick={() => setSectorPart("sector")}>
-                      {SECTORS.find((x) => x.id === sector)?.label} · change
-                    </button>
-                  </p>
+              {phase.kind === "form" && current === "category" && (
+                <motion.div key="category" className="lp-pane" {...slide} transition={{ duration: 0.22, ease: EASE_OUT }}>
+                  <p className="lp-q">{isFtf ? "What best describes this FTF?" : "What best describes you?"}</p>
                   <div className="lp-cats">
                     {CATEGORIES.map((c) => {
                       const Icon = ICONS[c.id];
@@ -631,7 +571,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                   {isFtf && (
                     <div className="lp-field">
                       <span className="lp-label">
-                        FTF picture <span className="lp-count">PNG, JPEG or WebP · up to 512 KB</span>
+                        FTF picture <span className="lp-count">PNG or JPEG · up to 512 KB</span>
                       </span>
                       <label className="lp-pfp">
                         <span className="lp-pfp-preview">{ftf.draft?.pfpUrl ? <img src={ftf.draft.pfpUrl} alt="" /> : <Users size={18} />}</span>
@@ -640,7 +580,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                         </span>
                         <input
                           type="file"
-                          accept="image/png,image/jpeg,image/webp"
+                          accept="image/png,image/jpeg"
                           hidden
                           onChange={(e) => e.target.files?.[0] && uploadPfp(e.target.files[0])}
                         />
@@ -669,10 +609,18 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                       <span className="lp-count">https only</span>
                     </span>
                     <div className="lp-links">
-                      {links.map((l, i) => (
+                      {links.map((l, i) => (!isFtf && i === 0 ? (
+                        <div key="x" className="lp-link is-locked" title="Your X account, added automatically">
+                          <input className="lp-link-label" value={l.label} readOnly tabIndex={-1} aria-label="Link label" />
+                          <input className="lp-link-url" value={l.url} readOnly tabIndex={-1} aria-label="Your X account" />
+                          <span className="lp-link-lock" aria-hidden>
+                            <Lock size={13} />
+                          </span>
+                        </div>
+                      ) : (
                         <div key={i} className="lp-link">
                           <input
-                            className="lp-link-label"
+                            className={`lp-link-label${fakeX(l, i) ? " is-bad" : ""}`}
                             value={l.label}
                             placeholder="Label"
                             maxLength={80}
@@ -688,7 +636,8 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                             <X size={13} />
                           </button>
                         </div>
-                      ))}
+                      )))}
+                      {links.some(fakeX) && <p className="lp-warn">Your X link is added automatically, so use another label.</p>}
                       {links.length < MAX_LINKS && (
                         <button className="link-btn lp-add" onClick={() => setLinks([...links, { label: "", url: "" }])}>
                           <Plus size={12} /> Add link
@@ -722,13 +671,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                       {balance !== null && <span className="lp-balance">Balance {amount(balance.usdc)} USDC</span>}
                     </div>
                     <p className="lp-est">
-                      {buy > 0 ? (
-                        <>
-                          You get <b>~{amount(Math.round(est.tokens))} {ticker}</b> · {est.pctOfSupply.toFixed(2)}% of supply
-                        </>
-                      ) : (
-                        <>Launch with no first buy. Anyone can be first.</>
-                      )}
+                      {buy > 0 ? <>You buy first, at market, in the same transaction as your launch.</> : <>Launch with no first buy. Anyone can be first.</>}
                     </p>
                     {noGas && <p className="lp-warn">Add a little HYPE for gas to your Neuriio wallet on Elysium first (Account → deposit address).</p>}
                     {!noGas && lowUsdc && <p className="lp-warn">Not enough USDC for this first buy.</p>}
@@ -765,7 +708,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                 >
                   <Rocket size={22} className="lp-live-icon" />
                   <p className="lp-live-title">{isFtf ? `${ftf.draft?.name ?? "Your FTF"} (${ticker})` : `@${handle}`} is live</p>
-                  <p className="lp-live-sub">Your token trades on its bonding curve now. It graduates to a locked pool when the curve sells out.</p>
+                  <p className="lp-live-sub">Your token is trading now.</p>
                   <div className="lp-live-actions">
                     <a
                       className="lock-login lp-cta"
@@ -805,7 +748,7 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
             <footer className="lp-foot">
               <button
                 className="link-btn lp-back"
-                onClick={() => (current === "sector" && sectorPart === "role" ? setSectorPart("sector") : setStep(step - 1))}
+                onClick={() => setStep(step - 1)}
                 disabled={step === 0}
               >
                 <ArrowLeft size={12} /> Back
@@ -819,12 +762,11 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                   className="lock-login lp-cta"
                   disabled={!canNext || ftfBusy}
                   onClick={async () => {
-                    // FTF: save sector + category + profile before the launch step (the pass is signed from what's saved)
+                    // FTF: save category + profile before the launch step (the pass is signed from what's saved)
                     if (isFtf && current === "profile") {
                       try {
                         await ftfDo("profile", {
                           draftId: ftf.draft!.id,
-                          sector,
                           category,
                           about: about.trim(),
                           links: cleanLinks.map((l) => ({ label: l.label.trim(), url: l.url.trim() })),
@@ -886,40 +828,6 @@ function randomDot() {
   return { x: c * GRID + GRID / 2, y: r * GRID + GRID / 2 };
 }
 
-/** Bonding-curve price vs. tokens sold, with the first buy filled in. */
-function CurveChart({ progress }: { progress: number }) {
-  const W = 262;
-  const H = 96;
-  // price ∝ 1 / (virtual tokens left)^2 over the 793.1M sold on the curve
-  const pts = Array.from({ length: 41 }, (_, i) => {
-    const s = i / 40;
-    const left = 1_073 - s * 793.1;
-    return [s, (1_073 / left) ** 2] as const;
-  });
-  const max = pts[pts.length - 1][1];
-  const xy = ([s, p]: readonly [number, number]) => [s * W, H - 4 - ((p - 1) / (max - 1)) * (H - 8)] as const;
-  const line = pts.map((p, i) => `${i ? "L" : "M"}${xy(p)[0].toFixed(1)},${xy(p)[1].toFixed(1)}`).join("");
-  const filled = pts.filter(([s]) => s <= progress);
-  const area = filled.length > 1 ? `M0,${H} ${filled.map((p) => `L${xy(p)[0].toFixed(1)},${xy(p)[1].toFixed(1)}`).join(" ")} L${(progress * W).toFixed(1)},${H} Z` : "";
-  const dot = xy([progress, (1_073 / (1_073 - progress * 793.1)) ** 2]);
-  return (
-    <div className="lp-curve">
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden>
-        <path d={line} className="lp-curve-line" />
-        {area && <path d={area} className="lp-curve-fill" />}
-        <circle cx={dot[0]} cy={dot[1]} r={3.2} className="lp-curve-dot" />
-      </svg>
-      <div className="lp-curve-axis">
-        <span>Launch</span>
-        <span>Graduation</span>
-      </div>
-    </div>
-  );
-}
-
-/** 822 / 1.37: whole numbers when big, 2 decimals when small (testnet's tiny curve). */
-const mcap = (n: number) => (n >= 100 ? amount(Math.round(n)) : n.toFixed(2));
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function friendly(msg: string) {
@@ -956,7 +864,7 @@ function InviteMore({ busy, onInvite }: { busy: boolean; onInvite: (handle: stri
  * /launch first screen (user, 2026-10-17): one big Launch button in the middle of the page, inside a small circle of
  * dots, with a band of dots ~3 rows tall running level with the button across the whole page. Every dot sits faintly
  * and slowly flickers on and off at random (in the circle, more often near the button). Launch opens the flow on the
- * Sector step (logging in first if needed).
+ * Category step (logging in first if needed).
  */
 function LaunchGo({ busy, onLaunch }: { busy: boolean; onLaunch: () => void }) {
   return (

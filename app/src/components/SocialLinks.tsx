@@ -1,11 +1,10 @@
-// Bottom-center cards: X, docs (GitBook) and Telegram, as white logos (Simple Icons, in
-// public/social/). A card without a link yet is shown but not clickable.
+// Bottom-center cards: X and docs (GitBook), as white logos (Simple Icons, in public/social/). A card without a link
+// yet is shown but not clickable. No Telegram: the community posts on the Home feed instead (user, 2026-11-03).
 type Social = { label: string; icon: string; href?: string };
 
 const SOCIALS: Social[] = [
   { label: "Neuriio on X", icon: "/social/x.svg", href: "https://x.com/Neuriio" },
   { label: "Docs", icon: "/social/gitbook.svg", href: "https://docs.neuriio.xyz" },
-  { label: "Telegram", icon: "/social/telegram.svg" }, // group not set up yet
 ];
 
 export function SocialLinks() {

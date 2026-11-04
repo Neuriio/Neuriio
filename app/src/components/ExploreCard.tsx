@@ -2,12 +2,11 @@
 //   left card:  platform fees (lifetime, every token; not on the landing), then Top 25 by total volume (order re-ranked
 //               every minute by the database; numbers live)
 //   above the chart: search @handle (FTF names later)
-//   center:     the picked token (header, price + 24h change, market-cap candle chart 5m-4H, stats, curve progress)
-//   right card: order card (buy/sell); beside it (the app, not the landing): stake / unstake / claim
+//   center:     the picked token (header, price + 24h change, stats, market-cap candle chart 5m-4H)
+//   right card: Buy / Sell / Stake tabs (the landing: just the order card)
 //   under the chart (same width): your positions
-// Phones (<= 860px): search, the chart card (no Profile button, no Log/Reset), then one card with four tabs:
-//   About (creator profile, bio, creator fees, stats, curve progress) · Trade (the order card) · Stake (the stake card)
-//   · Positions.
+// Phones (<= 860px): search, the chart card (no Profile button), then one card with four tabs:
+//   About (creator profile, bio, creator fees) · Trade (the order card) · Stake (the stake card) · Positions.
 //   The Top 25 moves to /trending on phones.
 // `/explore?t=<handle|address>` opens a token (e.g. right after its launch). `?demo` (dev) = sample data.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -182,15 +181,15 @@ export function ExploreCard() {
       <div className="ex-grid">
         <div className="ex-main">
           {center}
-          <MobileTabs t={picked} hypeUsd={hypeUsd} price={picked ? live[picked.address] : undefined} onPick={pickPosition} />
+          <MobileTabs t={picked} hypeUsd={hypeUsd} onPick={pickPosition} />
         </div>
       </div>
     );
 
   return (
     <div className="ex-grid">
-      {/* one connected widget: list | chart | order | stake, split by lines inside; Positions stays its own widget
-          below (user, 2026-10-24). The trade page will reuse this shell. */}
+      {/* separate widgets: list | chart | buy/sell/stake, with Positions below (user, 2026-11-01). The trade page will
+          reuse this shell. */}
       <div className="ex-main">
         <section className="panel ex-card ex-list-card">
           <CardBg />
@@ -222,25 +221,44 @@ export function ExploreCard() {
 
         {center}
 
-        {/* order + stake: two columns on wide screens, one scrolling column on laptops */}
-        <div className="ex-side">
-          <section className="panel ex-card ex-order-card">
-            <CardBg side="left" />
-            <OrderCard key={picked?.address} t={picked} hypeUsd={hypeUsd} />
-          </section>
-
-          {!LANDING && (
-            <section className="panel ex-card ex-stake-card">
-              <StakeCard key={picked?.address} t={picked} />
-            </section>
-          )}
-        </div>
+        <section className="panel ex-card ex-order-card">
+          <CardBg side="left" />
+          {LANDING ? <OrderCard key={picked?.address} t={picked} hypeUsd={hypeUsd} /> : <TradeTabs t={picked} hypeUsd={hypeUsd} />}
+        </section>
       </div>
 
       <section className="panel ex-card ex-positions-card">
         <CardBg side="top" />
         <PositionsCard hypeUsd={hypeUsd} onPick={pickPosition} />
       </section>
+    </div>
+  );
+}
+
+/** Desktop: one widget with Buy / Sell / Stake tabs. Both cards stay mounted, so switching to Stake and back keeps a
+ *  typed amount. */
+function TradeTabs({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number }) {
+  const [tab, setTab] = useState<"buy" | "sell" | "stake">("buy");
+  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const pick = (x: "buy" | "sell" | "stake") => {
+    setTab(x);
+    if (x !== "stake") setSide(x);
+  };
+  return (
+    <div className="ex-trade">
+      <div className="ex-order-tabs ex-trade-tabs" role="tablist">
+        {(["buy", "sell", "stake"] as const).map((x) => (
+          <button key={x} role="tab" aria-selected={tab === x} className={`ex-order-tab is-${x}${tab === x ? " is-on" : ""}`} onClick={() => pick(x)}>
+            {x === "buy" ? "Buy" : x === "sell" ? "Sell" : "Stake"}
+          </button>
+        ))}
+      </div>
+      <div className="ex-trade-body" hidden={tab === "stake"}>
+        <OrderCard key={t?.address} t={t} hypeUsd={hypeUsd} fixedSide={side} />
+      </div>
+      <div className="ex-trade-body" hidden={tab !== "stake"}>
+        <StakeCard key={t?.address} t={t} />
+      </div>
     </div>
   );
 }
@@ -254,16 +272,14 @@ const MOBILE_TABS: { id: MobileTab; label: string }[] = [
 ];
 
 /** Phones: one card under the chart with About / Trade / Stake / Positions. All of them stay mounted (hidden when not
- *  picked), so switching tabs keeps a typed amount. `price` = the live price, newer than the stats'. */
+ *  picked), so switching tabs keeps a typed amount. */
 function MobileTabs({
   t,
   hypeUsd,
-  price,
   onPick,
 }: {
   t: TokenStat | null;
   hypeUsd: number;
-  price?: number;
   onPick: (address: string) => void;
 }) {
   const [tab, setTab] = useState<MobileTab>("about");
@@ -278,7 +294,7 @@ function MobileTabs({
         ))}
       </div>
       <div hidden={tab !== "about"}>
-        {t ? <AboutTab key={t.address} t={t} hypeUsd={hypeUsd} price={price ?? t.price_hype} /> : <p className="ex-empty">Pick a token.</p>}
+        {t ? <AboutTab key={t.address} t={t} hypeUsd={hypeUsd} /> : <p className="ex-empty">Pick a token.</p>}
       </div>
       <div hidden={tab !== "trade"}>
         <OrderCard key={t?.address} t={t} hypeUsd={hypeUsd} />
@@ -293,11 +309,10 @@ function MobileTabs({
   );
 }
 
-/** Mobile About tab: who launched it (X link), bio + links, creator fees, the stats and curve progress. */
-function AboutTab({ t, hypeUsd, price }: { t: TokenStat; hypeUsd: number; price: number }) {
+/** Mobile About tab: who launched it (X link), bio + links and creator fees. */
+function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
   const { profile, members } = useCreatorProfile(t);
   const earned = useCreatorEarned(t);
-  const usdOr = (hype: number) => (hypeUsd ? compactUsd(hype * hypeUsd) : "…");
   return (
     <div className="ex-about">
       <header className="ex-modal-head">
@@ -322,16 +337,6 @@ function AboutTab({ t, hypeUsd, price }: { t: TokenStat; hypeUsd: number; price:
           {earned === null ? "…" : compactUsd(earned * hypeUsd)}
         </span>
       </section>
-
-      <dl className="ex-stats">
-        <div><dt>Market cap</dt><dd>{usdOr(price * 1e9)}</dd></div>
-        <div><dt>24h volume</dt><dd>{compactUsd(t.volume_usd_24h)}</dd></div>
-        <div><dt>All-time volume</dt><dd>{compactUsd(t.volume_usd)}</dd></div>
-        <div><dt>24h trades</dt><dd>{t.trades_24h.toLocaleString("en-US")}</dd></div>
-        <div><dt>Launched</dt><dd>{ago(t.launched_at)}</dd></div>
-      </dl>
-
-      <Progress t={t} />
 
       <p className="ex-order-note">
         {displayName(t)} is a meme with no promise of value. {t.kind === "ftf" ? "Its members owe" : `${handleOf(t.handle)} owes`} holders nothing.
@@ -380,21 +385,7 @@ function useCreatorEarned(t: TokenStat) {
   return earned;
 }
 
-function Progress({ t }: { t: TokenStat }) {
-  return (
-    <div className="ex-progress">
-      <div className="ex-progress-label">
-        <span>{t.graduated ? "Graduated to the pool" : "Bonding curve"}</span>
-        <span>{Math.floor(t.curve_progress * 100)}%</span>
-      </div>
-      <div className="ex-progress-track">
-        <span style={{ width: `${Math.min(100, t.curve_progress * 100)}%` }} />
-      </div>
-    </div>
-  );
-}
-
-/** `compact` (phones): header + timeframes + chart only; profile, fees, stats and progress live in the About tab. */
+/** `compact` (phones): header + stats + timeframes + chart only; profile and fees live in the About tab. */
 function TokenDetail({
   t,
   hypeUsd,
@@ -410,7 +401,6 @@ function TokenDetail({
   const [interval, setInterval_] = useState<IntervalSeconds>(300); // 5m: a token's first candle, then every timeframe from there
   const [data, setData] = useState<Candle[] | null>(null);
   const [controls, setControls] = useState<ChartControls | null>(null);
-  const [log, setLog] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
 
   const earned = useCreatorEarned(t); // shown next to the Profile button
@@ -501,29 +491,20 @@ function TokenDetail({
         </div>
       </header>
 
+      <dl className="ex-stats">
+        <div><dt>Market cap</dt><dd>{usdOr(price * 1e9)}</dd></div>
+        <div><dt>24h volume</dt><dd>{compactUsd(t.volume_usd_24h)}</dd></div>
+        <div><dt>All-time volume</dt><dd>{compactUsd(t.volume_usd)}</dd></div>
+        <div><dt>24h trades</dt><dd>{t.trades_24h.toLocaleString("en-US")}</dd></div>
+      </dl>
+
       <div className="ex-chart-bar">
         {INTERVALS.map((x) => (
           <button key={x.s} className={`ex-range${x.s === interval ? " is-on" : ""}`} onClick={() => setInterval_(x.s)}>
             {x.label}
           </button>
         ))}
-        {!compact && (
-          <>
-            <span className="ex-chart-label">Market cap (USD)</span>
-            <button
-              className={`ex-range${log ? " is-on" : ""}`}
-              onClick={() => {
-                controls?.setLog(!log);
-                setLog(!log);
-              }}
-            >
-              Log
-            </button>
-            <button className="ex-range" onClick={() => controls?.reset()}>
-              Reset
-            </button>
-          </>
-        )}
+        {!compact && <span className="ex-chart-label">Market cap (USD)</span>}
       </div>
       <div className="ex-chart">
         <CandleChart candles={data} interval={interval} hypeUsd={chartUsd} basePriceHype={t.price_hype} onControls={setControls} fit={LANDING} />
@@ -535,18 +516,6 @@ function TokenDetail({
         </a>
       </p>
 
-      {!compact && (
-        <>
-          <dl className="ex-stats">
-            <div><dt>Market cap</dt><dd>{usdOr(price * 1e9)}</dd></div>
-            <div><dt>24h volume</dt><dd>{compactUsd(t.volume_usd_24h)}</dd></div>
-            <div><dt>All-time volume</dt><dd>{compactUsd(t.volume_usd)}</dd></div>
-            <div><dt>24h trades</dt><dd>{t.trades_24h.toLocaleString("en-US")}</dd></div>
-            <div><dt>Launched</dt><dd>{ago(t.launched_at)}</dd></div>
-          </dl>
-          <Progress t={t} />
-        </>
-      )}
       <AnimatePresence>{showProfile && <ProfileModal t={t} onClose={closeProfile} />}</AnimatePresence>
     </div>
   );

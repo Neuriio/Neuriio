@@ -175,7 +175,7 @@ function demoCall(action: string, body: Record<string, unknown>): unknown {
       v.members = v.members.filter((m) => m.x_user_id !== body.xUserId);
       return snapshot();
     case "profile":
-      Object.assign(v.draft!, { sector: body.sector, category: body.category, about: body.about, links: body.links });
+      Object.assign(v.draft!, { category: body.category, about: body.about, links: body.links });
       return snapshot();
     case "pfp":
       v.draft!.pfpUrl = `data:${body.contentType};base64,${body.base64}`;

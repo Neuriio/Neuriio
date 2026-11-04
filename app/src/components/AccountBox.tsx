@@ -1,30 +1,26 @@
-// Account button. Clicking it MORPHS the button into the account panel; Escape, the × or a click
-// outside morphs it back.
+// Account button. Clicking it opens the account panel; Escape, the × or a click
+// outside closes it.
 //   Logged out: the button says "Account"; the panel shows a blurred placeholder with a small centered
 //   card whose Login button opens Privy (X, Google, Telegram). Every user gets a Neuriio wallet.
 //   Logged in: the button shows picture + handle; the panel has the deposit address (copy) + Send (any token
-//   to any address on Elysium, the Feed's send window), balances
-//   on Elysium + HyperCore by token, creator fees with a Claim button (for creators / FTF members), Neuriio (staked,
-//   its USDC earnings, Claim), private key export (Privy's own secure modal) and log out.
-import { useEffect, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
+//   to any address on Elysium, the Feed's send window), balances on Elysium by token, the referral code (ReferralBox),
+//   private key export (Privy's own secure modal) and log out. HyperCore balances and the creator fees box were removed
+//   (user, 2026-11-03).
+import { useState, type ReactNode } from "react";
 import { Bell, Check, Copy } from "lucide-react";
 import { useNotifications } from "../lib/ftf";
 import { NotificationsModal } from "./NotificationsModal";
 import { SendModal } from "./SendModal";
 import { useExportWallet, usePrivy, useWallets } from "@privy-io/react-auth";
-import { formatEther, formatUnits, type Address, type EIP1193Provider } from "viem";
-import { claimCreatorFees, creatorFees } from "../lib/fees";
-import { claimStaking, NEURIIO, stakePosition } from "../lib/stake";
-import { elysiumProvider } from "../lib/tx";
-import { QUOTE } from "../lib/config";
+import type { Address } from "viem";
 import { useBalances } from "../lib/useBalances";
 import type { Balances, VenueBalance } from "../lib/balances";
 import { profileOf, type Profile } from "../lib/profile";
 import { amount, shortAddress, usd } from "../lib/format";
 import { Morph } from "./Morph";
+import { DemoReferral, LiveReferral } from "./ReferralBox";
 
-// Dev-only preview of the logged-in morph with sample data: localhost:5173/?demo
+// Dev-only preview of the logged-in panel with sample data: localhost:5173/?demo
 const DEMO = import.meta.env.DEV && new URLSearchParams(location.search).has("demo");
 
 export function AccountBox() {
@@ -40,44 +36,23 @@ function AccountMorph() {
   const { exportWallet } = useExportWallet();
   const wallet = wallets.find((w) => w.walletClientType === "privy");
   const { balances } = useBalances(wallet?.address as Address | undefined);
-  const fees = useCreatorFees(wallet?.address as Address | undefined, async () => {
-    return elysiumProvider(wallet!);
-  });
-  const neuriio = useNeuriio(wallet?.address as Address | undefined, async () => elysiumProvider(wallet!));
   return (
     <MorphView
       me={profileOf(user)}
       address={wallet?.address}
       balances={balances}
-      fees={fees}
-      neuriio={neuriio}
+      referral={wallet ? <LiveReferral account={wallet.address} /> : undefined}
       onExport={wallet ? () => exportWallet({ address: wallet.address }) : undefined}
       onLogout={logout}
     />
   );
 }
 
-type Fees = {
-  claimable: number; // USDC
-  status: "idle" | "claiming" | "claimed" | { error: string };
-  onClaim: () => void;
-};
-
-/** Neuriio: staked (and any unstaked in the wallet), the USDC its stake has earned, and a Claim for that USDC. */
-type Neu = {
-  staked: number;
-  wallet: number;
-  usdc: number;
-  status: Fees["status"];
-  onClaim: () => void;
-};
-
 type MorphViewProps = {
   me: Profile;
   address?: string;
   balances: Balances | null;
-  fees?: Fees | null; // null/undefined: not a creator and nothing to claim (box hidden)
-  neuriio?: Neu | null;
+  referral?: ReactNode;
   onExport?: () => void;
   onLogout: () => void;
   /** logged out: blurred placeholder + centered Login card */
@@ -86,8 +61,7 @@ type MorphViewProps = {
   onLogin?: () => void;
 };
 
-function MorphView({ me, address, balances, fees, neuriio, onExport, onLogout, locked = false, loginReady = true, onLogin }: MorphViewProps) {
-  const reduce = useReducedMotion();
+function MorphView({ me, address, balances, referral, onExport, onLogout, locked = false, loginReady = true, onLogin }: MorphViewProps) {
   const { items } = useNotifications();
   const count = locked ? 0 : items.length;
   const [bellOpen, setBellOpen] = useState(false);
@@ -131,12 +105,7 @@ function MorphView({ me, address, balances, fees, neuriio, onExport, onLogout, l
       overlay={
         locked
           ? (close) => (
-              <motion.div
-                className="lock-overlay"
-                initial={reduce ? false : { opacity: 0, scale: 0.94 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: reduce ? 0 : 0.22, type: "spring", stiffness: 460, damping: 30 }}
-              >
+              <div className="lock-overlay">
                 <div className="lock-card">
                   <span className="lock-title">Log in to see your wallet</span>
                   <button
@@ -151,7 +120,7 @@ function MorphView({ me, address, balances, fees, neuriio, onExport, onLogout, l
                     Login
                   </button>
                 </div>
-              </motion.div>
+              </div>
             )
           : undefined
       }
@@ -162,9 +131,7 @@ function MorphView({ me, address, balances, fees, neuriio, onExport, onLogout, l
         <p className="empty">Creating your wallet…</p>
       )}
       <Venue name="Elysium" v={balances?.elysium} />
-      <Venue name="HyperCore" v={balances?.hypercore} />
-      {!locked && fees && <CreatorFees fees={fees} />}
-      {!locked && neuriio && <NeuriioBox n={neuriio} />}
+      {!locked && referral}
       {!locked && <NotificationsModal open={bellOpen} onClose={() => setBellOpen(false)} />}
       {!locked && <SendModal target={sendOpen ? "address" : null} onClose={() => setSendOpen(false)} />}
       {!locked && (
@@ -220,138 +187,6 @@ function DepositAddress({ address, onSend }: { address: string; onSend?: () => v
   );
 }
 
-/** Creator fees waiting in NeuriioFees (USDC on Elysium) + Claim. Refreshes every 15 s. */
-function useCreatorFees(wallet: Address | undefined, getProvider: () => Promise<EIP1193Provider>): Fees | null {
-  const [claimable, setClaimable] = useState<bigint | null>(null);
-  const [launched, setLaunched] = useState(false);
-  const [status, setStatus] = useState<Fees["status"]>("idle");
-  const [nonce, setNonce] = useState(0);
-  useEffect(() => {
-    if (!wallet) return;
-    let alive = true;
-    const load = () =>
-      creatorFees(wallet).then((f) => {
-        if (!alive) return;
-        setClaimable(f.claimable);
-        setLaunched(f.launched);
-      }, () => {});
-    load();
-    const id = setInterval(load, 15_000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [wallet, nonce]);
-  // shown to creators (even at 0) and to anyone with fees waiting (e.g. FTF members), and right after a claim
-  if (!wallet || claimable === null || (!launched && claimable === 0n && status !== "claimed")) return null;
-  return {
-    claimable: Number(formatUnits(claimable, QUOTE.decimals)),
-    status,
-    onClaim: async () => {
-      setStatus("claiming");
-      try {
-        await claimCreatorFees(await getProvider(), wallet);
-        setStatus("claimed");
-        setNonce((n) => n + 1);
-      } catch (e) {
-        const m = (e as Error).message;
-        setStatus({ error: /rejected|denied/i.test(m) ? "Cancelled" : /insufficient funds/i.test(m) ? "Need a little HYPE for gas" : "Claim failed, try again" });
-      }
-    },
-  };
-}
-
-function CreatorFees({ fees }: { fees: Fees }) {
-  const { claimable, status } = fees;
-  const busy = status === "claiming";
-  return (
-    <section className="venue venue-box fees-box">
-      <header>
-        <span>Creator fees</span>
-        <span>{usd(claimable * QUOTE.usd)}</span>
-      </header>
-      <div className="fees-row">
-        <span className="fees-amount">
-          {amount(claimable)} <span className="fees-unit">USDC</span>
-        </span>
-        <button className="fees-claim" disabled={busy || claimable === 0} onClick={fees.onClaim}>
-          {busy ? "Claiming…" : "Claim"}
-        </button>
-      </div>
-      <p className="fees-note">
-        {status === "claimed"
-          ? "Claimed to your Neuriio wallet"
-          : typeof status === "object"
-            ? status.error
-            : "Your share of your token's trading fees (10% of every fee, curve and pool), paid in USDC on Elysium"}
-      </p>
-    </section>
-  );
-}
-
-/** Neuriio in the staking contract, refreshed every 10 s (its USDC drips in over an hour). */
-function useNeuriio(wallet: Address | undefined, getProvider: () => Promise<EIP1193Provider>): Neu | null {
-  const [pos, setPos] = useState<{ staked: bigint; wallet: bigint; usdc: bigint } | null>(null);
-  const [status, setStatus] = useState<Fees["status"]>("idle");
-  const [nonce, setNonce] = useState(0);
-  useEffect(() => {
-    if (!wallet) return;
-    let alive = true;
-    const load = () => stakePosition(wallet, NEURIIO).then((p) => alive && setPos(p), () => {});
-    load();
-    const id = setInterval(load, 10_000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, [wallet, nonce]);
-  if (!wallet || !pos) return null;
-  return {
-    staked: Number(formatEther(pos.staked)),
-    wallet: Number(formatEther(pos.wallet)),
-    usdc: Number(formatUnits(pos.usdc, QUOTE.decimals)),
-    status,
-    onClaim: async () => {
-      setStatus("claiming");
-      try {
-        await claimStaking(await getProvider(), wallet, [NEURIIO]);
-        setStatus("claimed");
-        setNonce((n) => n + 1);
-      } catch (e) {
-        const m = (e as Error).message;
-        setStatus({ error: /rejected|denied/i.test(m) ? "Cancelled" : /insufficient funds/i.test(m) ? "Need a little HYPE for gas" : "Claim failed, try again" });
-      }
-    },
-  };
-}
-
-function NeuriioBox({ n }: { n: Neu }) {
-  const busy = n.status === "claiming";
-  return (
-    <section className="venue venue-box fees-box">
-      <header>
-        <span>Neuriio</span>
-        <span>{usd(n.usdc * QUOTE.usd)}</span>
-      </header>
-      <div className="fees-row">
-        <span className="fees-amount">
-          {amount(n.staked)} <span className="fees-unit">staked</span>
-        </span>
-        <button className="fees-claim" disabled={busy || n.usdc === 0} onClick={n.onClaim}>
-          {busy ? "Claiming…" : "Claim"}
-        </button>
-      </div>
-      <p className="fees-note">
-        {n.status === "claimed"
-          ? "USDC claimed to your Neuriio wallet"
-          : typeof n.status === "object"
-            ? n.status.error
-            : `Earns 50% of curve fees and 40% of pool fees, in USDC. Minted by staking graduated tokens (Explore).${n.wallet > 0 ? ` ${amount(n.wallet)} unstaked in your wallet.` : ""}`}
-      </p>
-    </section>
-  );
-}
-
 function Venue({ name, v }: { name: string; v?: VenueBalance }) {
   return (
     <section className="venue venue-box">
@@ -394,8 +229,7 @@ const DEMO_PROPS: MorphViewProps = {
       ],
     },
   },
-  fees: { claimable: 12.84, status: "idle", onClaim: () => alert("demo: claims 12.84 USDC to your Neuriio wallet") },
-  neuriio: { staked: 640, wallet: 0, usdc: 1.87, status: "idle", onClaim: () => alert("demo: claims 1.87 USDC to your Neuriio wallet") },
+  referral: <DemoReferral />,
   onExport: () => alert("demo: Privy export modal opens here"),
   onLogout: () => alert("demo: logs out"),
 };

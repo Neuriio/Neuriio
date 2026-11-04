@@ -1,7 +1,6 @@
 # Neuriio: development
 
-How the product works is in the docs (https://docs.neuriio.xyz, source in `docs/`). The contracts' architecture,
-roles and the internal security audit are in `audit/`.
+How the product works is in the docs (https://docs.neuriio.xyz, source in `docs/`).
 
 ## Repository
 
@@ -13,7 +12,6 @@ roles and the internal security audit are in `audit/`.
 | `src/testnet/` | `TestUSDC` (testnet only; mintable by the faucet) |
 | `test/` | Foundry tests; `test/audit/` holds the internal audit's tests, `test/fork/` the mainnet rehearsal on a testnet fork |
 | `script/` | Deploy scripts (Foundry + shell), including `DeployMainnet.s.sol`, and testnet tooling |
-| `audit/` | `SECURITY_AUDIT.md` and `ARCHITECTURE.md` |
 | `docs/` | The public docs (GitBook, synced from `main`) |
 | `app/` | Web app (React + Vite, Privy login) |
 | `keeper/` | `watcher.mjs` (live trades to the app) and `pay-protocol.mjs` (protocol fee payouts) |
@@ -38,7 +36,7 @@ Testnet (Elysium, chain 99801): `script/deploy-core.sh` deploys the permanent co
 swaps in a new `NeuriioFees`; `script/verify-world.sh` verifies everything on the explorer;
 `script/supabase-deploy.sh` points the backend at the current addresses. Mainnet: `script/DeployMainnet.s.sol` (one
 run: deploy, wire, lock, hand everything to the timelock run by the Safe). The web app runs on Vercel
-(`app/vercel.json`); the watcher and the payout bot run on AWS EC2 (see HANDOFF.md).
+(`app/vercel.json`); the watcher and the payout bot run on AWS EC2.
 
 ## License
 

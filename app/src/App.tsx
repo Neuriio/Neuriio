@@ -17,17 +17,21 @@ import { DnaStrand } from "./components/DnaStrand";
 import { LandingBg, LandingFrame, LandingHero, Showcase } from "./components/Landing";
 import { useRegisterOnLogin } from "./lib/register";
 import { useNotificationsPoller } from "./lib/ftf";
+import { SafePage } from "./components/SafePage";
+import { TradeMock } from "./components/TradeMock";
 
 // One layout for every page; the center card changes by path (app.neuriio.xyz/launch, ...).
 // "/" opens the Feed (public launch, user 2026-10-20: no landing page, no passcode); any other unknown path shows Explore.
 // The address bar is set to the page shown. (The landing page's code stays, unused, for a later marketing site.)
-const ROUTES = ["/showcase", "/launch", "/feed", "/explore", "/trending"];
+const ROUTES = ["/showcase", "/safe", "/trade", "/launch", "/feed", "/explore", "/trending"];
 const RAW = location.pathname.replace(/\/+$/, "") || "/";
 const PAGE = RAW === "/" ? "/feed" : ROUTES.includes(RAW) ? RAW : "/explore";
 if (RAW !== PAGE) history.replaceState(null, "", PAGE + location.search + location.hash);
 
 export function App() {
   // /showcase: the landing's Explore card alone (framed into the landing on phones); no header, no account hooks
+  // /safe (unlisted): the Neuriio Safe's approval page for its owners' own wallets (SafePage)
+  if (PAGE === "/safe") return <SafePage />;
   return PAGE === "/showcase" ? <Showcase /> : <Page />;
 }
 
@@ -36,12 +40,12 @@ function Page() {
   useRegisterOnLogin();
   useNotificationsPoller();
   return (
-    <div className={PAGE === "/" ? "app app-landing" : `app app-nav${PAGE === "/explore" ? " app-explore" : ""}`}>
+    <div className={PAGE === "/" ? "app app-landing" : `app app-nav${PAGE === "/explore" || PAGE === "/trade" ? " app-explore" : ""}`}>
       {PAGE === "/" && <LandingBg />}
       <header className="top">
         <div className="top-left">
           <a className="logo" href="/" aria-label="Neuriio home">
-            <img src="/brand/logo.png" alt="Neuriio" width={52} height={52} />
+            <img src="/brand/logo-dots.png" alt="Neuriio" width={52} height={52} />
           </a>
         </div>
         {PAGE !== "/" && <TopNav current={PAGE} />}
@@ -86,6 +90,11 @@ function Page() {
             <FeedCard />
           </main>
         </>
+      ) : PAGE === "/trade" ? (
+        // LOCAL MOCKUP of the Trade Arena flow (TradeMock.tsx): not for pushing
+        <main className="stage stage-explore ex-wide">
+          <TradeMock />
+        </main>
       ) : PAGE === "/trending" ? (
         // trending: the Top 25 between the launch page's dot strands (shown on phones too)
         <>

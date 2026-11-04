@@ -9,7 +9,8 @@
 //    (default: the first world), which scopes what the app lists (token_stats), so a new world is indexed (charts,
 //    history) before the app switches to it.
 // 2. Hyperliquid: each user's fills that carry our builder fee (= placed through Neuriio) -> trades
-// 3. award_points(): trades + launches -> points ledger (rates in points_rules)
+// 3. link_trades(): tags new trades with their trader's X account. Trader activity is kept for how Neuriio will be earned
+//    (first piece: user, 2026-11-01); it isn't displayed anywhere.
 //
 // Secrets: WORLDS = JSON list of { registry, routers: [..], quote, decimals, usd: "hype" | "1", fromBlock }; or, for
 // a single HYPE world, REGISTRY_ADDRESS + ROUTER_ADDRESSES (comma list; or ROUTER_ADDRESS) + WHYPE_ADDRESS +
@@ -235,7 +236,7 @@ async function selectAll<T>(query: (from: number, to: number) => PromiseLike<{ d
   }
 }
 
-// Hyperliquid fills only earn points, so every 10 minutes is plenty: each check asks Hyperliquid once per user (2026-10-22:
+// Hyperliquid fills are only activity history, so every 10 minutes is plenty: each check asks Hyperliquid once per user (2026-10-22:
 // every minute it made ~60% of all Supabase requests and most of each run's ~24 s). The cursors load in one query.
 const HL_EVERY_MS = 10 * 60_000;
 
@@ -299,8 +300,8 @@ Deno.serve(async () => {
   } catch (e) {
     result.hyperliquidError = failed("hyperliquid", e);
   }
-  const { data: awarded, error } = await db.rpc("award_points");
-  result.pointsAwarded = error ? failed("award_points", error) : awarded;
+  const { data: linked, error } = await db.rpc("link_trades");
+  result.tradesLinked = error ? failed("link_trades", error) : linked;
   await db.rpc("unlock_indexer");
   return json(200, result);
 });

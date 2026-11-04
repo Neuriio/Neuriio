@@ -1,10 +1,11 @@
 // POST /functions/v1/launch-pass
 //   headers: Authorization: Bearer <Privy access token>
-//   body:    { sector: "robotics" | ..., category: "trader" | ..., profile: { about, links: [{ label, url }] } }
+//   body:    { category: "trader" | ..., profile: { about, links: [{ label, url }] } }
 //   200:     { pass, signature, profileHash, launchpad, chainId }  -> Launchpad.launch(pass, signature, minTokensOut)
 //
 // Verifies the Privy login, reads the user's X account + Neuriio (embedded) wallet from Privy, stores the profile,
-// and signs a LaunchPass. The chain enforces one token per X user / wallet / handle; we pre-check to fail early.
+// and signs a LaunchPass. The chain enforces one token per X user / wallet / handle; we pre-check to fail early. No pass is
+// signed for a ticker sharing its first 4 characters with one already launched, or for a copy of a launched picture.
 //
 // Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET, LAUNCH_SIGNER_KEY, LAUNCHPAD_ADDRESS, CHAIN_ID, RPC_URL
 // (SUPABASE_URL is provided by Supabase; NEURIIO_DB_KEY = the project's sb_secret key, set 2026-10-21 after the Railway leak.)
@@ -15,15 +16,16 @@ import { privateKeyToAccount } from "npm:viem@2/accounts";
 import {
   canonicalProfile,
   CATEGORIES,
+  chainCategory,
   type Category,
-  SECTORS,
-  type Sector,
   launchpadDomain,
   launchPassTypes,
   PASS_TTL_SECONDS,
 } from "../_shared/launchPass.ts";
 import { CORS, HttpError, internalError, json, privyAuth, userRow, type XUser } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
+import { claimLaunch } from "../_shared/launchClaim.ts";
+import { isDefaultAvatar, PfpError, type PfpPrint, printPictureAt } from "../_shared/pfpHash.ts";
 
 
 const PRIVY_APP_ID = env("PRIVY_APP_ID");
@@ -80,20 +82,17 @@ Deno.serve(async (req) => {
   if ((recent ?? 0) >= PASSES_PER_10_MIN) return json(429, { error: "Too many attempts, try again in a few minutes" });
 
   // 3. what they're launching
-  let body: { sector?: string; category?: string; profile?: { about: string; links?: { label: string; url: string }[] } };
+  let body: { category?: string; profile?: { about: string; links?: { label: string; url: string }[] } };
   try {
     body = await req.json();
   } catch {
     return json(400, { error: "Invalid JSON" });
   }
-  const sector = body.sector as Sector;
-  if (!SECTORS.includes(sector)) return json(422, { error: `Pick a sector: ${SECTORS.join(", ")}` });
   const category = body.category as Category;
-  const categoryIndex = CATEGORIES.indexOf(category);
-  if (categoryIndex < 0) return json(422, { error: `Pick a category: ${CATEGORIES.join(", ")}` });
+  if (!CATEGORIES.includes(category)) return json(422, { error: `Pick a category: ${CATEGORIES.join(", ")}` });
   let profile: { content: string; hash: `0x${string}` };
   try {
-    profile = canonicalProfile(body.profile!, { xUserId, handle, sector, category });
+    profile = canonicalProfile(body.profile!, { xUserId, handle, category });
   } catch (e) {
     return json(422, { error: (e as Error).message });
   }
@@ -118,8 +117,33 @@ Deno.serve(async (req) => {
     return json(503, { error: "Launches are paused" });
   }
 
-  // 5. record the user + profile, sign
+  // 5. anti-vamping: the first to launch keeps its ticker's first 4 characters and its picture (backend rule, not on-chain)
+  let pfp: PfpPrint | null = null;
+  if (who.pfpUrl && !isDefaultAvatar(who.pfpUrl)) {
+    try {
+      pfp = await printPictureAt(who.pfpUrl, ["pbs.twimg.com"]);
+    } catch (e) {
+      if (!(e instanceof PfpError)) return failed("pfp", (e as Error).message);
+      console.error(`launch-pass: pfp: ${e.message}`);
+      return json(422, { error: "We couldn't read your X profile picture. Log out and back in, then try again" });
+    }
+  }
   const now = new Date();
+  const deadline = BigInt(Math.floor(now.getTime() / 1000) + PASS_TTL_SECONDS);
+  let refusal: string | null;
+  try {
+    refusal = await claimLaunch(db, {
+      ticker: handle,
+      owners: [xUserId],
+      pfp,
+      deadline: new Date(Number(deadline) * 1000),
+    });
+  } catch (e) {
+    return failed("claim", (e as Error).message);
+  }
+  if (refusal) return json(409, { error: refusal });
+
+  // 6. record the user + profile, sign
   const { error: userErr } = await db.from("users").upsert(userRow(who), { onConflict: "privy_id" });
   if (userErr) return failed("users upsert", userErr.message);
   const { error: profileErr } = await db.from("creator_profiles").upsert(
@@ -128,12 +152,11 @@ Deno.serve(async (req) => {
   );
   if (profileErr) return failed("creator_profiles upsert", profileErr.message);
 
-  const deadline = BigInt(Math.floor(now.getTime() / 1000) + PASS_TTL_SECONDS);
   const pass = {
     creator,
     xUserId: BigInt(xUserId),
     handle,
-    category: categoryIndex,
+    category: chainCategory(category),
     profileHash: profile.hash,
     deadline,
   };

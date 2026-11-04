@@ -1,18 +1,17 @@
-// Explore, far right (beside the order card), split in half (user, 2026-10-17):
-//   top:    the picked X token. Staking opens once it graduates; stakers share 40% of its pool fees in USDC and mint
-//           Neuriio on every $1 they earn.
-//   bottom: Neuriio (minted only by staking X tokens). Stakers share 50% of every curve fee and 40% of every pool
-//           fee, in USDC. Neuriio claimed from X staking is staked here automatically.
-// Each half: Stake / Unstake / Claim, wired to NeuriioStaking (lib/stake.ts). Rewards drip in over an hour, so the
-// earned amounts are re-read every few seconds. `?demo`: sample numbers, simulated actions.
+// Explore, the Stake tab: the picked X token. Staking opens once it graduates; stakers share 40% of its pool fees in USDC.
+// Neuriio Minted is what will track a user's Neuriio: a tally (nothing on-chain) that converts into the token when it
+// launches (user, 2026-11-01): 100 for every $1 a staker earns, and staking is the only way to get it (lib/neuriio.ts).
+// Stake / Unstake / Claim, wired to NeuriioStaking (lib/stake.ts). Rewards drip in over an hour, so the earned amounts
+// are re-read every few seconds. `?demo`: sample numbers, simulated actions.
 import { useEffect, useMemo, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { formatEther, formatUnits, parseEther, type Address } from "viem";
 import { DEMO, displayName, tickerOf, type TokenStat } from "../lib/explore";
 import { QUOTE } from "../lib/config";
 import { amount as fmtAmount } from "../lib/format";
+import { useNeuriio } from "../lib/neuriio";
 import { elysiumProvider } from "../lib/tx";
-import { claimStaking, friendlyStakeError, NEURIIO, stake, stakePosition, unstake, type StakePosition } from "../lib/stake";
+import { claimStaking, friendlyStakeError, stake, stakePosition, unstake, type StakePosition } from "../lib/stake";
 
 type Tab = "stake" | "unstake" | "claim";
 const TABS: { id: Tab; label: string }[] = [
@@ -42,12 +41,10 @@ export function StakeCard({ t }: { t: TokenStat | null }) {
           title={`Stake ${displayName(t)}`}
           unit={tickerOf(t.symbol)}
           earns="40% of its pool fees"
-          mints
         />
       ) : (
         <p className="ex-empty">Pick a token.</p>
       )}
-      <StakeHalf me={me} token={NEURIIO} title="Stake Neuriio" unit="Neuriio" earns="50% curve · 40% pool fees" />
     </div>
   );
 }
@@ -60,16 +57,15 @@ function StakeHalf({
   title,
   unit,
   earns,
-  mints = false,
 }: {
   me: Me;
   token: Address;
   title: string;
   unit: string;
   earns: string;
-  mints?: boolean; // an X token: its stakers also earn Neuriio
 }) {
   const [tab, setTab] = useState<Tab>("stake");
+  const neuriio = useNeuriio(me.account, token);
   const [amount, setAmount] = useState("");
   const [pos, setPos] = useState<StakePosition | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -78,7 +74,7 @@ function StakeHalf({
 
   useEffect(() => {
     if (!account || !loggedIn) return setPos(null);
-    if (DEMO) return setPos(demoPosition(mints));
+    if (DEMO) return setPos(demoPosition());
     let alive = true;
     const load = () => stakePosition(account, token).then((p) => alive && setPos(p), () => {});
     load();
@@ -99,7 +95,7 @@ function StakeHalf({
 
   const have = pos ? (tab === "stake" ? pos.wallet : pos.staked) : null;
   const busy = status.kind === "busy";
-  const nothing = pos !== null && pos.usdc === 0n && pos.neuriio === 0n;
+  const nothing = pos !== null && pos.usdc === 0n;
 
   async function submit() {
     if (!account) return;
@@ -115,7 +111,7 @@ function StakeHalf({
       }
       const text =
         tab === "claim"
-          ? `Claimed ${fmtUsdc(pos?.usdc ?? 0n)} USDC${mints && pos && pos.neuriio > 0n ? ` · ${fmtTokens(pos.neuriio)} Neuriio staked` : ""}`
+          ? `Claimed ${fmtUsdc(pos?.usdc ?? 0n)} USDC`
           : `${tab === "stake" ? "Staked" : "Unstaked"} ${fmtTokens(amountIn)} ${unit}`;
       setStatus({ kind: "done", text });
       setAmount("");
@@ -166,17 +162,10 @@ function StakeHalf({
             <dt>USDC earned</dt>
             <dd>{pos ? fmtUsdc(pos.usdc) : "—"}</dd>
           </div>
-          {mints ? (
-            <div>
-              <dt title="Claiming stakes it for you">Neuriio minted</dt>
-              <dd>{pos ? fmtTokens(pos.neuriio) : "—"}</dd>
-            </div>
-          ) : (
-            <div>
-              <dt>Paid out</dt>
-              <dd>USDC to your wallet</dd>
-            </div>
-          )}
+          <div>
+            <dt>Paid out</dt>
+            <dd>USDC to your wallet</dd>
+          </div>
         </dl>
       ) : (
         <>
@@ -204,6 +193,7 @@ function StakeHalf({
           <p className="ex-stake-earns">Stakers earn {earns}</p>
         </>
       )}
+      <p className="ex-stake-earns">Neuriio Minted: {fmtAmount(neuriio)}</p>
 
       {status.kind === "done" && <p className="ex-order-msg price-up">{status.text}</p>}
       {status.kind === "error" && <p className="ex-order-msg price-down">{status.text}</p>}
@@ -219,9 +209,7 @@ const fmtTokens = (wei: bigint) => fmtAmount(Number(formatEther(wei)));
 const fmtUsdc = (units: bigint) =>
   Number(formatUnits(units, QUOTE.decimals)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: units < 10_000n ? 6 : 2 });
 
-/** ?demo: a staker of the picked token and of Neuriio. */
-function demoPosition(mints: boolean): StakePosition {
-  return mints
-    ? { open: true, wallet: parseEther("2500000"), staked: parseEther("1000000"), totalStaked: parseEther("40000000"), usdc: 3_210_000n, neuriio: parseEther("321"), gas: parseEther("0.2") }
-    : { open: true, wallet: 0n, staked: parseEther("640"), totalStaked: parseEther("25000"), usdc: 1_870_000n, neuriio: 0n, gas: parseEther("0.2") };
+/** ?demo: a staker of the picked token. */
+function demoPosition(): StakePosition {
+  return { open: true, wallet: parseEther("2500000"), staked: parseEther("1000000"), totalStaked: parseEther("40000000"), usdc: 3_210_000n, gas: parseEther("0.2") };
 }

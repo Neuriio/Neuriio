@@ -3,16 +3,28 @@
 
 import { keccak256, toBytes } from "npm:viem@2";
 
-export const CATEGORIES = ["trader", "meme_trader", "researcher", "influencer", "builder", "creator"] as const;
+export const CATEGORIES = ["trader", "meme_trader", "researcher", "influencer", "builder", "creator", "meme_account", "founders"] as const;
 export type Category = (typeof CATEGORIES)[number];
 
-/** The sector a token belongs to (2026-09-30). Off-chain only: part of the profile, so its hash fixes it on-chain. */
-export const SECTORS = ["robotics", "quantum", "finance", "ai", "energy", "memory", "space"] as const;
-export type Sector = (typeof SECTORS)[number];
+/**
+ * The launcher's Category enum stops at creator and is under the audit freeze, so the last two go on-chain as their nearest
+ * (user, 2026-11-01). The real one is in the hashed profile, which fixes it on-chain.
+ */
+export function chainCategory(c: Category): number {
+  if (c === "meme_account") return CATEGORIES.indexOf("creator");
+  if (c === "founders") return CATEGORIES.indexOf("builder");
+  return CATEGORIES.indexOf(c);
+}
+
 
 export const HANDLE_RE = /^[A-Za-z0-9_]{1,15}$/;
 
 export const PASS_TTL_SECONDS = 15 * 60;
+
+/** What two tickers are compared by: their first 4 characters, ignoring anything but A-Z 0-9, and with 0 read as O and 1 as I so
+ *  $EL0N can't pass for a different ticker than $ELON. public.ticker_prefix does the same in the database. */
+export const tickerPrefix = (ticker: string) =>
+  ticker.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/0/g, "O").replace(/1/g, "I").slice(0, 4);
 
 export const launchPassTypes = {
   LaunchPass: [
@@ -38,14 +50,19 @@ export type ProfileInput = { about: string; links?: Link[] };
  */
 export function canonicalProfile(
   input: ProfileInput,
-  who: { xUserId: string; handle: string; sector: Sector; category: Category },
+  who: { xUserId: string; handle: string; category: Category },
 ): { content: string; hash: `0x${string}` } {
-  const { about, links } = validAboutAndLinks(input);
+  const { about, links: given } = validAboutAndLinks(input);
+  // the first link is always their verified X account, whatever was sent (user, 2026-11-01), and nothing else can call itself that
+  const x = { label: "X", url: `https://x.com/${who.handle}`.toLowerCase() };
+  const others = given.filter((l) => l.url.toLowerCase().replace(/\/$/, "") !== x.url);
+  if (others.some((l) => /^(x|twitter)$/i.test(l.label))) throw new Error("Your X link is added automatically, so use another label");
+  if (others.length >= 10) throw new Error("At most 10 links");
+  const links = [x, ...others];
   const content = JSON.stringify({
-    v: 2, // v2 adds sector
+    v: 3, // v2 added a sector, v3 dropped it
     xUserId: who.xUserId,
     handle: who.handle,
-    sector: who.sector,
     category: who.category,
     about,
     links,
@@ -110,16 +127,15 @@ export function validFtfIdentity(name: unknown, ticker: unknown): { name: string
 /** The FTF's profile, as hashed into its pass: who they are together + links. */
 export function canonicalFtfProfile(
   input: ProfileInput,
-  ftf: { name: string; ticker: string; founderXUserId: string; sector: Sector; category: Category; pfpUrl: string | null },
+  ftf: { name: string; ticker: string; founderXUserId: string; category: Category; pfpUrl: string | null },
 ): { content: string; hash: `0x${string}` } {
   const { about, links } = validAboutAndLinks(input);
   const content = JSON.stringify({
-    v: 2, // v2 adds sector
+    v: 3, // v2 added a sector, v3 dropped it
     kind: "ftf",
     name: ftf.name,
     ticker: ftf.ticker,
     founder: ftf.founderXUserId,
-    sector: ftf.sector,
     category: ftf.category,
     pfp: ftf.pfpUrl,
     about,

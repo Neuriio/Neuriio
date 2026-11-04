@@ -1,10 +1,14 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { PrivyProvider } from "@privy-io/react-auth";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { WagmiProvider } from "wagmi";
 import { App } from "./App";
 import { elysiumTestnet } from "./chain";
+import { wagmiConfig } from "./lib/wagmi";
 
 const appId = import.meta.env.VITE_PRIVY_APP_ID;
+const queryClient = new QueryClient();
 
 createRoot(document.getElementById("root")!).render(
   appId ? (
@@ -27,7 +31,11 @@ createRoot(document.getElementById("root")!).render(
         supportedChains: [elysiumTestnet],
       }}
     >
-      <App />
+      <WagmiProvider config={wagmiConfig}>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </WagmiProvider>
     </PrivyProvider>
   ) : (
     <p style={{ fontFamily: "system-ui", padding: 24 }}>Set VITE_PRIVY_APP_ID in app/.env.local, then restart.</p>

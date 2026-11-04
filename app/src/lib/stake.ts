@@ -1,16 +1,12 @@
-// Staking (src/stake/NeuriioStaking.sol), from the Explore stake card and the Account panel.
-//   X tokens (once graduated): stakers share 40% of that token's pool fees in USDC, and every $1 they earn mints
-//   Neuriio (100 at first), which claiming stakes for them.
-//   Neuriio: stakers share 50% of every curve fee and 40% of every pool fee, in USDC.
-// Rewards drip in over an hour. Staking an X token approves the staking contract once (unlimited, sent silently like
-// the router's); Neuriio needs no approval (the staking contract may always move it) and can't be sent anywhere else.
+// Staking (src/stake/NeuriioStaking.sol), from the Explore stake card: X tokens (once graduated), whose stakers share 40%
+// of that token's pool fees in USDC. Rewards drip in over an hour. Staking approves the staking contract once (unlimited,
+// sent silently like the router's). Neuriio is a points ledger now, not a token (lib/points.ts), so nothing here reads it.
 import { erc20Abi, maxUint256, parseAbi, type Address, type EIP1193Provider } from "viem";
 import { deployment } from "./config";
 import { pub } from "./launch";
 import { confirmed, nonceAfter, walletClientFor } from "./tx";
 
 export const STAKING = deployment.staking as Address;
-export const NEURIIO = deployment.neuriio as Address;
 
 const stakingAbi = parseAbi([
   "function stake(address token, uint256 amount)",
@@ -22,20 +18,19 @@ const stakingAbi = parseAbi([
   "function isStakeable(address token) view returns (bool)",
 ]);
 
-/** One pool, for one wallet: what's in the wallet, staked, and earned so far (USDC base units, Neuriio wei). */
+/** One pool, for one wallet: what's in the wallet, staked, and earned so far (USDC base units). */
 export type StakePosition = {
   open: boolean; // stakeable (an X token: graduated)
   wallet: bigint; // the token in the wallet
   staked: bigint;
   totalStaked: bigint;
   usdc: bigint;
-  neuriio: bigint;
   gas: bigint; // HYPE for gas
 };
 
 export async function stakePosition(user: Address, token: Address): Promise<StakePosition> {
   const s = { address: STAKING, abi: stakingAbi } as const;
-  const [open, wallet, staked, totalStaked, [usdc, neuriio], gas] = await Promise.all([
+  const [open, wallet, staked, totalStaked, [usdc], gas] = await Promise.all([
     pub.readContract({ ...s, functionName: "isStakeable", args: [token] }),
     pub.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [user] }),
     pub.readContract({ ...s, functionName: "stakedOf", args: [user, token] }),
@@ -43,21 +38,19 @@ export async function stakePosition(user: Address, token: Address): Promise<Stak
     pub.readContract({ ...s, functionName: "earned", args: [user, token] }),
     pub.getBalance({ address: user }),
   ]);
-  return { open, wallet, staked, totalStaked, usdc, neuriio, gas };
+  return { open, wallet, staked, totalStaked, usdc, gas };
 }
 
-/** Stakes `amount` of `token` (approving the staking contract first if an X token still needs it). */
+/** Stakes `amount` of `token` (approving the staking contract first if it still needs it). */
 export async function stake(provider: EIP1193Provider, account: Address, token: Address, amount: bigint, onApproving?: () => void) {
   const w = walletClientFor(provider, account);
   let nonce: number | undefined;
-  if (token.toLowerCase() !== NEURIIO.toLowerCase()) {
-    const allowance = await pub.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [account, STAKING] });
-    if (allowance < amount) {
-      onApproving?.();
-      const hash = await w.writeContract({ address: token, abi: erc20Abi, functionName: "approve", args: [STAKING, maxUint256] });
-      await confirmed(hash);
-      nonce = await nonceAfter(hash);
-    }
+  const allowance = await pub.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [account, STAKING] });
+  if (allowance < amount) {
+    onApproving?.();
+    const hash = await w.writeContract({ address: token, abi: erc20Abi, functionName: "approve", args: [STAKING, maxUint256] });
+    await confirmed(hash);
+    nonce = await nonceAfter(hash);
   }
   await confirmed(await w.writeContract({ address: STAKING, abi: stakingAbi, functionName: "stake", args: [token, amount], nonce }));
 }
@@ -66,7 +59,7 @@ export async function unstake(provider: EIP1193Provider, account: Address, token
   await confirmed(await walletClientFor(provider, account).writeContract({ address: STAKING, abi: stakingAbi, functionName: "unstake", args: [token, amount] }));
 }
 
-/** Claims `tokens`' pools: USDC to the wallet, Neuriio staked for it. */
+/** Claims `tokens`' pools: USDC to the wallet. */
 export async function claimStaking(provider: EIP1193Provider, account: Address, tokens: Address[]) {
   await confirmed(await walletClientFor(provider, account).writeContract({ address: STAKING, abi: stakingAbi, functionName: "claim", args: [tokens, account] }));
 }

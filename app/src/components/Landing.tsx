@@ -91,7 +91,7 @@ export function Showcase() {
       <header className="top">
         <div className="top-left">
           <span className="logo">
-            <img src="/brand/logo.png" alt="" width={52} height={52} />
+            <img src="/brand/logo-dots.png" alt="" width={52} height={52} />
           </span>
         </div>
         <TopNav current="/explore" />
@@ -113,10 +113,10 @@ export function Showcase() {
               </span>
             </span>
           </div>
-          <div className="top-box-slot" data-card="Points">
+          <div className="top-box-slot" data-card="Neuriio">
             <span className="panel top-box morph-trigger points">
               <span className="morph-trigger-content">
-                <span className="top-value">Points</span>
+                <span className="top-value">Neuriio</span>
               </span>
             </span>
           </div>

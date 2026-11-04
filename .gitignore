@@ -21,3 +21,9 @@ broadcast/
 
 # macOS
 .DS_Store
+
+# Local only, never on GitHub (user, 2026-11-03): working notes, audit reports, marketing
+HANDOFF.md
+TRADE_ARENA.md
+audit/
+marketing/

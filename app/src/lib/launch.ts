@@ -24,10 +24,12 @@ export const CATEGORIES = [
   { id: "influencer", label: "Influencer", hint: "Reach, community, vibes" },
   { id: "builder", label: "Builder", hint: "Ships code and products" },
   { id: "creator", label: "Creator", hint: "Art, music, content" },
+  { id: "meme_account", label: "Meme Account", hint: "A meme launching its main X account" },
+  { id: "founders", label: "Founders", hint: "An app or protocol launching here" },
 ] as const;
 export type CategoryId = (typeof CATEGORIES)[number]["id"];
 
-/** "What sector are you?" (2026-09-30). Off-chain: part of the hashed profile (supabase/functions/_shared/launchPass.ts). */
+/** Older tokens' sectors, for showing them: launches no longer ask (user, 2026-11-01). Off-chain: part of the hashed profile (supabase/functions/_shared/launchPass.ts). */
 export const SECTORS = [
   { id: "robotics", label: "Robotics", hint: "Machines, automation, hardware" },
   { id: "quantum", label: "Quantum", hint: "Qubits, physics, deep tech" },
@@ -116,13 +118,6 @@ export function estimateFirstBuy(value: number, p: CurveParams) {
   return { tokens, pctOfSupply: (tokens / TOTAL) * 100, fee };
 }
 
-/** Where a first buy of `value` leaves the curve, 0..1 of the 793.1M for sale (for the preview chart). */
-export const curveProgress = (value: number, p: CurveParams) => estimateFirstBuy(value, p).tokens / CURVE_SUPPLY;
-
-/** Fully diluted market cap at graduation, in USDC (= virtualQuote x ~13.7). */
-export const graduationMcap = (p: CurveParams) =>
-  (p.virtualQuote * (VIRTUAL_TOKENS / (VIRTUAL_TOKENS - CURVE_SUPPLY)) * TOTAL) / (VIRTUAL_TOKENS - CURVE_SUPPLY);
-
 export async function launchedTokenOf(wallet: Address): Promise<Address | null> {
   const t = await pub.readContract({ address: REGISTRY, abi: registryAbi, functionName: "tokenOfCreator", args: [wallet] });
   return /^0x0{40}$/i.test(t) ? null : t;
@@ -137,7 +132,7 @@ export type LaunchPassResponse = {
 /** Our backend checks the X login and signs the one-time launch pass. */
 export async function requestLaunchPass(
   accessToken: string,
-  body: { sector: SectorId; category: CategoryId; profile: { about: string; links: { label: string; url: string }[] } },
+  body: { category: CategoryId; profile: { about: string; links: { label: string; url: string }[] } },
 ): Promise<LaunchPassResponse> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/launch-pass`, {
     method: "POST",

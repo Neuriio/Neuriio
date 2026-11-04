@@ -13,6 +13,7 @@ import { balances, buyGraduates, FEE_BPS, friendlyTradeError, minOut, prepareTra
 import { QUOTE } from "../lib/config";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { elysiumProvider } from "../lib/tx";
+import { LaunchCheckCard } from "./LaunchCheckCard";
 
 const QUICK_BUY = ["5", "25", "100", "250"]; // USDC, until you set your own (the pencil)
 const QUICK_KEY = "neuriio.quickBuy";
@@ -31,14 +32,16 @@ const QUICK_SELL = [25, 50, 75, 100];
 
 type Status = { kind: "idle" } | { kind: "busy"; label: string } | { kind: "done"; text: string } | { kind: "error"; text: string };
 
-export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number }) {
+/** `fixedSide`: the parent's tabs pick buy or sell, so this card shows no tabs of its own. */
+export function OrderCard({ t, hypeUsd, fixedSide }: { t: TokenStat | null; hypeUsd: number; fixedSide?: Side }) {
   const { ready, authenticated, login } = usePrivy();
   const { wallets } = useWallets();
   const wallet = wallets.find((w) => w.walletClientType === "privy");
   const account = (DEMO ? "0x000000000000000000000000000000000000dE00" : wallet?.address) as Address | undefined;
   const loggedIn = DEMO || (ready && authenticated && !!wallet);
 
-  const [side, setSide] = useState<Side>("buy");
+  const [ownSide, setSide] = useState<Side>("buy");
+  const side = fixedSide ?? ownSide;
   const [quick, setQuick] = useState<string[]>(savedQuickBuy);
   const [editing, setEditing] = useState<string[] | null>(null); // drafts while editing the quick amounts
   const [amount, setAmount] = useState("");
@@ -57,6 +60,12 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
       return 0n;
     }
   }, [amount, side]);
+
+  // a new side starts clean
+  useEffect(() => {
+    setAmount("");
+    setStatus({ kind: "idle" });
+  }, [side]);
 
   // balances
   useEffect(() => {
@@ -179,23 +188,21 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
 
   return (
     <div className="ex-order">
-      <div className="ex-order-tabs" role="tablist">
-        {(["buy", "sell"] as const).map((s) => (
-          <button
-            key={s}
-            role="tab"
-            aria-selected={side === s}
-            className={`ex-order-tab is-${s}${side === s ? " is-on" : ""}`}
-            onClick={() => {
-              setSide(s);
-              setAmount("");
-              setStatus({ kind: "idle" });
-            }}
-          >
-            {s === "buy" ? "Buy" : "Sell"}
-          </button>
-        ))}
-      </div>
+      {!fixedSide && (
+        <div className="ex-order-tabs" role="tablist">
+          {(["buy", "sell"] as const).map((s) => (
+            <button
+              key={s}
+              role="tab"
+              aria-selected={side === s}
+              className={`ex-order-tab is-${s}${side === s ? " is-on" : ""}`}
+              onClick={() => setSide(s)}
+            >
+              {s === "buy" ? "Buy" : "Sell"}
+            </button>
+          ))}
+        </div>
+      )}
 
       <label className="ex-order-field">
         <span className="ex-order-label-row">
@@ -285,7 +292,7 @@ export function OrderCard({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number
         </div>
         <div>
           <dt>Fee</dt>
-          <dd>{(feeBps / 100).toFixed(2)}% {t.graduated ? "(pool)" : "(bonding curve)"}</dd>
+          <dd>0% (Ascend Fees)</dd>
         </div>
         {q && q.refund > 0n && (
           <div>
@@ -334,8 +341,8 @@ function demoQuote(t: TokenStat, side: Side, amountIn: bigint) {
 
 const BAR_DAYS = 7;
 
-/** Under the order box: this token's daily volume (top) and the fees it paid (bottom, the 1% fee on that volume),
- *  last 7 days, from the stored 4H candles; refreshes after your own trade and every minute. */
+/** Under the order box: this token's daily volume, last 7 days, from the stored 4H candles (refreshes after your own trade and every
+ *  minute), then the Launch check. */
 function TradeBars({ address, nonce }: { address: string; nonce: number }) {
   const [days, setDays] = useState<{ day: string; vol: number }[] | null>(null);
   useEffect(() => {
@@ -357,11 +364,10 @@ function TradeBars({ address, nonce }: { address: string; nonce: number }) {
       clearInterval(id);
     };
   }, [address, nonce]);
-  const fee = FEE_BPS / 10_000;
   return (
     <div className="ex-bars">
       <BarCard title="Volume" unit="7d" values={days?.map((d) => ({ day: d.day, v: d.vol })) ?? null} />
-      <BarCard title="Fees" unit="7d" values={days?.map((d) => ({ day: d.day, v: d.vol * fee })) ?? null} />
+      <LaunchCheckCard address={address} />
     </div>
   );
 }

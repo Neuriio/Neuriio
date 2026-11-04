@@ -1,10 +1,10 @@
 // /feed — posts like X. Layout (user's wireframe, 2026-09-30): the top bar as everywhere, the Explore search above
-// the card, then one wide card: a left column (you: picture, sector, category, creator fees · your wallet balances ·
-// top 25 trending by 24h volume) beside the posts. Every post has Like, Comment (opens the thread in a window to
+// the card, then one wide card: a left column (you: picture, sector, category, creator fees · notifications · your
+// portfolio, PortfolioPanel) beside the posts. Every post has Like, Comment (opens the thread in a window to
 // read) and Send $ (a window: pick one of your Elysium tokens + amount, sent to the poster's wallet). Posts, likes
 // Posts, likes and comments are stored (supabase posts / post_likes / post_comments, written by the `posts` function). A compose box with a Post button sits on top of the posts (desktop and phones).
-// Phones (<= 860px): no left column; one card with two tabs, Feed (the posts) and Notifications (the same list as
-// the Account panel's bell).
+// Phones (<= 860px): no left column; one card with three tabs, opening on the first: Portfolio, Feed (the posts) and
+// Notifications (the same list as the Account panel's bell).
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
@@ -12,20 +12,19 @@ import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { formatUnits, type Address } from "viem";
 import { Bell, Heart, MessageCircle, Search, X } from "lucide-react";
 import { Avatar } from "./Avatar";
+import { PortfolioPanel } from "./PortfolioPanel";
 import { NotificationsList, NotificationsModal } from "./NotificationsModal";
 import { useIsMobile } from "../lib/media";
 import { SendModal, type SendTarget } from "./SendModal";
 import { useNotifications } from "../lib/ftf";
 import { commentOn, commentsOf, createPost, latestPosts, likedBy, likePost, POST_MAX, type CommentRow, type PostRow } from "../lib/posts";
 import { EASE_OUT } from "../lib/motion";
-import { amount, compactUsd, usd } from "../lib/format";
+import { compactUsd } from "../lib/format";
 import { QUOTE } from "../lib/config";
-import { useBalances } from "../lib/useBalances";
-import type { Balances } from "../lib/balances";
 import { profileOf, type Profile } from "../lib/profile";
 import { tokenCreatorEarned } from "../lib/fees";
 import { CATEGORIES, launchedTokenOf, SECTORS } from "../lib/launch";
-import { change24h, DEMO, displayName, getToken, handleOf, searchTokens, tickerOf, topTokens, type TokenStat } from "../lib/explore";
+import { DEMO, displayName, getToken, handleOf, searchTokens, tickerOf, topTokens, type TokenStat } from "../lib/explore";
 
 type Post = {
   id: string;
@@ -70,7 +69,7 @@ export function FeedCard() {
   const [reading, setReading] = useState<Post | null>(null);
   const [sendTo, setSendTo] = useState<SendTarget | null>(null);
   const mobile = useIsMobile();
-  const [tab, setTab] = useState<"feed" | "notifications">("feed");
+  const [tab, setTab] = useState<"portfolio" | "feed" | "notifications">("portfolio");
   const { items } = useNotifications();
   const [list, setList] = useState<Post[] | null>(null);
   const { ready, authenticated, user, login, getAccessToken } = usePrivy();
@@ -130,6 +129,9 @@ export function FeedCard() {
         {mobile ? (
           <div className="feed-mobile">
             <div className="ex-mtabs feed-mtabs" role="tablist">
+              <button role="tab" aria-selected={tab === "portfolio"} className={`ex-mtab${tab === "portfolio" ? " is-on" : ""}`} onClick={() => setTab("portfolio")}>
+                Portfolio
+              </button>
               <button role="tab" aria-selected={tab === "feed"} className={`ex-mtab${tab === "feed" ? " is-on" : ""}`} onClick={() => setTab("feed")}>
                 Feed
               </button>
@@ -142,13 +144,13 @@ export function FeedCard() {
                 Notifications{items.length > 0 && <span className="notif-count feed-mtab-count">{items.length}</span>}
               </button>
             </div>
-            {tab === "feed" ? posts : <MobileNotices />}
+            {tab === "feed" ? posts : tab === "notifications" ? <MobileNotices /> : <PortfolioPanel />}
           </div>
         ) : (
           <div className="feed-grid">
             <aside className="feed-side">
               <Me />
-              <Trending />
+              <PortfolioPanel />
             </aside>
             {posts}
           </div>
@@ -210,30 +212,10 @@ function FeedSearch({ hypeUsd }: { hypeUsd: number }) {
 // ------------------------------------------------------------------ left column: you, notifications, your wallet
 
 const DEMO_ME: Profile = { name: "@neuriio_demo", avatar: null, initial: "N" };
-const DEMO_BALANCES: Balances = {
-  total: 1834.52,
-  at: 0,
-  elysium: {
-    total: 552.02,
-    tokens: [
-      { symbol: "HYPE", amount: 0, usd: 0 },
-      { symbol: "USDC", amount: 552.02, usd: 552.02 },
-    ],
-  },
-  hypercore: {
-    total: 1282.5,
-    tokens: [
-      { symbol: "HYPE", amount: 2.85, usd: 262.4 },
-      { symbol: "USDC", amount: 1020.1, usd: 1020.1 },
-    ],
-  },
-};
-
 function Me() {
   const { ready, authenticated, user, login } = usePrivy();
   const { wallets } = useWallets();
   const address = (DEMO ? undefined : wallets.find((w) => w.walletClientType === "privy")?.address) as Address | undefined;
-  const { balances } = useBalances(address);
   const hypeUsd = QUOTE.usd; // launched tokens are priced in USDC
   const [token, setToken] = useState<TokenStat | null | undefined>(undefined); // undefined = loading, null = none
   const [earned, setEarned] = useState<number | null>(null);
@@ -271,16 +253,11 @@ function Me() {
             Login
           </button>
         </div>
-        <div className="feed-side-box feed-wallet feed-locked">
-          <span className="feed-side-title">Wallet</span>
-          <p>Your balances show here once you log in.</p>
-        </div>
       </>
     );
   }
 
   const me = DEMO ? DEMO_ME : profileOf(user);
-  const b = DEMO ? DEMO_BALANCES : balances;
   const sector = SECTORS.find((x) => x.id === token?.sector)?.label;
   const cat = token ? (token.kind === "ftf" ? "FTF" : CATEGORIES.find((c) => c.id === token.category)?.label) : null;
   return (
@@ -314,28 +291,6 @@ function Me() {
       </div>
 
       <NoticesBox />
-
-      <div className="feed-side-box feed-wallet">
-        <header className="feed-side-head">
-          <span className="feed-side-title">Wallet</span>
-          <span>{b ? usd(b.total) : "…"}</span>
-        </header>
-        {(["elysium", "hypercore"] as const).map((venue) => (
-          <div key={venue} className="feed-venue">
-            <span className="feed-venue-name">{venue === "elysium" ? "Elysium" : "HyperCore"}</span>
-            {b?.[venue].tokens
-              .filter((t) => t.amount > 0)
-              .map((t) => (
-                <div className="feed-bal" key={t.symbol}>
-                  <span>{t.symbol}</span>
-                  <span className="feed-bal-amt">{amount(t.amount)}</span>
-                  <span className="feed-muted">{usd(t.usd)}</span>
-                </div>
-              ))}
-            {b && b[venue].tokens.every((t) => t.amount === 0) && <span className="feed-muted feed-bal-empty">No balance</span>}
-          </div>
-        ))}
-      </div>
     </>
   );
 }
@@ -391,54 +346,6 @@ function NoticesBox() {
         ))
       )}
       <NotificationsModal open={open} onClose={() => setOpen(false)} />
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------ left column: top 25 trending (24h volume)
-
-function Trending() {
-  const [top, setTop] = useState<TokenStat[] | null>(null);
-  useEffect(() => {
-    let alive = true;
-    const load = () => topTokens("volume_usd_24h", 25).then((r) => alive && setTop(r), () => {});
-    load();
-    const id = setInterval(load, 30_000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-    };
-  }, []);
-  return (
-    <div className="feed-side-box feed-trending">
-      <header className="feed-side-head">
-        <span className="feed-side-title">Top 25 trending</span>
-        <span className="feed-muted">24h vol</span>
-      </header>
-      <ol className="feed-trend-list">
-        {top?.map((t, i) => {
-          const ch = change24h(t);
-          return (
-            <li key={t.address}>
-              <a className="ex-row" href={exploreHref(t)}>
-                <span className="ex-rank">{i + 1}</span>
-                <Avatar handle={t.handle} pfp={t.x_pfp_url} size={26} />
-                <span className="ex-row-names">
-                  <span className="ex-row-handle">{displayName(t)}</span>
-                  {ch == null ? (
-                    <span className="ex-change">—</span>
-                  ) : (
-                    <span className={`ex-change ${ch >= 0 ? "price-up" : "price-down"}`}>{`${ch >= 0 ? "+" : ""}${ch.toFixed(1)}%`}</span>
-                  )}
-                </span>
-                <span className="ex-row-mcap">{compactUsd(t.volume_usd_24h)}</span>
-              </a>
-            </li>
-          );
-        })}
-        {top && top.length === 0 && <li className="ex-empty">Nothing trading yet.</li>}
-        {!top && <li className="ex-empty">Loading…</li>}
-      </ol>
     </div>
   );
 }

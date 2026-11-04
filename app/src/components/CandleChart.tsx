@@ -13,6 +13,7 @@
 // user's zoom and scroll.
 import { useEffect, useRef } from "react";
 import {
+  type AutoscaleInfo,
   CandlestickSeries,
   ColorType,
   createChart,
@@ -20,7 +21,6 @@ import {
   HistogramSeries,
   type IChartApi,
   type ISeriesApi,
-  PriceScaleMode,
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { Candle } from "../lib/explore";
@@ -28,16 +28,16 @@ import type { LiveTrade } from "../lib/live";
 import { compactUsd } from "../lib/format";
 
 const SUPPLY = 1_000_000_000;
-const UP = "#6ee7a0";
-const DOWN = "#ff8a8a";
-const VOL_UP = "rgba(110,231,160,0.35)";
-const VOL_DOWN = "rgba(255,138,138,0.35)";
+const UP = "#316f59";
+const DOWN = "#783d3d";
+const VOL_UP = "rgba(49,111,89,0.6)";
+const VOL_DOWN = "rgba(120,61,61,0.6)";
+// a market cap can't go below 0: the axis's margins and dragging can still reach there, but no label says so
+const axisUsd = (v: number) => (v < 0 ? "" : compactUsd(v));
 
 type Drawn = { time: UTCTimestamp; open: number; high: number; low: number; close: number; volume: number; trades: number };
 
 export type ChartControls = {
-  reset: () => void;
-  setLog: (on: boolean) => void;
   applyTrade: (t: LiveTrade) => void;
 };
 
@@ -84,15 +84,15 @@ export function CandleChart({
         attributionLogo: false, // credited as "Charts by TradingView" under the chart instead (ExploreCard)
       },
       grid: {
-        vertLines: { color: "rgba(236, 221, 255, 0.05)" },
-        horzLines: { color: "rgba(236, 221, 255, 0.05)" },
+        vertLines: { visible: false },
+        horzLines: { visible: false },
       },
       crosshair: { mode: CrosshairMode.Normal },
       rightPriceScale: { borderColor: "rgba(236, 221, 255, 0.12)", scaleMargins: { top: 0.1, bottom: 0.22 } },
       timeScale: { borderColor: "rgba(236, 221, 255, 0.12)", timeVisible: true, secondsVisible: false, rightOffset: 4 },
       handleScale: { axisPressedMouseMove: { time: true, price: true }, mouseWheel: true, pinch: true, axisDoubleClickReset: true },
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
-      localization: { priceFormatter: (v: number) => compactUsd(v) },
+      localization: { priceFormatter: axisUsd },
     });
     bars.current = c.addSeries(CandlestickSeries, {
       upColor: UP,
@@ -100,7 +100,11 @@ export function CandleChart({
       wickUpColor: UP,
       wickDownColor: DOWN,
       borderVisible: false,
-      priceFormat: { type: "custom", formatter: (v: number) => compactUsd(v), minMove: 0.01 },
+      priceFormat: { type: "custom", formatter: axisUsd, minMove: 0.01 },
+      autoscaleInfoProvider: (fit: () => AutoscaleInfo | null) => {
+        const r = fit();
+        return r?.priceRange ? { ...r, priceRange: { ...r.priceRange, minValue: Math.max(0, r.priceRange.minValue) } } : r;
+      },
     });
     vols.current = c.addSeries(HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
     c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
@@ -130,8 +134,6 @@ export function CandleChart({
     el.addEventListener("touchstart", onTouchStart, { passive: true });
     el.addEventListener("touchend", onTouchEnd);
     onControls?.({
-      reset,
-      setLog: (on) => c.priceScale("right").applyOptions({ mode: on ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal }),
       applyTrade: (t) => {
         const { interval: s, hypeUsd: usd, basePriceHype: base } = cfg.current;
         if (!usd) return;

@@ -10,6 +10,8 @@
   --cyan: #ccecec;
   --cyan-2: #d8fffe;
   --line: rgba(236, 221, 255, 0.14);
+  --red: #783d3d; /* the site red: Explore and the marquee (user, 2026-11-02) */
+  --green: #316f59; /* the site green (user, 2026-10-25; was #6ee7a0) */
 
   --gap: 24px;
   --edge: 32px;
@@ -99,13 +101,17 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .price-up {
-  color: #6ee7a0;
+  color: var(--green);
 }
 /* order card: price impact 1-5% (under 1% plain, over 5% .price-down) */
 .impact-mid {
   color: #ffd27a;
 }
 .price-down {
+  color: var(--red);
+}
+/* an error has to be readable, so it keeps the brighter red */
+.ex-order-msg.price-down {
   color: #ff8a8a;
 }
 /* all ticker icons in white */
@@ -309,10 +315,10 @@ body {
   cursor: default;
 }
 .hype-btn-done {
-  color: #6ee7a0;
+  color: var(--green);
 }
 .hype-btn-done .top-value {
-  color: #6ee7a0;
+  color: var(--green);
 }
 .hype-modal {
   width: min(380px, 100%);
@@ -359,7 +365,7 @@ body {
   left: 0;
   z-index: 2;
 }
-.card-stack > [data-card="Points"] {
+.card-stack > [data-card="Neuriio"] {
   left: 76px;
   z-index: 1;
 }
@@ -367,7 +373,7 @@ body {
   z-index: 3;
 }
 /* "Points" sits in the part of its card that the Account card doesn't cover */
-.card-stack > [data-card="Points"] .morph-trigger {
+.card-stack > [data-card="Neuriio"] .morph-trigger {
   justify-content: flex-end;
   padding-right: 14px;
 }
@@ -452,12 +458,12 @@ body {
   flex: none;
   width: 100px;
 }
-.app-nav .card-stack > [data-card="Points"] {
-  order: 1; /* Account first, then Points */
+.app-nav .card-stack > [data-card="Neuriio"] {
+  order: 1; /* Account first, then Neuriio */
 }
-.app-nav .card-stack > [data-card="Points"] .morph-trigger {
+.app-nav .card-stack > [data-card="Neuriio"] .morph-trigger {
   justify-content: center;
-  padding-right: 18px;
+  padding-right: 10px;
 }
 @media (max-width: 1199px) {
   .app-nav .top-marquee {
@@ -628,11 +634,66 @@ body {
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
 }
+.points-next {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.points-next p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.points-next b {
+  font-weight: 700;
+  color: #fff;
+}
+.points-bar {
+  height: 5px;
+  overflow: hidden;
+  background: rgba(236, 221, 255, 0.12);
+  border-radius: 3px;
+}
+.points-bar span {
+  display: block;
+  height: 100%;
+  background: var(--cyan-2);
+  border-radius: 3px;
+}
 .points-slot {
-  height: 64px;
-  background: rgba(70, 55, 100, 0.35);
-  border: 1px solid var(--line);
-  border-radius: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  height: 80px;
+  padding: 4px;
+  overflow: hidden;
+}
+/* grey until the rank is reached */
+.points-slot img {
+  flex: 1 1 0;
+  width: 100%;
+  min-height: 0;
+  object-fit: contain;
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+.points-slot.is-earned img {
+  filter: none;
+  opacity: 1;
+}
+/* the star art has wide empty margins: match the coins' size */
+.points-slot img.is-star {
+  transform: scale(1.75);
+}
+.points-slot span {
+  position: relative;
+  font-size: 10px;
+  color: var(--muted);
+}
+.points-slot.is-earned span {
+  color: var(--text-2);
 }
 .icon-btn {
   display: grid;
@@ -893,39 +954,6 @@ body {
   border-style: dashed;
   border-color: var(--line);
 }
-.lp-curve {
-  padding: 8px 8px 6px;
-  background: rgba(18, 12, 29, 0.45);
-  border: 1px solid var(--line);
-  border-radius: 5px;
-}
-.lp-curve svg {
-  display: block;
-  overflow: visible;
-}
-.lp-curve-line {
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 1.5;
-}
-.lp-curve-fill {
-  fill: rgba(204, 236, 236, 0.18);
-  stroke: var(--cyan-2);
-  stroke-width: 1.5;
-}
-.lp-curve-dot {
-  fill: var(--cyan-2);
-  filter: drop-shadow(0 0 4px rgba(216, 255, 254, 0.8));
-  transition: cx 0.3s ease, cy 0.3s ease;
-}
-.lp-curve-axis {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 4px;
-  font-size: 9px;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-}
 .lp-stats {
   display: flex;
   flex-direction: column;
@@ -1029,7 +1057,7 @@ body {
 }
 .lp-cats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 .lp-cat {
@@ -1073,21 +1101,6 @@ body {
   grid-column: 1 / -1;
   font-size: 10px;
   color: var(--muted);
-}
-/* Sector step, part 1: 7 sectors in 4 columns; part 2 shows the pick next to the question */
-.lp-cats.lp-sectors {
-  grid-template-columns: repeat(4, 1fr);
-}
-.lp-q:has(.lp-sector-pick) {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-}
-.lp-sector-pick {
-  font-size: 11px;
-  font-weight: 500;
-  white-space: nowrap;
 }
 .lp-field {
   display: flex;
@@ -1146,6 +1159,20 @@ body {
   grid-template-columns: 92px 1fr auto;
   gap: 6px;
   align-items: center;
+}
+.lp-link.is-locked input {
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.75;
+}
+.lp-link.is-locked input:focus {
+  outline: none;
+}
+.lp-link-lock {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  color: var(--muted);
 }
 .lp-form .is-bad {
   border-color: rgba(255, 138, 138, 0.6);
@@ -1387,9 +1414,6 @@ body {
   font-size: 13px;
   padding: 5px 11px;
 }
-.stage-launch .lp-curve-axis {
-  font-size: 10px;
-}
 .stage-launch .lp-stats {
   gap: 7px;
 }
@@ -1432,6 +1456,17 @@ body {
 .stage-launch .lp-cat svg {
   width: 19px;
   height: 19px;
+}
+/* 8 tiles: 4 x 2 while they fit, then 2 x 4 */
+@media (max-width: 1040px) {
+  .stage-launch .lp-cats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .stage-launch .lp-cat {
+    padding: 11px 12px 10px;
+    row-gap: 3px;
+  }
 }
 .stage-launch .lp-cat-label {
   font-size: 15px;
@@ -1604,8 +1639,7 @@ body {
     padding: 16px 8px 14px 0;
     margin-right: 6px;
   }
-  .stage-launch .lp-cats,
-  .stage-launch .lp-cats.lp-sectors {
+  .stage-launch .lp-cats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   /* four steps don't fit across a phone: only the current one keeps its label, the rest show their number */
@@ -1831,7 +1865,6 @@ body {
     border-bottom: 1px solid var(--line);
     border-radius: var(--radius) var(--radius) 0 0;
   }
-  .lp-curve,
   .lp-meme {
     display: none;
   }
@@ -1983,7 +2016,7 @@ body {
 .feed-me-fees-value {
   font-size: 15px;
   font-weight: 700;
-  color: #8fe3a7;
+  color: var(--green);
 }
 .feed-me-fees-value .feed-muted {
   font-size: 11px;
@@ -2018,8 +2051,8 @@ body {
   font-size: 10px;
   font-weight: 700;
   text-align: center;
-  color: #10231a;
-  background: #8fe3a7;
+  color: var(--text);
+  background: var(--green);
   border-radius: 9px;
 }
 .feed-notices-empty {
@@ -2046,39 +2079,6 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.feed-venue {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.feed-venue-name {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-2);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.feed-bal {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 12px;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-.feed-bal-amt {
-  text-align: right;
-}
-.feed-bal-empty {
-  font-size: 11px;
-}
-.feed-trend-list {
-  margin: 0 -8px;
-  padding: 0;
-  list-style: none;
-}
-.feed-trend-list .ex-row {
-  text-decoration: none;
 }
 /* phones: one card with Feed / Notifications tabs (no left column); the page scrolls, not the list (2026-10-10) */
 .feed-mobile {
@@ -2314,8 +2314,8 @@ body {
   place-items: center;
   width: 44px;
   height: 44px;
-  color: #10231a;
-  background: #8fe3a7;
+  color: var(--text);
+  background: var(--green);
   border-radius: 50%;
 }
 
@@ -2457,7 +2457,7 @@ body {
 .ex-platform-value {
   font-size: 15px;
   font-weight: 700;
-  color: #6ee7a0;
+  color: var(--green);
   font-variant-numeric: tabular-nums;
 }
 .ex-list-head {
@@ -2677,48 +2677,32 @@ a.ex-row {
   text-transform: uppercase;
   color: var(--muted);
 }
+/* the stats strip above the chart: small label over value, no tiles (user, 2026-11-01). Wraps when the chart widget is
+   narrow; phones keep one row and swipe sideways. */
 .ex-stats {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px clamp(16px, 2.6vw, 44px);
   margin: 0;
+  padding: 10px 0;
+  border-block: 1px solid rgba(236, 221, 255, 0.08);
 }
 .ex-stats div {
-  padding: 10px 12px;
-  background: rgba(10, 6, 18, 0.35);
-  border: 1px solid rgba(236, 221, 255, 0.08);
-  border-radius: 6px;
+  flex: none;
 }
 .ex-stats dt {
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: var(--muted);
 }
 .ex-stats dd {
   margin: 4px 0 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-.ex-progress-label {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.ex-progress-track {
-  height: 6px;
-  overflow: hidden;
-  background: rgba(236, 221, 255, 0.08);
-  border-radius: 3px;
-}
-.ex-progress-track span {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, #817298, #d8fffe);
-  border-radius: 3px;
 }
 
 @media (max-width: 860px) {
@@ -2760,7 +2744,11 @@ a.ex-row {
     height: 320px;
   }
   .ex-stats {
-    grid-template-columns: repeat(2, 1fr);
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    column-gap: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
 }
 
@@ -2875,7 +2863,7 @@ a.ex-row {
   padding-top: 10px;
 }
 
-/* ---- /trending: Bonding / Recently graduated / Trending, three cards between the dot strands (2026-10-10) ---- */
+/* ---- /trending: Early / Matured / Trending, three cards between the dot strands (2026-10-10) ---- */
 .stage-trending {
   position: relative; /* in the page flow, so phones scroll */
   top: auto;
@@ -2926,13 +2914,10 @@ a.ex-row {
     margin-top: 120px;
   }
 }
-/* 3 columns get tight on laptops: slimmer sides, 3 stat tiles per row */
+/* 3 columns get tight on laptops: slimmer sides */
 @media (max-width: 1240px) and (min-width: 861px) {
   .ex-grid {
     grid-template-columns: 260px minmax(0, 1fr) 260px;
-  }
-  .ex-stats {
-    grid-template-columns: repeat(3, 1fr);
   }
 }
 
@@ -2964,12 +2949,12 @@ a.ex-row {
   cursor: pointer;
 }
 .ex-order-tab.is-buy.is-on {
-  color: #0f1a14;
-  background: #6ee7a0;
+  color: var(--text);
+  background: var(--green);
 }
 .ex-order-tab.is-sell.is-on {
-  color: #1f0f12;
-  background: #ff8a8a;
+  color: var(--text);
+  background: var(--red);
 }
 .ex-order-field {
   display: flex;
@@ -3088,12 +3073,12 @@ a.ex-row {
   cursor: pointer;
 }
 .ex-order-cta.is-buy {
-  color: #0f1a14;
-  background: #6ee7a0;
+  color: var(--text);
+  background: var(--green);
 }
 .ex-order-cta.is-sell {
-  color: #1f0f12;
-  background: #ff8a8a;
+  color: var(--text);
+  background: var(--red);
 }
 .ex-order-cta:disabled {
   opacity: 0.55;
@@ -3368,8 +3353,13 @@ a.ex-row {
 /* positions card: glow from the top center, toward the chart above it */
 .ex-bg-top .li-tint {
   background:
-    radial-gradient(ellipse 45% 110% at 50% 0%, rgba(150, 132, 200, 0.26), transparent 72%),
-    linear-gradient(to bottom, rgba(129, 114, 152, 0.12), transparent 60%);
+    radial-gradient(ellipse 45% 110% at 50% 0%, rgba(150, 132, 200, 0.26), transparent 72%, transparent),
+    linear-gradient(to bottom, rgba(129, 114, 152, 0.12), transparent 60%, transparent);
+}
+/* the glow is drawn once, across the whole card: never tiled, which showed as a hard line near the bottom (user, 2026-11-01) */
+.li-bg .li-tint {
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
 }
 .ex-bg-top .li-dots {
   -webkit-mask-image: radial-gradient(ellipse 45% 120% at 50% 0%, #000 20%, transparent 75%);
@@ -3443,8 +3433,8 @@ a.ex-row {
   font: inherit;
   font-size: 12px;
   font-weight: 700;
-  color: #0f1a14;
-  background: #6ee7a0;
+  color: var(--text);
+  background: var(--green);
   border: 0;
   border-radius: 5px;
   cursor: pointer;
@@ -3482,7 +3472,7 @@ a.ex-row {
 .ex-earned-value {
   font-size: 13px;
   font-weight: 700;
-  color: #6ee7a0;
+  color: var(--green);
   font-variant-numeric: tabular-nums;
 }
 
@@ -3496,10 +3486,10 @@ a.ex-row {
   padding: 0 5px;
   font-size: 10px;
   font-weight: 800;
-  color: #0f1a14;
-  background: #6ee7a0;
+  color: var(--text);
+  background: var(--green);
   border-radius: 9px;
-  box-shadow: 0 0 10px rgba(110, 231, 160, 0.45);
+  box-shadow: 0 0 10px rgba(49, 111, 89, 1);
 }
 .account-head {
   display: flex;
@@ -3522,7 +3512,7 @@ a.ex-row {
 }
 .notif-bell:hover {
   color: #ffffff;
-  border-color: rgba(110, 231, 160, 0.5);
+  border-color: rgba(49, 111, 89, 1);
 }
 .nt-backdrop {
   position: fixed;
@@ -3619,8 +3609,8 @@ a.ex-row {
   cursor: pointer;
 }
 .nt-yes {
-  color: #0f1a14;
-  background: #6ee7a0;
+  color: var(--text);
+  background: var(--green);
   border: 0;
 }
 .nt-no {
@@ -3788,7 +3778,7 @@ a.ex-row {
   color: var(--muted);
 }
 .lp-member.is-accepted .lp-member-status {
-  color: #6ee7a0;
+  color: var(--green);
 }
 .lp-members-mini {
   display: flex;
@@ -3808,7 +3798,7 @@ a.ex-row {
 }
 .lp-member-dot.is-in {
   border-style: solid;
-  border-color: rgba(110, 231, 160, 0.7);
+  border-color: rgba(49, 111, 89, 1);
   color: var(--cyan-2);
 }
 .lp-members-count {
@@ -3905,8 +3895,8 @@ a.ex-row {
 }
 .grad-orb.is-done .grad-core {
   animation: none;
-  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #c9f7d6 25%, #8fe3a7 60%, #4f9e6c 100%);
-  box-shadow: 0 0 50px rgba(143, 227, 167, 0.6), 0 0 100px rgba(143, 227, 167, 0.3);
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #9cc7b6 25%, #316f59 60%, #1d4537 100%);
+  box-shadow: 0 0 50px rgba(49, 111, 89, 1), 0 0 100px rgba(49, 111, 89, 0.75);
   transition: background 0.4s ease, box-shadow 0.4s ease;
 }
 .grad-orb.is-done .grad-ring {
@@ -4199,10 +4189,10 @@ a.ex-row {
     width: 74px;
     height: 28px;
   }
-  .app-landing .card-stack > [data-card="Points"] {
+  .app-landing .card-stack > [data-card="Neuriio"] {
     left: 54px;
   }
-  .app-landing .card-stack > [data-card="Points"] .morph-trigger {
+  .app-landing .card-stack > [data-card="Neuriio"] .morph-trigger {
     padding-right: 8px;
   }
   .app-landing .top-marquee {
@@ -4270,7 +4260,7 @@ a.ex-row {
   -webkit-mask: url(/brand/mark.png) center / contain no-repeat;
   mask: url(/brand/mark.png) center / contain no-repeat;
 }
-.ex-avatar-mark.tone-0 { background: linear-gradient(135deg, #0f766e, #6ee7a0); } /* the #1 token: green */
+.ex-avatar-mark.tone-0 { background: linear-gradient(135deg, #1d4537, var(--green)); } /* the #1 token: green */
 .ex-avatar-mark.tone-1 { background: linear-gradient(135deg, #3d2f5c, #ff8ad8); }
 .ex-avatar-mark.tone-2 { background: linear-gradient(135deg, #817298, #d8fffe); }
 .ex-avatar-mark.tone-3 { background: linear-gradient(135deg, #f97316, #fcd34d); }
@@ -4278,7 +4268,7 @@ a.ex-row {
 .ex-avatar-mark.tone-5 { background: linear-gradient(135deg, #a21caf, #7c3aed); }
 .ex-avatar-mark.tone-6 { background: linear-gradient(135deg, #be123c, #fb7185); }
 /* the feed's sample posters: the mark on green / orange / teal */
-.ex-avatar-mark.tone-green { background: linear-gradient(135deg, #0f766e, #6ee7a0); }
+.ex-avatar-mark.tone-green { background: linear-gradient(135deg, #1d4537, var(--green)); }
 .ex-avatar-mark.tone-orange { background: linear-gradient(135deg, #f97316, #fcd34d); }
 .ex-avatar-mark.tone-teal { background: linear-gradient(135deg, #0e7490, #5eead4); }
 
@@ -4312,10 +4302,31 @@ a.ex-row {
   color: #fff;
   background: #8c7d9f;
 }
-.ex-stake-card {
-  grid-area: stake;
+/* Buy / Sell / Stake: one widget, the tabs on top and the picked card below, scrolling if it doesn't fit */
+.ex-trade {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
-/* two halves: the picked X token on top, Neuriio below, split by the same 1px line as the cards */
+.ex-trade-tabs {
+  flex: none;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 14px 16px 0;
+}
+.ex-trade-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ex-trade-body[hidden] {
+  display: none;
+}
+.ex-trade-body .ex-stake {
+  height: auto;
+  min-height: 100%;
+}
+/* the picked X token */
 .ex-stake {
   display: flex;
   flex-direction: column;
@@ -4329,9 +4340,6 @@ a.ex-row {
   flex-direction: column;
   gap: 10px;
   padding: 14px 16px;
-}
-.ex-stake-half + .ex-stake-half {
-  border-top: 1px solid rgba(236, 221, 255, 0.5);
 }
 .ex-stake-head {
   display: flex;
@@ -4355,6 +4363,7 @@ a.ex-row {
 }
 .ex-stake .ex-order-cta {
   height: 38px;
+  margin-top: 0;
   font-size: 13px;
 }
 /* what stakers earn: one small line right under the amount box (user, 2026-10-24: no box) */
@@ -4369,50 +4378,43 @@ a.ex-row {
   height: 24px;
   padding: 0 8px;
 }
-/* every width: flat cards, no shadows. The top row (list | chart | order | stake) is ONE connected widget, .ex-main:
-   one 1px #ECDDFF line at 50% round the outside, its sections split by fainter lines inside. Positions is its own
-   widget below, same frame (user, 2026-10-24). Phones: the chart + the About/Trade/Stake/Positions tabs are the one
-   widget. .ex-main / .ex-side are layout-only (display: contents) outside .ex-wide (landing frame, /showcase). */
-.ex-main,
-.ex-side {
+/* every width: flat, separate widgets (list, chart, buy/sell/stake, Positions) with a small gap between them,
+   a faint line round each and tight corners, no shadows (user, 2026-11-01). Phones: the chart and the
+   About/Trade/Stake/Positions tabs are two widgets, same look. .ex-main is layout-only (display: contents) outside
+   .ex-wide (landing frame, /showcase). */
+.ex-main {
   display: contents;
 }
 .ex-wide {
-  --ex-frame: rgba(236, 221, 255, 0.5);
-  --ex-split: rgba(236, 221, 255, 0.14);
+  --ex-frame: rgba(236, 221, 255, 0.1);
+  --ex-gap: 6px;
   width: 100%;
 }
 .ex-wide .ex-grid {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--ex-gap);
 }
 .ex-wide .ex-center {
   gap: 0;
 }
 .ex-wide .ex-card {
   margin: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-.ex-wide .ex-main,
-.ex-wide .ex-positions-card {
-  overflow: hidden;
   background: #170f22;
   border: 1px solid var(--ex-frame);
-  border-radius: 10px;
+  border-radius: 6px;
+  box-shadow: none;
 }
 .ex-wide .ex-main {
   display: flex;
   flex-direction: column;
-}
-.ex-wide .ex-main > * + * {
-  border-top: 1px solid var(--ex-split);
+  gap: var(--ex-gap);
 }
 .ex-wide .li-bg {
   display: none;
+}
+.ex-wide .ex-platform {
+  border-color: var(--ex-frame);
 }
 @media (min-width: 861px) {
   .ex-wide {
@@ -4427,22 +4429,13 @@ a.ex-row {
     position: relative; /* the search bar centers on the page, above the widget */
     display: grid;
     grid-template-columns:
-      clamp(220px, 16vw, 300px) minmax(0, 1fr) clamp(250px, 17vw, 310px)
-      clamp(250px, 17vw, 310px);
-    grid-template-areas: "list chart order stake";
+      clamp(224px, 15.5vw, 290px) minmax(0, 1fr)
+      clamp(260px, 19vw, 330px);
+    grid-template-areas: "list chart order";
     height: clamp(480px, calc(100vh - 200px), 900px);
   }
   .app-explore .ex-wide .ex-main {
     height: clamp(480px, calc(100vh - var(--header-bottom) - 48px), 900px);
-  }
-  /* side by side: the inner lines run down, not across */
-  .ex-wide .ex-main > * + * {
-    border-top: 0;
-  }
-  .ex-wide .ex-center,
-  .ex-wide .ex-order-card,
-  .ex-wide .ex-stake-card {
-    border-left: 1px solid var(--ex-split);
   }
   .ex-wide .ex-center {
     position: static;
@@ -4451,34 +4444,17 @@ a.ex-row {
     min-height: 240px;
   }
 }
-/* phones: a small gutter so the widget's rounded frame shows */
+/* phones: a small gutter so the widgets' frames show */
 @media (max-width: 860px) {
   .ex-wide {
     box-sizing: border-box;
     padding: 0 8px 110px; /* bottom: room for the footer links */
   }
 }
-/* laptops: order and stake share the right column (stake under order), which scrolls if they don't both fit */
-@media (max-width: 1280px) and (min-width: 861px) {
+/* narrow windows: slimmer side columns, so the chart keeps its room */
+@media (max-width: 1180px) and (min-width: 861px) {
   .ex-wide .ex-main {
-    grid-template-columns: clamp(220px, 20vw, 260px) minmax(0, 1fr) clamp(260px, 25vw, 300px);
-    grid-template-areas: "list chart side";
-  }
-  .ex-wide .ex-side {
-    grid-area: side;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow-y: auto;
-    border-left: 1px solid var(--ex-split);
-  }
-  .ex-wide .ex-side .ex-card {
-    flex: none;
-    overflow: visible;
-    border-left: 0;
-  }
-  .ex-wide .ex-stake-card {
-    border-top: 1px solid var(--ex-split);
+    grid-template-columns: clamp(200px, 20vw, 240px) minmax(0, 1fr) clamp(250px, 25vw, 290px);
   }
 }
 
@@ -4672,6 +4648,107 @@ a.ex-row {
 .ex-bars-card {
   padding-bottom: 0;
 }
+/* Launch check: fills the space the fees chart had, its wallet list scrolling inside */
+.ex-bars-card.ex-check {
+  flex: 3 1 0;
+  min-height: 240px;
+  padding-bottom: 10px;
+  overflow: hidden;
+}
+.ex-check > * {
+  flex-shrink: 0;
+}
+.ex-check.is-linked {
+  border-color: var(--red);
+}
+.ex-check-headline {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+.ex-check.is-linked .ex-check-headline,
+.ex-check-stats .is-alert dd {
+  color: var(--red);
+}
+.ex-check-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+.ex-check-stats > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.ex-check-stats dt {
+  color: var(--muted);
+}
+.ex-check-stats dd {
+  margin: 0;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+}
+.ex-check-stats dd span {
+  font-weight: 400;
+  color: var(--muted);
+}
+.ex-check > .ex-check-list {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 36px;
+  margin: 0;
+  padding: 6px 0 0;
+  overflow-y: auto;
+  list-style: none;
+  border-top: 1px solid rgba(236, 221, 255, 0.1);
+}
+.ex-check-list li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 10.5px;
+}
+.ex-check-list a {
+  color: var(--cyan-2);
+  text-decoration: none;
+}
+.ex-check-list a:hover {
+  text-decoration: underline;
+}
+.ex-check-why {
+  overflow: hidden;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ex-check-list b {
+  font-weight: 600;
+  color: #fff;
+}
+.ex-check-note {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+/* phones: the page scrolls, so the card takes the height it needs */
+@media (max-width: 860px) {
+  .ex-bars-card.ex-check {
+    flex: none;
+    min-height: 0;
+  }
+  .ex-check > .ex-check-list {
+    flex: none;
+    max-height: 170px;
+  }
+}
 .ex-bars-chart {
   display: flex;
   flex: 1 1 auto;
@@ -4722,4 +4799,667 @@ a.ex-row {
 .tr-sort:hover,
 .tr-sort.is-on {
   color: #fff;
+}
+
+/* ---- /safe: the Neuriio Safe's approval page (2026-10-22; unlisted, owners' own wallets) ---- */
+.safe-page {
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 48px 16px;
+  background-color: #120c1d;
+  background-image: radial-gradient(rgba(236, 221, 255, 0.12) 1px, transparent 1.2px);
+  background-size: 20px 20px;
+  color: var(--text);
+}
+.safe-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 600px;
+  height: fit-content;
+  padding: 28px;
+  border: 1px solid rgba(236, 221, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(22, 14, 34, 0.94);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.safe-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.safe-mark {
+  height: 26px;
+}
+.safe-head h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+.safe-net {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid rgba(236, 221, 255, 0.2);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.safe-facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 0;
+}
+.safe-facts div {
+  padding: 12px;
+  border: 1px solid rgba(236, 221, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(10, 6, 18, 0.45);
+}
+.safe-facts dt {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.safe-facts dd {
+  margin: 6px 0 0;
+  font-weight: 600;
+}
+.safe-card a {
+  color: #ccecec;
+}
+.safe-action {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid rgba(236, 221, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(10, 6, 18, 0.45);
+}
+.safe-action h2 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.safe-words {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+.safe-inner,
+.safe-call,
+.safe-note,
+.safe-empty {
+  margin: 0;
+  color: rgba(243, 239, 255, 0.82);
+}
+.safe-call code,
+.safe-raw code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.safe-note {
+  font-size: 13px;
+  color: var(--muted);
+}
+.safe-raw summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}
+.safe-raw code {
+  display: block;
+  margin-top: 8px;
+  color: rgba(243, 239, 255, 0.7);
+}
+.safe-owners {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.safe-owners li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(236, 221, 255, 0.1);
+  border-radius: 10px;
+}
+.safe-owners li.is-ok {
+  border-color: rgba(49, 111, 89, 1);
+}
+.safe-tick {
+  width: 18px;
+  text-align: center;
+  color: var(--muted);
+}
+.safe-owners li.is-ok .safe-tick,
+.safe-owners li.is-ok .safe-state {
+  color: var(--green);
+}
+.safe-you {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #8c7d9f;
+  font-size: 11px;
+  color: #fff;
+}
+.safe-state {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--muted);
+}
+.safe-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.safe-account {
+  font-size: 13px;
+  color: var(--muted);
+}
+.safe-btn {
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--green);
+  font: inherit;
+  font-weight: 700;
+  color: #120c1d;
+  cursor: pointer;
+}
+.safe-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.safe-msg {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.safe-msg.is-ok {
+  background: rgba(49, 111, 89, 0.3);
+  color: var(--green);
+}
+.safe-msg.is-bad {
+  background: rgba(255, 138, 138, 0.12);
+  color: #ff8a8a;
+}
+.safe-msg.is-wait {
+  background: rgba(196, 167, 255, 0.12);
+  color: #d9c7ff;
+}
+
+@media (max-width: 560px) {
+  .safe-page {
+    padding: 16px;
+  }
+  .safe-card {
+    padding: 20px;
+  }
+  .safe-facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Feed: portfolio. Fills its column, however wide. */
+.pf {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+.pf-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.pf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pf-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+.pf-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pf-balance {
+  background:
+    radial-gradient(90% 70% at 50% 62%, rgba(10, 6, 18, 0.95), rgba(10, 6, 18, 0) 75%),
+    linear-gradient(160deg, #7f72a0 0%, #463764 45%, #2b6f75 100%);
+}
+.pf-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.pf-dots {
+  display: block;
+  height: 30px;
+  max-width: 100%;
+  fill: #fff;
+}
+.pf-change {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 10.5px;
+  color: var(--text-2);
+}
+.pf-change b {
+  font-weight: 700;
+}
+.pf-change .is-up {
+  color: var(--cyan-2);
+}
+.pf-change .is-down {
+  color: #ff8a8a;
+}
+.pf-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 110px auto;
+  gap: 4px 6px;
+}
+.pf-line-y {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin: -5px 0;
+}
+.pf-line-y span,
+.pf-line-x span {
+  font-size: 9.5px;
+  line-height: 1;
+  color: var(--text-2);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.pf-line-plot {
+  position: relative;
+  margin-right: 5px;
+  border-left: 1px solid rgba(236, 221, 255, 0.35);
+  border-bottom: 1px solid rgba(236, 221, 255, 0.35);
+}
+.pf-line-plot svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.pf-line-plot polyline {
+  fill: none;
+  stroke: var(--cyan-2);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.pf-line-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--cyan-2);
+  border: 2px solid #120c1d;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.pf-line-x {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  margin-right: 5px;
+}
+.pf-line-x.is-one {
+  justify-content: flex-end;
+}
+.pf-wallets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.pf-wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  color: var(--text-2);
+  background: rgba(70, 55, 100, 0.35);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.pf-wallet-logo {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+.pf-wallet-x {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+.pf-wallet-x:hover {
+  color: #fff;
+}
+.pf-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--cyan-2);
+  cursor: pointer;
+  background: none;
+  border: 1px solid rgba(204, 236, 236, 0.35);
+  border-radius: 12px;
+}
+.pf-add:hover {
+  background: rgba(204, 236, 236, 0.08);
+}
+.pf-tokens {
+  background: rgba(10, 6, 18, 0.45);
+}
+.pf-tiles {
+  position: relative;
+  aspect-ratio: 1 / 1.05;
+  margin: 0 -3px -3px;
+}
+.pf-tile {
+  position: absolute;
+  padding: 3px;
+  container-type: size;
+}
+.pf-tile-in {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  height: 100%;
+  padding: 9px;
+  overflow: hidden;
+  color: #fff;
+  background: var(--tile);
+  border-radius: 9px;
+}
+.pf-tile.is-blank .pf-tile-in {
+  background: rgba(70, 55, 100, 0.14);
+  border: 1px dashed rgba(236, 221, 255, 0.16);
+}
+.pf-tile.is-tone-0 { --tile: #7f72a0; }
+.pf-tile.is-tone-1 { --tile: #8fe0dd; }
+.pf-tile.is-tone-2 { --tile: #316f59; }
+.pf-tile.is-tone-3 { --tile: #ecddff; }
+.pf-tile.is-tone-4 { --tile: #463764; }
+.pf-tile.is-tone-5 { --tile: #ff8a8a; }
+.pf-tile.is-tone-1 .pf-tile-in,
+.pf-tile.is-tone-3 .pf-tile-in,
+.pf-tile.is-tone-5 .pf-tile-in {
+  color: #120c1d;
+}
+.pf-tile-name {
+  overflow: hidden;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+}
+.pf-tile-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2px 6px;
+}
+.pf-tile-foot b {
+  font-size: clamp(13px, 18cqmin, 26px);
+  font-weight: 700;
+  line-height: 1;
+}
+.pf-tile-foot i {
+  padding: 2px 5px;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(10, 6, 18, 0.75);
+  border-radius: 5px;
+}
+/* a tile too small for its share: the name and value matter more */
+@container (max-width: 92px) {
+  .pf-tile-foot i {
+    display: none;
+  }
+}
+@container (max-height: 58px) {
+  .pf-tile-in {
+    padding: 5px 7px;
+  }
+  .pf-tile-foot i {
+    display: none;
+  }
+}
+.pf-modal {
+  width: min(400px, 100%);
+}
+.pf-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pf-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  text-decoration: none;
+  cursor: pointer;
+  background: rgba(70, 55, 100, 0.35);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.pf-option:hover:not(:disabled) {
+  border-color: rgba(204, 236, 236, 0.45);
+}
+.pf-option:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.pf-option img,
+.pf-option-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+  background: rgba(10, 6, 18, 0.5);
+  border-radius: 6px;
+}
+.pf-option em {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--muted);
+}
+.pf-safe {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* lit dots of the page's grid (LitDots), on top of the grid */
+.lit-dots {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.lit-dots span {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  background: #ecddff;
+  border-radius: 50%;
+  box-shadow: 0 0 6px 1px rgba(236, 221, 255, 0.7);
+  opacity: 0;
+  animation: lit-dot 3s ease-in-out infinite;
+}
+@keyframes lit-dot {
+  50% {
+    opacity: 1;
+  }
+}
+.btn-dots {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image: radial-gradient(rgba(236, 221, 255, 0.3) 0.8px, transparent 0.8px);
+  background-size: 8px 8px;
+  background-position: 0 0;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.btn-dots.is-on {
+  opacity: 1;
+}
+.btn-dots span {
+  position: absolute;
+  width: 2.5px;
+  height: 2.5px;
+  margin: -1.25px 0 0 -1.25px;
+  background: #ecddff;
+  border-radius: 50%;
+  box-shadow: 0 0 5px 1px rgba(236, 221, 255, 0.7);
+  opacity: 0;
+  animation: lit-dot 1.5s ease-in-out infinite;
+}
+.morph-trigger-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* Account panel: referral code (ReferralBox) */
+.ref-by {
+  color: var(--text);
+}
+.ref-form {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+.ref-form input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: rgba(18, 12, 29, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+.ref-form input:focus {
+  border-color: rgba(204, 236, 236, 0.5);
+}
+.ref-form input::placeholder {
+  letter-spacing: 0;
+  color: rgba(140, 125, 159, 0.8);
+}
+.ref-wallet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+  font-size: 12px;
+}
+.ref-wallet-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ref-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.ref-verify {
+  height: 24px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(204, 236, 236, 0.12);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ref-verify:hover:not(:disabled) {
+  background: rgba(204, 236, 236, 0.2);
+}
+.ref-verify:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

@@ -3,8 +3,8 @@ import { createRoot } from "react-dom/client";
 import { Paused } from "./Paused";
 
 // Site-wide pause: every page shows this and the app never loads, so visitors make no RPC, Privy or Supabase calls.
-// Set to false to bring the app back.
-const PAUSED = true;
+// Local dev always loads the app. Set to false to bring the app back in production.
+const PAUSED = !import.meta.env.DEV;
 
 if (PAUSED) {
   document.body.style.margin = "0";

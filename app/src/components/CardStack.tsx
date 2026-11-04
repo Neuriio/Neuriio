@@ -1,5 +1,5 @@
 // The top-right cards (Account, Points). On the landing they're a layered deck (Account in front, Points behind it)
-// and hovering a card brings it to the front; no hover animation (user, 2026-10-18). Each card morphs into its panel
+// and hovering a card brings it to the front; no hover animation (user, 2026-10-18). Each card opens its panel
 // on click (Morph reads this context).
 import { createContext, useContext, useState, type ReactNode } from "react";
 

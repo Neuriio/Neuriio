@@ -1,6 +1,7 @@
 // POST /functions/v1/register    headers: Authorization: Bearer <Privy access token>
-// Call after every X login: creates/refreshes the user's row (X handle, pfp, Neuriio wallet) so their trades earn
-// points even if they never launch. Returns the profile, their token (if launched) and their points.
+// Call after every X login: creates/refreshes the user's row (X handle, pfp, Neuriio wallet), so their trades
+// are tracked even if they never launch.
+// Returns the profile and their token (if launched).
 //   body (optional): { accessCode } = the passcode they came in with (the passcode page's `neuriio_code` cookie); the
 //   first one seen per user is kept in access_code_users, to count users per code.
 //
@@ -33,10 +34,7 @@ Deno.serve(async (req) => {
       if (e2) console.error(`register: access code: ${e2.message}`);
     }
 
-    const [{ data: token }, { data: points }] = await Promise.all([
-      db.from("tokens").select("*").eq("x_user_id", who.xUserId).maybeSingle(),
-      db.from("leaderboard").select("rank, points").eq("x_user_id", who.xUserId).maybeSingle(),
-    ]);
+    const { data: token } = await db.from("tokens").select("*").eq("x_user_id", who.xUserId).maybeSingle();
     return json(200, {
       xUserId: who.xUserId,
       handle: who.handle,
@@ -44,8 +42,6 @@ Deno.serve(async (req) => {
       pfpUrl: who.pfpUrl,
       wallet: who.wallet,
       token: token ?? null,
-      points: points?.points ?? 0,
-      rank: points?.rank ?? null,
     });
   } catch (e) {
     if (e instanceof HttpError) return json(e.status, { error: e.message });

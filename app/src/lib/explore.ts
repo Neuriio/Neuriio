@@ -117,31 +117,27 @@ export async function topByTotalVolume(): Promise<{ tokens: TokenStat[]; snapsho
   return { tokens: rows.map(toStat), snapshotAt: rows[0] ? String(rows[0].snapshot_at) : null };
 }
 
-/** /trending "Bonding": the top `limit` tokens still on their bonding curve, by total volume. */
-export async function bondingTokens(limit = 25): Promise<TokenStat[]> {
-  if (DEMO) return demoTokens().filter((t) => !t.graduated).sort((a, b) => b.volume_usd - a.volume_usd).slice(0, limit);
-  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&graduated=eq.false&order=volume_usd.desc.nullslast&limit=${limit}`);
+/** /trending splits tokens at this market cap, in USD: under it they're Early, at or above it Matured. */
+export const EARLY_MAX_MCAP = 70_000;
+
+/** /trending "Early": the top `limit` tokens under EARLY_MAX_MCAP, by total volume. */
+export async function earlyTokens(limit = 25): Promise<TokenStat[]> {
+  if (DEMO) return demoTokens().filter((t) => t.mcap_hype < EARLY_MAX_MCAP).sort((a, b) => b.volume_usd - a.volume_usd).slice(0, limit);
+  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&mcap_hype=lt.${EARLY_MAX_MCAP}&order=volume_usd.desc.nullslast&limit=${limit}`);
   return rows.map(toStat);
 }
 
-/** /trending "Recently graduated": graduated tokens, newest graduation first. */
-export async function recentlyGraduated(limit = 25): Promise<TokenStat[]> {
-  if (DEMO)
-    return demoTokens()
-      .filter((t) => t.graduated)
-      .sort((a, b) => Date.parse(b.graduated_at ?? "") - Date.parse(a.graduated_at ?? ""))
-      .slice(0, limit);
-  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&graduated=eq.true&order=graduated_at.desc.nullslast&limit=${limit}`);
+/** /trending "Matured": the top `limit` tokens at or above EARLY_MAX_MCAP, by total volume. */
+export async function maturedTokens(limit = 25): Promise<TokenStat[]> {
+  if (DEMO) return demoTokens().filter((t) => t.mcap_hype >= EARLY_MAX_MCAP).sort((a, b) => b.volume_usd - a.volume_usd).slice(0, limit);
+  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&mcap_hype=gte.${EARLY_MAX_MCAP}&order=volume_usd.desc.nullslast&limit=${limit}`);
   return rows.map(toStat);
 }
 
-/** /trending "Trending": the top `limit` tokens by volume over the last `days` days (database function trending_tokens). */
-export async function trendingTokens(days = 3, limit = 25): Promise<TokenStat[]> {
-  if (DEMO) return [...demoTokens()].sort((a, b) => b.volume_usd_24h - a.volume_usd_24h).slice(0, limit); // demo: 24h stands in
-  const rows = await rest<Record<string, unknown>[]>("rpc/trending_tokens", {
-    method: "POST",
-    body: JSON.stringify({ p_days: days, p_limit: limit }),
-  });
+/** /trending "Trending": the top `limit` tokens by 24h volume. Tokens with no trades in the last 24 hours aren't listed. */
+export async function trendingTokens(limit = 25): Promise<TokenStat[]> {
+  if (DEMO) return demoTokens().filter((t) => t.volume_usd_24h > 0).sort((a, b) => b.volume_usd_24h - a.volume_usd_24h).slice(0, limit);
+  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&volume_usd_24h=gt.0&order=volume_usd_24h.desc&limit=${limit}`);
   return rows.map(toStat);
 }
 

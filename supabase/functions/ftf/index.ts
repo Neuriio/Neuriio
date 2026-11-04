@@ -5,8 +5,8 @@
 //   create  { name, ticker }            -> you're the founder (accepted); then invite 3 people
 //   mine    {}                          the FTF you're forming (as founder), with member cards
 //   inbox   {}                          notifications: invites to you + requests on FTFs you founded
-//   profile { draftId, sector, category, about, links }   founder, after all 4 accepted
-//   pfp     { draftId, contentType, base64 }      founder: the FTF's picture (png/jpeg/webp, <= 512 KB)
+//   profile { draftId, category, about, links }   founder, after all 4 accepted
+//   pfp     { draftId, contentType, base64 }      founder: the FTF's picture (png/jpeg, <= 512 KB)
 //   invite  { draftId, handle }        founder invites a Neuriio user by X handle
 //   request { draftId }                ask to be added (anyone logged in)
 //   approve { draftId, xUserId }       founder accepts a request
@@ -41,13 +41,13 @@ import {
   ftfPassTypes,
   launchpadDomain,
   PASS_TTL_SECONDS,
-  SECTORS,
-  type Sector,
   validFtfIdentity,
 } from "../_shared/launchPass.ts";
 import { CORS, HttpError, internalError, json, privyAuth, userRow, type XUser } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
 import { rateLimit } from "../_shared/rateLimit.ts";
+import { claimLaunch } from "../_shared/launchClaim.ts";
+import { PfpError, type PfpPrint, printImage, printPictureAt } from "../_shared/pfpHash.ts";
 
 const CHAIN_ID = Number(env("CHAIN_ID"));
 const LAUNCHPAD = getAddress(env("LAUNCHPAD_ADDRESS")); // the current version: passes are signed for it
@@ -77,7 +77,6 @@ type Draft = {
   ticker: string;
   profile: string | null;
   profile_hash: string | null;
-  sector: Sector | null;
   category: Category | null;
   pfp_url: string | null;
   status: string;
@@ -154,7 +153,7 @@ async function view(d: Draft) {
     } catch { /* stored by us; never malformed */ }
   }
   return {
-    draft: { id: d.id, founder: d.founder, name: d.name, ticker: d.ticker, status: d.status, sector: d.sector, category: d.category, pfpUrl: d.pfp_url, about, links },
+    draft: { id: d.id, founder: d.founder, name: d.name, ticker: d.ticker, status: d.status, category: d.category, pfpUrl: d.pfp_url, about, links },
     members: members.map((m) => ({ ...m, ...cards.get(m.x_user_id) })),
   };
 }
@@ -168,12 +167,18 @@ async function cardsOf(ids: string[]) {
 
 // ------------------------------------------------------------------ actions
 
+const refuseVamp = async (claim: Parameters<typeof claimLaunch>[1]) => {
+  const refusal = await claimLaunch(db, claim);
+  if (refusal) fail(409, refusal);
+};
+
 async function create(who: XUser, body: Body) {
   const { name, ticker } = validFtfIdentity(body.name, body.ticker);
   const { count } = await db.from("ftf_drafts").select("id", { count: "exact", head: true }).eq("founder", who.xUserId).eq("status", "open");
   if ((count ?? 0) >= MAX_OPEN_DRAFTS) fail(429, `You can have ${MAX_OPEN_DRAFTS} open FTFs at a time`);
   if (await tickerReservedOnChain(ticker)) fail(422, `$${ticker} is reserved (it looks like a real asset): pick another ticker`);
   if (await tickerTakenOnChain(ticker)) fail(409, `$${ticker} is already an FTF`);
+  await refuseVamp({ ticker, owners: [who.xUserId], pfp: null, deadline: new Date(), commit: false }); // early: nothing held yet
   const { data, error } = await db.from("ftf_drafts").insert({ founder: who.xUserId, name, ticker }).select("*").single();
   if (error) {
     if (error.code === "23505") fail(409, `$${ticker} is taken by another FTF being formed`);
@@ -224,29 +229,27 @@ async function inbox(who: XUser) {
   return { items: [...invites, ...requests, ...hype].sort((a, b) => String(b.at).localeCompare(String(a.at))) };
 }
 
-/** Founder, once all 4 accepted: sector + category + about + links (the picture comes from `pfp`). */
+/** Founder, once all 4 accepted: category + about + links (the picture comes from `pfp`). */
 async function profile(who: XUser, body: Body) {
   const d = await draftOf(body.draftId);
   mustBeOpen(d);
   mustBeFounder(d, who);
   if (accepted(await membersOf(d.id)).length !== FTF_MEMBERS) fail(409, `All ${FTF_MEMBERS} members have to accept first`);
-  const sector = String(body.sector) as Sector;
-  if (!SECTORS.includes(sector)) fail(422, `Pick a sector: ${SECTORS.join(", ")}`);
   const category = String(body.category) as Category;
   if (!CATEGORIES.includes(category)) fail(422, `Pick a category: ${CATEGORIES.join(", ")}`);
   let p: { content: string; hash: `0x${string}` };
   try {
-    p = canonicalFtfProfile(body, { name: d.name, ticker: d.ticker, founderXUserId: d.founder, sector, category, pfpUrl: d.pfp_url });
+    p = canonicalFtfProfile(body, { name: d.name, ticker: d.ticker, founderXUserId: d.founder, category, pfpUrl: d.pfp_url });
   } catch (e) {
     return fail(422, (e as Error).message);
   }
   const { error } = await db.from("ftf_drafts")
-    .update({ sector, category, profile: p.content, profile_hash: p.hash, updated_at: new Date().toISOString() }).eq("id", d.id);
+    .update({ category, profile: p.content, profile_hash: p.hash, updated_at: new Date().toISOString() }).eq("id", d.id);
   if (error) dbError("profile", error.message);
-  return view({ ...d, sector, category, profile: p.content, profile_hash: p.hash });
+  return view({ ...d, category, profile: p.content, profile_hash: p.hash });
 }
 
-const PFP_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+const PFP_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg" } // what pfpHash.ts can read;
 
 /** Founder: the FTF's picture (stored in the public ftf-pfp bucket). Clears the profile hash (it includes the URL). */
 async function pfp(who: XUser, body: Body) {
@@ -254,7 +257,7 @@ async function pfp(who: XUser, body: Body) {
   mustBeOpen(d);
   mustBeFounder(d, who);
   const ext = PFP_TYPES[String(body.contentType)];
-  if (!ext) fail(422, "Picture must be PNG, JPEG or WebP");
+  if (!ext) fail(422, "Picture must be PNG or JPEG");
   const b64 = typeof body.base64 === "string" ? body.base64 : "";
   if (b64.length > 700_000) fail(413, "Picture must be 512 KB or smaller");
   let bytes: Uint8Array;
@@ -264,15 +267,24 @@ async function pfp(who: XUser, body: Body) {
     return fail(422, "Couldn't read that picture");
   }
   if (bytes.length > 524_288) fail(413, "Picture must be 512 KB or smaller");
+  let print: PfpPrint;
+  try {
+    print = printImage(bytes);
+  } catch (e) {
+    if (e instanceof PfpError) return fail(422, "Couldn't read that picture");
+    throw e;
+  }
+  const owners = accepted(await membersOf(d.id)).map((m) => m.x_user_id);
+  await refuseVamp({ ticker: d.ticker, owners, pfp: print, deadline: new Date(), commit: false }); // early: nothing held yet
   const path = `${d.id}/${Date.now()}.${ext}`; // new name each time, so caches never show an old picture
   const { error: upErr } = await db.storage.from("ftf-pfp").upload(path, bytes, { contentType: String(body.contentType), upsert: false });
   if (upErr) dbError("pfp upload", upErr.message);
   const url = db.storage.from("ftf-pfp").getPublicUrl(path).data.publicUrl;
   // the profile document includes the picture URL, so it has to be saved again after a new picture
   let patch: Partial<Draft> = { pfp_url: url };
-  if (d.profile && d.sector && d.category) {
+  if (d.profile && d.category) {
     const old = JSON.parse(d.profile);
-    const p = canonicalFtfProfile({ about: old.about, links: old.links }, { name: d.name, ticker: d.ticker, founderXUserId: d.founder, sector: d.sector, category: d.category, pfpUrl: url });
+    const p = canonicalFtfProfile({ about: old.about, links: old.links }, { name: d.name, ticker: d.ticker, founderXUserId: d.founder, category: d.category, pfpUrl: url });
     patch = { ...patch, profile: p.content, profile_hash: p.hash };
   }
   const { error } = await db.from("ftf_drafts").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", d.id);
@@ -389,7 +401,7 @@ async function pass(who: XUser, body: Body) {
   mustBeFounder(d, who);
   const acc = accepted(await membersOf(d.id));
   if (acc.length !== FTF_MEMBERS) fail(409, `An FTF launches with exactly ${FTF_MEMBERS} members (${acc.length} accepted)`);
-  if (!d.profile || !d.profile_hash || !d.sector || !d.category) fail(409, "Add the FTF's sector, category and profile first");
+  if (!d.profile || !d.profile_hash || !d.category) fail(409, "Add the FTF's category and profile first");
   // founder first, then in the order they joined
   const ordered = [acc.find((m) => m.role === "founder")!, ...acc.filter((m) => m.role !== "founder")];
   const { data: users, error } = await db.from("users").select("x_user_id, wallet").in("x_user_id", ordered.map((m) => m.x_user_id));
@@ -412,6 +424,18 @@ async function pass(who: XUser, body: Body) {
   if (pErr) dbError("profile", pErr.message);
 
   const deadline = BigInt(Math.floor(Date.now() / 1000) + PASS_TTL_SECONDS);
+  // anti-vamping: the first to launch keeps its ticker's first 4 characters and its picture (backend rule, not on-chain)
+  let print: PfpPrint | null = null;
+  if (d.pfp_url) {
+    try {
+      print = await printPictureAt(d.pfp_url, [new URL(env("SUPABASE_URL")).hostname]);
+    } catch (e) {
+      if (!(e instanceof PfpError)) throw e;
+      console.error(`ftf: pfp: ${e.message}`);
+      fail(422, "We couldn't read the FTF's picture. Upload it again as a PNG or JPEG");
+    }
+  }
+  await refuseVamp({ ticker: d.ticker, owners: ordered.map((m) => m.x_user_id), pfp: print, deadline: new Date(Number(deadline) * 1000) });
   const message = {
     founder: getAddress(wallets[0]!),
     name: d.name,

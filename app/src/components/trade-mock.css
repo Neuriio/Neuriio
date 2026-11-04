@@ -1,0 +1,973 @@
+/* LOCAL MOCKUP ONLY: Trade Arena flow (TradeMock.tsx). Same shell as Explore (.ex-wide .ex-main + a second widget). */
+.ta {
+  --ta-split: rgba(236, 221, 255, 0.14);
+  --ta-green: var(--green);
+  --ta-red: #ff8a8a;
+}
+.ta-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* the mockup's screen switcher */
+.ta-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.ta-steps-tag {
+  margin-right: 6px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #120c1d;
+  background: #ecddff;
+  border-radius: 4px;
+}
+.ta-step {
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--ta-split);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.ta-step.is-on {
+  color: var(--text);
+  border-color: rgba(236, 221, 255, 0.5);
+  background: rgba(236, 221, 255, 0.06);
+}
+
+/* buttons */
+.ta-btn {
+  height: 42px;
+  padding: 0 18px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--ta-green);
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.ta-btn:disabled {
+  color: var(--muted);
+  background: rgba(236, 221, 255, 0.06);
+  cursor: not-allowed;
+}
+.ta-btn.is-ghost {
+  color: var(--text-2);
+  background: none;
+  border: 1px solid rgba(236, 221, 255, 0.3);
+}
+.ta-btn.is-big {
+  height: 50px;
+  padding: 0 28px;
+  font-size: 15px;
+}
+.ta-mock-link {
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  text-decoration: underline;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* every screen's top widget is a column; the live match makes it a 3-column grid */
+.ex-wide .ta-main,
+.app-explore .ex-wide .ta-main {
+  display: flex;
+  flex-direction: column;
+  height: auto;
+}
+.ta-foot {
+  margin: 0;
+  padding: 14px 20px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+  border-top: 1px solid var(--ta-split);
+}
+
+/* ---- 1 + 2: lobby ---- */
+.ta-lobby-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 22px 24px;
+  border-bottom: 1px solid var(--ta-split);
+}
+.ta-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+}
+.ta-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.ta-rules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ta-rules li {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  border: 1px solid var(--ta-split);
+  border-radius: 999px;
+}
+/* the lobby: the 4 small widgets centered in the space under the header (user, 2026-10-25) */
+.ta-lobby-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start; /* the text sits just under the step buttons, the cards follow (user, 2026-10-25) */
+  gap: 22px;
+  padding-top: clamp(20px, 5vh, 52px);
+  min-height: calc(100vh - var(--header-bottom, 120px) - 200px);
+}
+/* the lobby's three lines above the cards: heading, subheading, body (user, 2026-10-25) */
+.ta-intro {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.ta-intro-h {
+  margin: 0;
+  font-size: clamp(22px, 2.6vw, 30px);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.ta-intro-sub {
+  margin: 0;
+  font-size: clamp(14px, 1.4vw, 17px);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.ta-intro-body {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.ta-tiers,
+.ta-steps {
+  position: relative;
+  z-index: 1; /* above the lit dots */
+}
+/* 4 small widgets in a row, about half the old size */
+.ta-tiers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+}
+.ta-tier {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 12px 12px;
+  text-align: center;
+  background: #170f22;
+  border: 1px solid var(--ex-frame, rgba(236, 221, 255, 0.5));
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+.ta-tier:hover:not(.is-locked) {
+  background: rgba(236, 221, 255, 0.025);
+}
+.ta-tier.is-queued {
+  background: #16181f;
+  border-color: rgba(49, 111, 89, 1);
+}
+.ta-tier.is-locked {
+  opacity: 0.45;
+}
+.ta-tier-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ta-tier-wager {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+}
+.ta-tier-win {
+  font-size: 11px;
+  color: var(--muted);
+}
+.ta-tier-win b {
+  color: var(--ta-green);
+}
+.ta-tier-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 100%;
+  margin: 6px 0 2px;
+}
+.ta-tier-stats div {
+  padding: 6px;
+  background: rgba(10, 6, 18, 0.45);
+  border: 1px solid rgba(236, 221, 255, 0.08);
+  border-radius: 6px;
+}
+.ta-tier-stats dt {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ta-tier-stats dd {
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+.ta-live-dot::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: var(--ta-green);
+  border-radius: 50%;
+  animation: ta-blink 1.4s ease-in-out infinite;
+}
+@keyframes ta-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+.ta-tier .ta-btn {
+  width: 100%;
+  height: 32px;
+  margin-top: auto; /* buttons line up across the row */
+  font-size: 12px;
+}
+.ta-queue-note {
+  margin: 0;
+  min-height: 26px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.ta-queue-text {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+/* queued: radar rings round your avatar */
+.ta-radar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 76px;
+  margin: 2px 0;
+}
+.ta-radar span:not(.ex-avatar) {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(49, 111, 89, 1);
+  border-radius: 50%;
+  animation: ta-ping 2.4s ease-out infinite;
+}
+.ta-radar span:nth-child(2) {
+  animation-delay: 0.8s;
+}
+.ta-radar span:nth-child(3) {
+  animation-delay: 1.6s;
+}
+@keyframes ta-ping {
+  from {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+.ta-radar-me {
+  position: relative;
+}
+
+/* the bottom widget: a table */
+.ta-board {
+  padding: 0;
+}
+.ta-board-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--ta-split);
+}
+.ta-board-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+.ta-board-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.ta-table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+.ta-table th {
+  padding: 10px 18px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ta-table td {
+  padding: 10px 18px;
+  white-space: nowrap;
+  border-top: 1px solid rgba(236, 221, 255, 0.06);
+}
+.ta-vs-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ta-vs-row i {
+  margin: 0 4px;
+  font-style: normal;
+  color: var(--muted);
+}
+.ta-close {
+  color: var(--text-2);
+}
+
+/* ---- 3: match found ---- */
+/* no card round it (user, 2026-10-25): straight on the page, the two pictures fly in from the screen's sides and
+   meet at the VS in the middle */
+.ex-wide .ex-main.ta-found {
+  align-items: center;
+  justify-content: center; /* the whole scene in the middle of the space under the header (user, 2026-10-25) */
+  gap: 26px;
+  min-height: calc(100vh - var(--header-bottom, 120px) - 180px);
+  overflow: visible;
+  background: none;
+  border: 0;
+  border-radius: 0;
+}
+.ta-found-tag {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ta-green);
+  border: 1px solid rgba(49, 111, 89, 1);
+  border-radius: 999px;
+}
+.ta-found-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  width: 100%;
+  padding: 0 20px;
+}
+.ta-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 170px;
+  animation: ta-slide-l 0.9s cubic-bezier(0.16, 1, 0.3, 1.08) both;
+}
+.ta-player.is-right {
+  animation-name: ta-slide-r;
+}
+@keyframes ta-slide-l {
+  from {
+    transform: translateX(-50vw);
+  }
+}
+@keyframes ta-slide-r {
+  from {
+    transform: translateX(50vw);
+  }
+}
+.ta-player-avatar {
+  box-shadow: 0 0 0 3px #120c1d, 0 0 0 4px rgba(236, 221, 255, 0.5);
+}
+.ta-player-handle {
+  font-size: 18px;
+  font-weight: 800;
+}
+.ta-player-note {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+.ta-found-mid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.ta-found-vs {
+  font-size: 54px;
+  font-weight: 900;
+  font-style: italic;
+  color: #ecddff;
+  /* lands as the pictures meet; starts only a little bigger so it never covers them (user, 2026-10-25) */
+  animation: ta-vs-pop 0.5s 0.75s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+@keyframes ta-vs-pop {
+  from {
+    transform: scale(1.35);
+  }
+}
+@keyframes ta-pop {
+  from {
+    transform: scale(2.4);
+  }
+}
+.ta-found-pot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+.ta-found-pot small {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.ta-found-count {
+  display: grid;
+  place-items: center;
+  min-height: 56px;
+  font-size: 15px;
+  color: var(--muted);
+}
+.ta-found-count b {
+  font-size: 30px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.ta-found-count {
+  flex-direction: column;
+  gap: 10px;
+}
+.ta-found-status {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.ta-found-status.is-go {
+  color: var(--green);
+}
+.ta-found-timer {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.ta-player.is-in .ta-player-note {
+  font-weight: 700;
+  color: var(--green);
+}
+.ta-player.is-in .ta-player-avatar {
+  box-shadow: 0 0 0 3px #120c1d, 0 0 0 4px var(--green);
+}
+.ta-found .ta-foot {
+  width: 100%;
+  margin-top: 8px;
+  border-top: 0;
+}
+
+/* ---- 4: live match ---- */
+@media (min-width: 861px) {
+  .ex-wide .ta-live,
+  .app-explore .ex-wide .ta-live {
+    display: grid;
+    grid-template-columns: clamp(260px, 19vw, 320px) minmax(0, 1fr) clamp(260px, 19vw, 310px);
+    height: clamp(520px, calc(100vh - var(--header-bottom) - 110px), 860px);
+  }
+}
+.ta-score,
+.ta-order {
+  gap: 14px;
+  padding: 16px;
+  overflow-y: auto;
+}
+.ta-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 10px;
+  background: rgba(10, 6, 18, 0.45);
+  border: 1px solid rgba(236, 221, 255, 0.08);
+  border-radius: 8px;
+}
+.ta-clock-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ta-clock-value {
+  font-size: 32px;
+  font-weight: 800;
+}
+.ta-clock-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+/* tug of war: green to the right when you lead, red to the left when they do */
+.ta-tug {
+  position: relative;
+  height: 8px;
+  background: rgba(236, 221, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.ta-tug-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transition: width 0.6s ease;
+}
+.ta-tug-fill[data-side="me"] {
+  background: var(--ta-green);
+}
+.ta-tug-fill[data-side="opp"] {
+  background: var(--ta-red);
+}
+.ta-tug-mid {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 2px;
+  background: #ecddff;
+}
+.ta-scorerow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(236, 221, 255, 0.08);
+  border-radius: 8px;
+}
+.ta-scorerow.is-ahead {
+  border-color: rgba(49, 111, 89, 1);
+}
+.ta-score-names,
+.ta-score-nums {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ta-score-names {
+  flex: 1;
+}
+.ta-score-nums {
+  align-items: flex-end;
+}
+.ta-score-handle {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ta-score-label,
+.ta-score-bal {
+  font-size: 11px;
+  color: var(--muted);
+}
+.ta-score-label i {
+  font-style: normal;
+  color: var(--ta-green);
+}
+.ta-score-pnl {
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.ta-qual {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--ta-split);
+}
+.ta-qual-title {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ta-qual-note {
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.ta-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ta-meter-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.ta-meter-track {
+  height: 6px;
+  background: rgba(236, 221, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.ta-meter-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #817298, #d8fffe);
+  border-radius: 3px;
+}
+.ta-meter-fill.is-done {
+  background: var(--ta-green);
+}
+.ta-chart-card {
+  min-width: 0;
+}
+.ta-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ta-split);
+}
+.ta-mkts {
+  display: flex;
+  gap: 4px;
+}
+.ta-mkt {
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--ta-split);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.ta-mkt.is-on {
+  color: var(--text);
+  border-color: rgba(236, 221, 255, 0.5);
+}
+.ta-price {
+  font-size: 22px;
+  font-weight: 800;
+}
+.ta-bbo {
+  font-size: 11px;
+  color: var(--muted);
+}
+.ta-feed {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ta-green);
+}
+.ta-feed::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: currentColor;
+  border-radius: 50%;
+  animation: ta-blink 1.4s ease-in-out infinite;
+}
+.ta-feed.is-paused {
+  color: #ffc36b;
+}
+.ta-feed.is-paused::before {
+  animation: none;
+}
+.ta-order .ex-order-cta:disabled {
+  color: var(--muted);
+  background: rgba(236, 221, 255, 0.06);
+  cursor: not-allowed;
+}
+.ta-mock-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 12px;
+}
+.ta-order .ex-order-msg {
+  margin: 0;
+  font-size: 11.5px;
+  text-align: center;
+  color: var(--text-2);
+}
+.ta-table small {
+  font-size: 10px;
+  opacity: 0.8;
+}
+.ta-empty {
+  padding: 22px 18px !important;
+  color: var(--muted);
+  text-align: center;
+}
+.ta-close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ta-src {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+/* the live chart (PerpChart): timeframe buttons, the candles, the TradingView credit */
+.pc {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.pc-bar {
+  align-items: center;
+  padding: 10px 16px 0;
+}
+.pc-note {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.pc-chart {
+  flex: 1;
+  min-height: 300px;
+  margin: 6px 8px 0;
+}
+.pc-credit {
+  align-self: flex-end;
+  margin: 2px 14px 8px;
+  font-size: 10px;
+  color: var(--muted);
+  text-decoration: none;
+}
+.ta-sides {
+  flex: none;
+}
+.ta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ta-field-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.ta-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ta-free {
+  font-size: 11px;
+  color: var(--muted);
+}
+.ta-lev-value {
+  font-size: 15px;
+  font-weight: 800;
+}
+.ta-slider {
+  width: 100%;
+  accent-color: #ecddff;
+}
+.ta-chips {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+.ta-order .ex-order-cta {
+  flex: none;
+  margin-top: 4px;
+}
+
+/* ---- 5: result ---- */
+@media (min-width: 861px) {
+  .ex-wide .ta-result,
+  .app-explore .ex-wide .ta-result {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    min-height: 440px;
+  }
+}
+.ta-result-main {
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 24px;
+  text-align: center;
+}
+.ta-result-tag {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ta-result-title {
+  margin: 0;
+  font-size: 46px;
+  font-weight: 900;
+  animation: ta-pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+.ta-result-payout {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--ta-green);
+}
+.ta-result-sent {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.ta-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+.ta-card-wrap {
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+}
+.ta-sharecard {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: min(440px, 100%);
+  padding: 22px;
+  background: linear-gradient(150deg, #2b1f44, #170f22 60%);
+  border: 1px solid rgba(236, 221, 255, 0.5);
+  border-radius: 14px;
+}
+.ta-share-brand {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.ta-share-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 10px;
+}
+.ta-share-p {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.ta-share-p b {
+  font-size: 22px;
+}
+.ta-share-p small {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.ta-share-p.is-win .ex-avatar {
+  box-shadow: 0 0 0 2px #170f22, 0 0 0 3px var(--ta-green);
+}
+.ta-share-vs {
+  font-size: 20px;
+  font-weight: 900;
+  font-style: italic;
+  color: var(--muted);
+}
+.ta-share-foot {
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ---- laptops ---- */
+
+/* ---- phones: everything stacks ---- */
+@media (max-width: 860px) {
+  .ta-tiers {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .ta-lobby-head {
+    padding: 16px;
+  }
+  .ta-found-row {
+    gap: 12px;
+  }
+  .ta-player {
+    width: 110px;
+  }
+  .ta-player-avatar {
+    width: 64px !important;
+    height: 64px !important;
+  }
+  .ta-found-vs {
+    font-size: 34px;
+  }
+  .pc-chart {
+    min-height: 260px;
+  }
+  .ta-feed {
+    margin-left: 0;
+  }
+  .ta-board {
+    overflow-x: auto;
+  }
+}

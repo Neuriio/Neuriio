@@ -1,7 +1,7 @@
 // /trending — three lists of launched tokens, each one card like Explore's Top 25 (prices live, refreshed every 20 s):
-//   Bonding             top 25 by total volume still on the bonding curve
-//   Recently graduated  graduated tokens, newest graduation first
-//   Trending            top 25 by volume over the last 3 days
+//   Early     top 25 by total volume under a $70k market cap
+//   Matured   top 25 by total volume at $70k and up
+//   Trending  top 25 by 24h volume
 // Desktop: three columns side by side, each scrolling inside its card. Phones: one card with the three as tabs.
 // A row opens that token on /explore. The launch page's dot strands sit on both sides.
 import { useEffect, useState } from "react";
@@ -10,20 +10,20 @@ import { useLivePrices } from "../lib/live";
 import { compactUsd } from "../lib/format";
 import { QUOTE } from "../lib/config";
 import { useIsMobile } from "../lib/media";
-import { bondingTokens, DEMO, displayName, recentlyGraduated, trendingTokens, type TokenStat } from "../lib/explore";
+import { DEMO, displayName, EARLY_MAX_MCAP, earlyTokens, maturedTokens, trendingTokens, type TokenStat } from "../lib/explore";
 import { Avatar } from "./Avatar";
-import { ago, Change } from "./ExploreCard";
+import { Change } from "./ExploreCard";
 
-type ListId = "bonding" | "graduated" | "trending";
-const LISTS: { id: ListId; title: string; sub: string; empty: string; load: () => Promise<TokenStat[]> }[] = [
-  { id: "bonding", title: "Bonding", sub: "top 25 · volume", empty: "No tokens on the curve right now.", load: () => bondingTokens() },
-  { id: "graduated", title: "Recently graduated", sub: "newest first", empty: "No graduations yet.", load: () => recentlyGraduated() },
-  { id: "trending", title: "Trending", sub: "top 25 · 3-day volume", empty: "No trades in the last 3 days.", load: () => trendingTokens(3) },
+type ListId = "early" | "matured" | "trending";
+const LISTS: { id: ListId; title: string; sub: string; empty: string; load: () => Promise<TokenStat[]>; fits?: (mcap: number) => boolean }[] = [
+  { id: "early", title: "Early", sub: "top 25 · volume", empty: "No tokens under a $70k market cap.", load: () => earlyTokens(), fits: (mcap) => mcap < EARLY_MAX_MCAP },
+  { id: "matured", title: "Matured", sub: "top 25 · volume", empty: "No tokens at a $70k market cap or above.", load: () => maturedTokens(), fits: (mcap) => mcap >= EARLY_MAX_MCAP },
+  { id: "trending", title: "Trending", sub: "top 25 · 24h volume", empty: "No trades in the last 24 hours.", load: () => trendingTokens() },
 ];
 
 export function TrendingCard() {
   const mobile = useIsMobile();
-  const [tab, setTab] = useState<ListId>("bonding");
+  const [tab, setTab] = useState<ListId>("early");
   if (mobile) {
     const list = LISTS.find((l) => l.id === tab)!;
     return (
@@ -32,7 +32,7 @@ export function TrendingCard() {
         <div className="ex-mtabs tr-mtabs" role="tablist">
           {LISTS.map((l) => (
             <button key={l.id} role="tab" aria-selected={tab === l.id} className={`ex-mtab${tab === l.id ? " is-on" : ""}`} onClick={() => setTab(l.id)}>
-              {l.id === "graduated" ? "Graduated" : l.title}
+              {l.title}
             </button>
           ))}
         </div>
@@ -59,6 +59,10 @@ function TokenList({ list }: { list: (typeof LISTS)[number] }) {
   const [error, setError] = useState(false);
   const [sort, setSort] = useState<"desc" | "asc" | null>(null); // MCAP arrow: highest first, lowest first, or the list's own order
 
+  // a live price can cross the $70k line between refreshes: the row leaves right away, and joins the other list at the next one
+  const mcapOf = (t: TokenStat) => (live[t.address] ?? t.price_hype) * 1e9 * hypeUsd;
+  const shown = rows?.filter((t) => list.fits?.(mcapOf(t)) ?? true) ?? null;
+
   useEffect(() => {
     let alive = true;
     const load = () =>
@@ -84,20 +88,16 @@ function TokenList({ list }: { list: (typeof LISTS)[number] }) {
         <span>
           <span className="tr-title">{list.title}</span> · {list.sub}
         </span>
-        {list.id === "graduated" ? (
-          <span>GRADUATED</span>
-        ) : (
-          <button
-            className={`tr-sort${sort ? " is-on" : ""}`}
-            onClick={() => setSort(sort === null ? "desc" : sort === "desc" ? "asc" : null)}
-            title={sort === "desc" ? "Highest market cap first" : sort === "asc" ? "Lowest market cap first" : "Sort by market cap"}
-          >
-            MCAP {sort === "desc" ? <ArrowDown size={11} /> : sort === "asc" ? <ArrowUp size={11} /> : <ArrowUpDown size={11} />}
-          </button>
-        )}
+        <button
+          className={`tr-sort${sort ? " is-on" : ""}`}
+          onClick={() => setSort(sort === null ? "desc" : sort === "desc" ? "asc" : null)}
+          title={sort === "desc" ? "Highest market cap first" : sort === "asc" ? "Lowest market cap first" : "Sort by market cap"}
+        >
+          MCAP {sort === "desc" ? <ArrowDown size={11} /> : sort === "asc" ? <ArrowUp size={11} /> : <ArrowUpDown size={11} />}
+        </button>
       </div>
       <ol className="ex-list tr-list">
-        {(sort && rows ? [...rows].sort((a, b) => ((live[a.address] ?? a.price_hype) - (live[b.address] ?? b.price_hype)) * (sort === "asc" ? 1 : -1)) : rows)?.map((t, i) => {
+        {(sort && shown ? [...shown].sort((a, b) => ((live[a.address] ?? a.price_hype) - (live[b.address] ?? b.price_hype)) * (sort === "asc" ? 1 : -1)) : shown)?.map((t, i) => {
           const price = live[t.address] ?? t.price_hype;
           return (
             <li key={t.address}>
@@ -109,13 +109,13 @@ function TokenList({ list }: { list: (typeof LISTS)[number] }) {
                   <Change t={t} price={live[t.address]} />
                 </span>
                 <span className="ex-row-mcap">
-                  {list.id === "graduated" && t.graduated_at ? ago(t.graduated_at) : hypeUsd ? compactUsd(price * 1e9 * hypeUsd) : "…"}
+                  {hypeUsd ? compactUsd(price * 1e9 * hypeUsd) : "…"}
                 </span>
               </a>
             </li>
           );
         })}
-        {rows && rows.length === 0 && <li className="ex-empty">{list.empty}</li>}
+        {shown && shown.length === 0 && <li className="ex-empty">{list.empty}</li>}
         {!rows && !error && <li className="ex-empty">Loading…</li>}
         {error && <li className="ex-empty">Couldn't load tokens.</li>}
       </ol>
