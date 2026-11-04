@@ -4,11 +4,13 @@
 
 * A token is not equity, shares, debt, a security, or a claim on any person, company, revenue or asset.
 * Creators owe holders nothing. Creators receive no token allocation and no share of any company's revenue through
-  Neuriio; they earn only their share of trading fees.
-* Staking shares Neuriio's trading fees with stakers. Fees depend on trading activity, can be zero, and are not a
-  promise of value or of any amount.
+  Neuriio.
+* Staking shares part of Neuriio's trading fee with stakers. Fees depend on trading activity, can be zero, and are not
+  a promise of value or of any amount.
+* Neuriio, earned by staking, has no promised value.
 * Nothing on Neuriio, in these docs or in any creator's profile is investment, financial, legal or tax advice.
 * Token prices can go to zero. Only use funds you can afford to lose.
+* Tokens launched through Neuriio trade on Ascend, a separate protocol with its own rules and fees.
 * Neuriio is software running on public blockchains. Transactions can't be reversed, and smart contracts can have bugs
   despite testing and review.
 * Neuriio is currently on **Elysium testnet**. Testnet tokens, test USDC and testnet HYPE have no value.

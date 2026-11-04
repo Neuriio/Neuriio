@@ -7,16 +7,13 @@
 
 * [Launch Your Token](launching/launch-your-token.md)
 * [Launch an FTF](launching/launch-an-ftf.md)
-* [Bonding Curve](launching/bonding-curve.md)
-* [Graduation and Locked Liquidity](launching/graduation.md)
 * [For Builders](launching/for-builders.md)
 
 ## Trading
 
 * [Trading and Fees](trading/trading-and-fees.md)
 * [Staking](trading/staking.md)
-* [Creator Fees](trading/creator-fees.md)
-* [Feed and Points](trading/feed-and-points.md)
+* [Home and Neuriio](trading/feed-and-points.md)
 
 ## Trust
 

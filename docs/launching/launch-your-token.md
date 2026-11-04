@@ -10,16 +10,19 @@ Launching is free: you only pay gas. Each X account can launch **one** personal 
 | Ticker | Your handle, e.g. `alice` (stored in capitals on-chain) |
 | Supply | 1,000,000,000, all created at launch |
 | Creator allocation | None. You start with zero tokens, like everyone else |
+| Where it trades | Its own pool on Ascend, in USDC |
 
 ## Steps
 
 1. Log in with X and open **Launch**.
-2. **Pick a category** that describes what you're known for: Trader, Meme Trader, Researcher, Influencer, Builder or
-   Creator.
-3. **Write your profile**: a short "about" and links to your work. This is how people decide whether to back you.
+2. **Pick a category** that describes what you're known for: Trader, Meme Trader, Researcher, Influencer, Builder,
+   Creator, Meme Account or Founders.
+3. **Write your profile**: a short "about" and links to your work. Your X account is linked automatically. This is how
+   people decide whether to back you.
 4. **Launch.** You can add an optional first buy, in USDC, in the same transaction.
 
-Your token goes live on its [bonding curve](bonding-curve.md) immediately and shows up in Explore.
+Your token goes live in its Ascend pool immediately, shows up in Explore, and can be
+[staked](../trading/staking.md) right away.
 
 ## Rules
 

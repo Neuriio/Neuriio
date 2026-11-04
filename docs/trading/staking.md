@@ -1,67 +1,50 @@
 # Staking
 
-Staking lets you share in Neuriio's trading fees, in USDC. There are two kinds:
+Staking lets you share in the trading fees of a token you hold, in USDC, and earn Neuriio.
 
-| Stake | You earn | Opens |
-| --- | --- | --- |
-| A graduated token | 40% of that token's pool fees, in USDC, **plus newly minted Neuriio** | When the token graduates |
-| Neuriio | 50% of every curve fee and 40% of every pool fee, across all tokens, in USDC | Any time |
+| Stake | You earn |
+| --- | --- |
+| Any token launched through Neuriio | 40% of Neuriio's 0.5% fee on that token's trades (0.2% of its volume), in USDC, **plus Neuriio** |
 
 Staking is a choice. There's no lockup: stake or unstake any amount at any time.
 
 ## Staking a token
 
-Once a token [graduates](../launching/graduation.md), anyone holding it can stake it from the **stake card** on its
-Explore page.
+Any token launched through Neuriio can be staked from the moment it launches, from the **stake card** on its Explore
+page.
 
-* Every pool trade of that token pays 1%, and **40% of it goes to the people staking it**, shared by how much each has
-  staked.
-* Every **$1** you earn this way also **mints Neuriio** for you (25 Neuriio per $1 at most; see below).
-* A token still on its bonding curve can't be staked yet.
+* Every trade of that token pays Neuriio 0.5%, and **40% of it goes to the people staking it**, shared by how much
+  each has staked. See [Trading and fees](trading-and-fees.md).
+* You can stake from your Neuriio wallet or from your own wallet.
+* If nobody is staking a token, its stakers' share goes to the treasury.
 
 ## Neuriio
 
-Neuriio is the platform token. The only way it's created is by staking graduated tokens: there's no presale, no team
-allocation and no pre-mint. **Supply is hard-capped at 1,000,000,000 Neuriio**: the token contract refuses any mint past
-it, so once the cap is reached staking keeps paying USDC but mints no more Neuriio.
+Staking is the only way to earn Neuriio. For every **$1** you earn from staking, you earn **100 Neuriio**.
 
-* **Stake Neuriio** to share 50% of every curve fee and 40% of every pool fee on Neuriio, in USDC. Staking Neuriio
-  doesn't mint more Neuriio.
-* **Claimed Neuriio is staked for you.** When you claim from a token you stake, the USDC goes to your wallet and the
-  Neuriio goes straight into your Neuriio stake, where it starts earning right away.
-* **Neuriio can't be sent** to other wallets for now: it can only be staked and unstaked.
-
-### How much Neuriio is minted
-
-| Total fees Neuriio has taken | Neuriio per $1 earned |
-| --- | --- |
-| Up to $1M | 25 |
-| After $1M | 25 × (S ÷ (S + h))², with S = $120M and h = fees past the first $1M |
-
-The rate stays at 25 until Neuriio has taken $1M in fees, then slowly falls as the platform grows. For example, with
-$31M taken it's about 16 per $1, and with $101M taken it's about 7.4. **25 per $1 is the maximum**: it's fixed in the
-minter contract, so nobody can ever raise it.
+* Neuriio is capped at **1,000,000,000** in total. Once the cap is reached, staking keeps paying USDC but earns no
+  more Neuriio.
+* There's nothing to claim: your Neuriio is counted automatically and shows in the **Neuriio** panel at the top right.
+* Your Neuriio unlocks **badges**, from the first at 1,000 Neuriio up to the highest at 2,500,000.
 
 ## Rewards drip in
 
-Fees don't land all at once. Each payment to a pool drips out over **one hour** to whoever is staked during that hour.
-Jumping in for a moment before a big trade and leaving right after earns almost nothing; staying staked earns your
-full share. If everyone leaves a pool partway through, the rest waits for the next stakers.
+Fees don't land all at once. Each payment to a token's stakers drips out over **one hour** to whoever is staked during
+that hour. Jumping in for a moment before a big trade and leaving right after earns almost nothing; staying staked
+earns your full share. If everyone leaves partway through, the rest waits for the next stakers.
 
 ## Claiming
 
-* **Stake card on Explore:** the **Claim** tab shows the USDC (and Neuriio) you've earned on that token.
-* **Account → Neuriio:** your staked Neuriio and the USDC it has earned, with a **Claim** button.
-
-Claim any time; you only pay gas. Unclaimed rewards never expire.
+The **Claim** tab on a token's stake card shows the USDC you've earned on that token. Claim any time; you only pay
+gas. Unclaimed rewards never expire.
 
 ## Good to know
 
 * The staking contract has **no owner**: nobody, including Neuriio, can move staked tokens or rewards. Only you can
   unstake yours.
-* Fees are paid from real trading activity. They go up and down with volume and can be zero.
+* Fees come from real trading activity. They go up and down with volume and can be zero.
 
 {% hint style="warning" %}
-Staking shares trading fees; it is not a promise of value or of any amount. Tokens are memes and can go to zero. Read
-the [Disclaimer](../trust/disclaimer.md).
+Staking shares trading fees; it is not a promise of value or of any amount. Neuriio has no promised value. Tokens are
+memes and can go to zero. Read the [Disclaimer](../trust/disclaimer.md).
 {% endhint %}

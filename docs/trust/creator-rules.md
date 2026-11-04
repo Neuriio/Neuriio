@@ -20,5 +20,5 @@ be hidden from Neuriio.
 
 ## What happens if you break them
 
-Neuriio can hide your profile and token from the app. Because tokens live on-chain, holders can still sell, and your
-pool's liquidity stays locked.
+Neuriio can hide your profile and token from the app. Because tokens live on-chain, holders can still sell them in the
+token's Ascend pool.
