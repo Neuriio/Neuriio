@@ -1,40 +1,33 @@
-# Launch your token
+# Launch Your Token
 
-Launching is free: you only pay gas. Each X account can launch **one** personal token, ever.
+You only pay the normal chain gas fee <$.001. Each X account can launch **one** personal token, ever.
 
-## What your token is
+## What Your Token Is
 
-| | |
-| --- | --- |
-| Name | `@` + your X handle, e.g. `@alice` |
-| Ticker | Your handle, e.g. `alice` (stored in capitals on-chain) |
-| Supply | 1,000,000,000, all created at launch |
-| Creator allocation | None. You start with zero tokens, like everyone else |
-| Where it trades | Its own pool on Ascend, in USDC |
+|                    |                                                         |
+| ------------------ | ------------------------------------------------------- |
+| Name               | `@` + your X handle, e.g. `@alice`                      |
+| Ticker             | Your handle, e.g. `alice` (stored in capitals on-chain) |
+| Supply             | 1,000,000,000, all created at launch                    |
+| Creator Allocation | None. You start with zero tokens, like everyone else    |
+| Where It Trades    | Its own pool on Ascend, in USDC                         |
 
 ## Steps
 
 1. Log in with X and open **Launch**.
-2. **Pick a category** that describes what you're known for: Trader, Meme Trader, Researcher, Influencer, Builder,
-   Creator, Meme Account or Founders.
-3. **Write your profile**: a short "about" and links to your work. Your X account is linked automatically. This is how
-   people decide whether to back you.
+2. **Pick a category** that describes what you're known for: Trader, Meme Trader, Researcher, Influencer, Builder, Creator, Meme Account or Founders.
+3. **Write your profile**: a short "about" and links to your work. Your X account is linked automatically. This is how people decide whether to back you.
 4. **Launch.** You can add an optional first buy, in USDC, in the same transaction.
 
-Your token goes live in its Ascend pool immediately, shows up in Explore, and can be
-[staked](../trading/staking.md) right away. As its creator you earn part of every trade's fee in USDC; see
-[Creator fees](../trading/trading-and-fees.md#creator-fees).
+Your token goes live in its Ascend pool immediately, shows up in Explore, and can be [staked](../trading/staking.md) right away. As its creator you earn part of every trade's fee in USDC; see [Creator fees](../trading/trading-and-fees.md#creator-fees).
 
 ## Rules
 
-* **One token per X account.** It's tied to your permanent X user ID, so changing your handle doesn't give you a
-  second launch. It's also one per wallet and one per handle.
+* **One token per X account.** It's tied to your permanent X user ID, so changing your handle doesn't give you a second launch. It's also one per wallet and one per handle.
 * **Reserved tickers.** Tickers that look like real assets (for example `HYPE`, `USDC`, `USDT`) can't be launched.
-* **Your profile is fixed at launch.** A fingerprint (hash) of it is stored on-chain with the token, so anyone can check
-  it hasn't been changed.
+* **Your profile is fixed at launch.** A fingerprint (hash) of it is stored on-chain with the token, so anyone can check it hasn't been changed.
 * Follow the [creator rules](../trust/creator-rules.md): no promises of returns, pumps or buybacks.
 
 {% hint style="info" %}
-Launching as a group of four? See [Launch an FTF](launch-an-ftf.md). Being in an FTF doesn't use up your personal
-launch.
+Launching as a group of four? See [Launch an FTF](launch-an-ftf.md). Being in an FTF doesn't use up your personal launch.
 {% endhint %}

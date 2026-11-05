@@ -1,6 +1,6 @@
 # Table of contents
 
-* [What is Neuriio](README.md)
+* [What is Neuriio?](README.md)
 * [Getting Started](getting-started.md)
 
 ## Launching
