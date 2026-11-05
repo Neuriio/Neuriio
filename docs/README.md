@@ -2,9 +2,9 @@
 
 We are the official frontend for Ascend's Launchpad. Neuriio was accepted into Ascend's Builder Incubator Program to build the authentication layer that verifies each tokens legitimacy before launching. All of our tokens launch directly into Ascend's pools following their value accretive fee model.
 
-Tokenizing your X account solves the vamping problem we have in crypto. We have built technology that stops deployers from using the same image or ticker name. This is vital when you see a ticker getting hype on the timeline and you rush to catch it and have to waste time verifying the correct one.
+Tokenizing your X account solves the vamping problem we have in crypto. We have built technology that stops deployers from using the same image or ticker name. This is vital when you see a ticker getting hype on the timeline and you rush to catch it but have to waste time verifying the correct one.
 
-The owner of the X is the one who can tokenize their account by authenticating on Neuriio before launch. This isn't only for KOLs, Influencers, Creators but Meme Accounts and Protocol Tokens.
+The owner of the X is the only one who can tokenize their account by authenticating on Neuriio before launch. This isn't just for KOLs, Influencers, Creators but Meme Accounts and Protocol Tokens.
 
 ***
 
