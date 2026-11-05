@@ -15,16 +15,27 @@
 // 1b. An "ascend" world (Elysium mainnet, user 2026-11-04): launches from our NeuriioLauncher (Launched/FtfLaunched, each with its
 //    Ascend pool id) and every Swap in those pools from Ascend's Uniswap v4 PoolManager, with the fee from the Ascend launchpad's
 //    HookSwap; the trader is the transaction's sender (HookSwap's sender is the router).
+// 1c. An "ascend_all" world (/trending, user 2026-11-04): EVERY coin launched on Ascend (the launchpad's Launched), and every
+//    swap and standing-bid fill in their pools, priced in USD (pairs from Hyperliquid spot) -> ascend_tokens + trades; plus
+//    each coin's art from Ascend's public metadata API.
 //
 // Secrets: WORLDS = JSON list of { registry, routers: [..], quote, decimals, usd: "hype" | "1", fromBlock } or, for mainnet,
-// { kind: "ascend", launcher, poolManager, hook, quote, decimals, fromBlock }; or, for
+// { kind: "ascend", launcher, poolManager, hook, quote, decimals, fromBlock } and { kind: "ascend_all", poolManager, hook,
+// fromBlock (Ascend's deployment block, 422319) }; or, for
 // a single HYPE world, REGISTRY_ADDRESS + ROUTER_ADDRESSES (comma list; or ROUTER_ADDRESS) + WHYPE_ADDRESS +
 // INDEX_FROM_BLOCK. APP_REGISTRY (optional), RPC_URL, HL_TESTNET ("true"/"false")
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { createPublicClient, getAddress, http, parseAbi } from "npm:viem@2";
 import {
+  ascendLaunched,
+  ascendLaunchedToRow,
   ascendSwapToRow,
+  bidFilled,
+  metadataColumns,
+  pairUsd,
+  rowInUsd,
+  type SpotMeta,
   curveTradeToRow,
   hookFeesByTx,
   hookSwap,
@@ -32,6 +43,7 @@ import {
   launcherFtfLaunchedToToken,
   launcherLaunchedToToken,
   poolManagerSwap,
+  withBidFills,
   type HlFill,
   hlFillToRow,
   ftfLaunchedToToken,
@@ -50,10 +62,17 @@ import { env } from "../_shared/env.ts";
 
 
 type World = { kind?: "pad"; registry: `0x${string}`; routers: `0x${string}`[]; quote: `0x${string}`; decimals: number; usd: "hype" | "1"; fromBlock: bigint };
+type AscendAllWorld = { kind: "ascend_all"; registry: `0x${string}`; poolManager: `0x${string}`; hook: `0x${string}`; fromBlock: bigint };
 type AscendWorld = { kind: "ascend"; registry: `0x${string}`; poolManager: `0x${string}`; hook: `0x${string}`; quote: `0x${string}`; decimals: number; fromBlock: bigint };
-const WORLDS: (World | AscendWorld)[] = Deno.env.get("WORLDS")
+const WORLDS: (World | AscendWorld | AscendAllWorld)[] = Deno.env.get("WORLDS")
   // deno-lint-ignore no-explicit-any
-  ? JSON.parse(Deno.env.get("WORLDS")!).map((w: any) => w.kind === "ascend" ? {
+  ? JSON.parse(Deno.env.get("WORLDS")!).map((w: any) => w.kind === "ascend_all" ? {
+    kind: "ascend_all",
+    registry: getAddress(w.hook), // not an app registry: only the cursor's name
+    poolManager: getAddress(w.poolManager),
+    hook: getAddress(w.hook),
+    fromBlock: BigInt(w.fromBlock),
+  } : w.kind === "ascend" ? {
     kind: "ascend",
     registry: getAddress(w.launcher), // the launcher is this world's registry: token_stats lists what it launched
     poolManager: getAddress(w.poolManager),
@@ -77,7 +96,7 @@ const WORLDS: (World | AscendWorld)[] = Deno.env.get("WORLDS")
     usd: "hype",
     fromBlock: BigInt(env("INDEX_FROM_BLOCK")),
   }];
-const APP_REGISTRY = (Deno.env.get("APP_REGISTRY") ?? WORLDS[0].registry).toLowerCase();
+const APP_REGISTRY = (Deno.env.get("APP_REGISTRY") ?? WORLDS.find((w) => w.kind !== "ascend_all")!.registry).toLowerCase();
 const registryAbi = parseAbi(["function launchpadsLength() view returns (uint256)", "function launchpads(uint256) view returns (address)"]);
 const HL_INFO = env("HL_TESTNET") === "true" ? "https://api.hyperliquid-testnet.xyz/info" : "https://api.hyperliquid.xyz/info";
 const MAX_BLOCKS = 50_000n; // per run
@@ -290,24 +309,27 @@ async function indexAscend(world: AscendWorld) {
   const ids = [...tokenOfPool.keys()] as `0x${string}`[];
   const swaps = [];
   const hooks = [];
+  const fills = [];
   for (let i = 0; i < ids.length; i += 50) {
     const chunk = ids.slice(i, i + 50);
-    const [s, h] = await Promise.all([
+    const [s, h, f] = await Promise.all([
       chain.getLogs({ address: world.poolManager, event: poolManagerSwap, args: { id: chunk }, fromBlock: from, toBlock: to }),
       chain.getLogs({ address: world.hook, event: hookSwap, args: { poolId: chunk }, fromBlock: from, toBlock: to }),
+      chain.getLogs({ address: world.hook, event: bidFilled, args: { poolId: chunk }, fromBlock: from, toBlock: to }),
     ]);
     swaps.push(...s);
     hooks.push(...h);
+    fills.push(...f);
   }
-  await stamp(new Set(swaps.map((l) => l.blockNumber!)));
+  await stamp(new Set([...swaps, ...fills].map((l) => l.blockNumber!)));
   const txFrom = new Map<string, string>();
-  await Promise.all([...new Set(swaps.map((l) => l.transactionHash!))].map(async (h) => {
+  await Promise.all([...new Set([...swaps, ...fills].map((l) => l.transactionHash!))].map(async (h) => {
     txFrom.set(h, (await chain.getTransaction({ hash: h })).from);
   }));
   // deno-lint-ignore no-explicit-any
   const fees = hookFeesByTx(hooks as any, tokenOfPool, q);
   const seen = new Map<string, number>();
-  const rows: TradeRow[] = [...swaps].sort((x, y) => Number(x.blockNumber! - y.blockNumber!) || x.logIndex! - y.logIndex!).map((l) => {
+  const swapRows: TradeRow[] = [...swaps].sort((x, y) => Number(x.blockNumber! - y.blockNumber!) || x.logIndex! - y.logIndex!).map((l) => {
     const pool = l.args.id!.toLowerCase();
     const k = `${l.transactionHash}:${pool}`;
     const n = seen.get(k) ?? 0;
@@ -316,9 +338,143 @@ async function indexAscend(world: AscendWorld) {
     // deno-lint-ignore no-explicit-any
     return ascendSwapToRow(l as any, tokenOfPool.get(pool)!, q, txFrom.get(l.transactionHash!)!, ts(l), fee);
   });
+  // a pool's standing bid can take part (or all) of a sell: add it to that sell, or store it as one
+  // deno-lint-ignore no-explicit-any
+  const rows = withBidFills(swapRows, fills as any, tokenOfPool, q, txFrom, ts as any);
   await insertTrades(rows, "tx_hash,log_index");
   await setState(key, to.toString());
   return { registry, from: Number(from), to: Number(to), launched: launched.length, trades: rows.length };
+}
+
+const erc20Views = parseAbi([
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function totalSupply() view returns (uint256)",
+]);
+const ALL_BLOCKS_PER_RUN = 20_000n; // the backfill from Ascend's deployment takes a few runs
+const ALL_LOG_STEP = 2_000n; // getLogs per call, inside providers' result limits
+const METADATA_PER_RUN = 25;
+const quoteInfo = new Map<string, { symbol: string | null; decimals: number }>();
+
+/** Every Ascend coin: launches, then the swaps and bid fills in all their pools (read whole, then kept to Ascend pools), in USD. */
+async function indexAscendAll(world: AscendAllWorld, hypeUsdNow: number | null) {
+  const key = "elysium:ascend_all";
+  const last = await getState(key);
+  const from = last ? BigInt(last) + 1n : world.fromBlock;
+  const head = await chain.getBlockNumber({ cacheTime: 0 });
+  if (from > head) return { world: "ascend_all", from: Number(from), to: Number(head), events: 0 };
+  const to = head - from > ALL_BLOCKS_PER_RUN ? from + ALL_BLOCKS_PER_RUN : head;
+  const ranged = async <T,>(get: (a: bigint, b: bigint) => Promise<T[]>) => {
+    const out: T[] = [];
+    for (let a = from; a <= to; a += ALL_LOG_STEP) out.push(...(await get(a, a + ALL_LOG_STEP - 1n < to ? a + ALL_LOG_STEP - 1n : to)));
+    return out;
+  };
+
+  // 1. launches
+  const launches = await ranged((a, b) => chain.getLogs({ address: world.hook, event: ascendLaunched, fromBlock: a, toBlock: b }));
+  const tsOf = new Map<bigint, string>();
+  const stamp = (bs: bigint[]) =>
+    Promise.all([...new Set(bs)].filter((b) => !tsOf.has(b)).map(async (b) => {
+      const blk = await chain.getBlock({ blockNumber: b });
+      tsOf.set(b, new Date(Number(blk.timestamp) * 1000).toISOString());
+    }));
+  await stamp(launches.map((l) => l.blockNumber!));
+  const read = (address: `0x${string}`, functionName: "name" | "symbol" | "decimals" | "totalSupply") =>
+    // deno-lint-ignore no-explicit-any
+    chain.readContract({ address, abi: erc20Views, functionName } as any).catch(() => null);
+  const rows = [];
+  for (const l of launches) {
+    const q = l.args.quote!.toLowerCase();
+    if (!quoteInfo.has(q)) {
+      const [sym, dec] = await Promise.all([read(l.args.quote!, "symbol"), read(l.args.quote!, "decimals")]);
+      quoteInfo.set(q, { symbol: (sym as string) ?? null, decimals: Number(dec ?? 18) });
+    }
+    const [name, symbol, supply] = await Promise.all([read(l.args.token!, "name"), read(l.args.token!, "symbol"), read(l.args.token!, "totalSupply")]);
+    // deno-lint-ignore no-explicit-any
+    rows.push(ascendLaunchedToRow(l as any, tsOf.get(l.blockNumber!)!, {
+      name: (name as string) ?? null,
+      symbol: (symbol as string) ?? null,
+      supply: supply == null ? undefined : Number(BigInt(supply as bigint) / 10n ** 18n),
+    }, quoteInfo.get(q)!));
+  }
+  if (rows.length) {
+    const { error } = await db.from("ascend_tokens").upsert(rows, { onConflict: "address", ignoreDuplicates: true });
+    if (error) throw new Error(`ascend_tokens: ${error.message}`);
+  }
+
+  // 2. every Ascend pool we know, and this range's swaps, fees and bid fills in them
+  const known = await selectAll<{ address: string; pool_id: string; quote: string; quote_symbol: string | null; quote_decimals: number }>((a, b) =>
+    db.from("ascend_tokens").select("address, pool_id, quote, quote_symbol, quote_decimals").order("address").range(a, b)
+  );
+  const poolInfo = new Map(known.map((t) => [t.pool_id, t]));
+  const tokenOfPool = new Map(known.map((t) => [t.pool_id, t.address]));
+  const inPools = <L extends { args: Record<string, unknown> }>(logs: L[], field: string) =>
+    logs.filter((l) => poolInfo.has(String(l.args[field]).toLowerCase()));
+  const [swaps, hooks, fills] = await Promise.all([
+    ranged((a, b) => chain.getLogs({ address: world.poolManager, event: poolManagerSwap, fromBlock: a, toBlock: b })).then((l) => inPools(l, "id")),
+    ranged((a, b) => chain.getLogs({ address: world.hook, event: hookSwap, fromBlock: a, toBlock: b })).then((l) => inPools(l, "poolId")),
+    ranged((a, b) => chain.getLogs({ address: world.hook, event: bidFilled, fromBlock: a, toBlock: b })).then((l) => inPools(l, "poolId")),
+  ]);
+  await stamp([...swaps, ...fills].map((l) => l.blockNumber!));
+  const txFrom = new Map<string, string>();
+  await Promise.all([...new Set([...swaps, ...fills].map((l) => l.transactionHash!))].map(async (h) => {
+    txFrom.set(h, (await chain.getTransaction({ hash: h })).from);
+  }));
+
+  // 3. USD per pair asset, as Ascend's app prices them (Hyperliquid spot vs USDC)
+  const [meta, mids] = await Promise.all([
+    hlInfo({ type: "spotMeta" }).catch(() => null) as Promise<SpotMeta | null>,
+    hlInfo({ type: "allMids" }).catch(() => null) as Promise<Record<string, string> | null>,
+  ]);
+  const usdOf = (t: { quote_symbol: string | null }) => {
+    const sym = t.quote_symbol?.toUpperCase();
+    return sym === "WHYPE" && hypeUsdNow ? hypeUsdNow : pairUsd(t.quote_symbol, meta, mids);
+  };
+
+  // 4. trades, pair by pair (each pool's pair sets its units), then in USD
+  const ts = (l: { blockNumber: bigint | null }) => tsOf.get(l.blockNumber!)!;
+  const out: TradeRow[] = [];
+  const byQuote = Map.groupBy(known, (t) => t.quote);
+  for (const [quote, tokens] of byQuote) {
+    const pools = new Set(tokens.map((t) => t.pool_id));
+    const info = tokens[0];
+    const q: Quote = { address: quote, decimals: info.quote_decimals, usd: 1 };
+    const mine = <L extends { args: Record<string, unknown> }>(logs: L[], field: string) => logs.filter((l) => pools.has(String(l.args[field]).toLowerCase()));
+    // deno-lint-ignore no-explicit-any
+    const fees = hookFeesByTx(mine(hooks, "poolId") as any, tokenOfPool, q);
+    const seen = new Map<string, number>();
+    const swapRows = mine(swaps, "id").sort((x, y) => Number(x.blockNumber! - y.blockNumber!) || x.logIndex! - y.logIndex!).map((l) => {
+      const pool = String(l.args.id).toLowerCase();
+      const k = `${l.transactionHash}:${pool}`;
+      const n = seen.get(k) ?? 0;
+      seen.set(k, n + 1);
+      // deno-lint-ignore no-explicit-any
+      return ascendSwapToRow(l as any, tokenOfPool.get(pool)!, q, txFrom.get(l.transactionHash!)!, ts(l), fees.get(k)?.[n] ?? null);
+    });
+    // deno-lint-ignore no-explicit-any
+    const usd = usdOf(info);
+    // deno-lint-ignore no-explicit-any
+    out.push(...withBidFills(swapRows, mine(fills, "poolId") as any, tokenOfPool, q, txFrom, ts as any).map((r) => rowInUsd(r, usd)));
+  }
+  await insertTrades(out, "tx_hash,log_index");
+  await setState(key, to.toString());
+
+  // 5. art for a few coins each run: new ones first, then ones still without an image (Ascend publishes after the launch)
+  const { data: due } = await db.from("ascend_tokens").select("address")
+    .or(`metadata_checked_at.is.null,and(image_cid.is.null,metadata_checked_at.lt.${new Date(Date.now() - 15 * 60_000).toISOString()}),metadata_checked_at.lt.${new Date(Date.now() - 24 * 3600_000).toISOString()}`)
+    .order("metadata_checked_at", { ascending: true, nullsFirst: true }).limit(METADATA_PER_RUN);
+  let art = 0;
+  for (const { address } of due ?? []) {
+    const res = await fetch(`https://api.ascendlaunch.xyz/v1/tokens/${address}/metadata`).catch(() => null);
+    if (res?.status === 429) break; // back off until the next run
+    const body = res?.ok ? await res.json().catch(() => null) : null;
+    const update = { ...(body ? metadataColumns(body) : {}), metadata_checked_at: new Date().toISOString() };
+    const { error } = await db.from("ascend_tokens").update(update).eq("address", address);
+    if (error) throw new Error(`ascend metadata: ${error.message}`);
+    if (body) art++;
+  }
+  return { world: "ascend_all", from: Number(from), to: Number(to), launched: rows.length, trades: out.length, art };
 }
 
 /** An FTF that launched: copy its picture + category onto the token, then close its draft (matched by ticker; only one open
@@ -397,7 +553,9 @@ Deno.serve(async () => {
     result.elysium = [];
     for (const w of WORLDS) {
       try {
-        (result.elysium as unknown[]).push(w.kind === "ascend" ? await indexAscend(w) : await indexElysium(w, usd));
+        (result.elysium as unknown[]).push(
+          w.kind === "ascend_all" ? await indexAscendAll(w, usd) : w.kind === "ascend" ? await indexAscend(w) : await indexElysium(w, usd),
+        );
       } catch (e) {
         (result.elysium as unknown[]).push({ registry: w.registry, error: failed(`elysium ${w.registry}`, e) });
       }

@@ -1,7 +1,9 @@
-// /trending — three lists of launched tokens, each one card like Explore's Top 25 (prices live, refreshed every 20 s):
+// /trending — three lists of EVERY coin on Ascend (user, 2026-11-04), each one card like Explore's Top 25 (refreshed every 20 s;
+// our launches' prices live), all in USD whatever the pair:
 //   Early     top 25 by total volume under a $70k market cap
 //   Matured   top 25 by total volume at $70k and up
 //   Trending  top 25 by 24h volume
+// Our launches carry the Neuriio logo; everything else says "(Not Launched On Neuriio)" in small grey.
 // Desktop: three columns side by side, each scrolling inside its card. Phones: one card with the three as tabs.
 // A row opens that token on /explore. The launch page's dot strands sit on both sides.
 import { useEffect, useState } from "react";
@@ -10,7 +12,7 @@ import { useLivePrices } from "../lib/live";
 import { compactUsd } from "../lib/format";
 import { QUOTE } from "../lib/config";
 import { useIsMobile } from "../lib/media";
-import { DEMO, displayName, EARLY_MAX_MCAP, earlyTokens, maturedTokens, trendingTokens, type TokenStat } from "../lib/explore";
+import { DEMO, displayName, EARLY_MAX_MCAP, earlyTokens, isOurs, maturedTokens, trendingTokens, type TokenStat } from "../lib/explore";
 import { Avatar } from "./Avatar";
 import { Change } from "./ExploreCard";
 import { poll } from "../lib/poll";
@@ -105,7 +107,14 @@ function TokenList({ list }: { list: (typeof LISTS)[number] }) {
                 <span className="ex-rank">{i + 1}</span>
                 <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
                 <span className="ex-row-names">
-                  <span className="ex-row-handle">{displayName(t)}</span>
+                  <span className="ex-row-handle tr-name">
+                    <span className="tr-name-text">{displayName(t)}</span>
+                    {isOurs(t) ? (
+                      <img className="tr-ours" src="/brand/logo.png" alt="Launched on Neuriio" title="Launched on Neuriio" />
+                    ) : (
+                      <span className="tr-elsewhere">(Not Launched On Neuriio)</span>
+                    )}
+                  </span>
                   <Change t={t} price={live[t.address]} />
                 </span>
                 <span className="ex-row-mcap">

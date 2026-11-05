@@ -9,6 +9,7 @@ import { formatEther, formatUnits, parseEther, parseUnits, type Address } from "
 import { candles, DEMO, displayName, tickerOf, type TokenStat } from "../lib/explore";
 import { compactUsd } from "../lib/format";
 import { SUPABASE_URL } from "../lib/config";
+import { ascendTokenUrl } from "../lib/explore";
 import { balances, buyGraduates, FEE_BPS, friendlyTradeError, minOut, prepareTrading, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
 import { QUOTE } from "../lib/config";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
@@ -110,6 +111,17 @@ export function OrderCard({ t, hypeUsd, fixedSide }: { t: TokenStat | null; hype
   }, [t?.address, t?.graduated, side, amountIn]);
 
   if (!t) return <p className="ex-empty">Pick a token.</p>;
+  // a coin launched elsewhere on Ascend against HYPE, KNTQ or a stock token: our trade box only pays in USDC
+  if (t.quote_symbol && t.quote_symbol.toUpperCase() !== "USDC") {
+    return (
+      <p className="ex-order-note ex-other-pair">
+        {tickerOf(t.symbol)} trades against {t.quote_symbol.toUpperCase() === "WHYPE" ? "HYPE" : t.quote_symbol}, not USDC.{" "}
+        <a href={ascendTokenUrl(t.address)} target="_blank" rel="noreferrer">
+          Trade it on Ascend
+        </a>
+      </p>
+    );
+  }
 
   const feeBps = FEE_BPS;
   const unitIn = side === "buy" ? QUOTE.symbol : tickerOf(t.symbol);

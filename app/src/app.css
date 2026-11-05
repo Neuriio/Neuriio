@@ -5469,3 +5469,46 @@ a.ex-row {
 .ex-platform-link:hover .ex-platform-value {
   text-decoration: underline;
 }
+
+/* /trending: our launches carry the logo; coins launched elsewhere on Ascend say so in small grey (user, 2026-11-04) */
+.tr-name {
+  display: flex;
+  flex-wrap: wrap; /* in a narrow column the label drops under the name instead of squeezing it */
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 1px;
+  min-width: 0;
+}
+.tr-name-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tr-ours {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.tr-elsewhere {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+  white-space: nowrap;
+}
+/* the trade box for a coin paired against HYPE, KNTQ or a stock token: it trades on Ascend */
+.ex-other-pair {
+  margin: 0;
+  padding: 22px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+.ex-other-pair a {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: underline;
+}

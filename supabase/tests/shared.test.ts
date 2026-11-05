@@ -488,3 +488,45 @@ test("ascend: a launch through NeuriioLauncher trades in its pool from the start
   const t = launcherLaunchedToToken({ address: "0xLAUNCHER", transactionHash: "0xl" as const, logIndex: 0, blockNumber: 9n, args: { token: "0xTOKEN", creator: "0xC", xUserId: 42n, handle: "Alice", category: 1, profileHash: "0xp", pool: "0xPOOL" } }, "t");
   assert.deepEqual([t.address, t.launchpad, t.symbol, t.graduated, t.pair, t.virtual_hype, t.x_user_id], ["0xtoken", "0xlauncher", "ALICE", true, "0xpool", null, "42"]);
 });
+
+test("ascend: a standing-bid fill adds to its sell, or becomes a sell of its own", async () => {
+  const { ascendSwapToRow, withBidFills } = await import("./indexer.ts");
+  const pools = new Map([["0xpool", TOK_LO]]);
+  const base = { address: "0xPM", transactionHash: "0xs" as const, logIndex: 4, blockNumber: 7n };
+  // the AMM sold 50,000 tokens for 1 USDC (fee 0.015 inside); the bid took another 10,000 for 0.2 USDC + 0.003 fee
+  const sell = ascendSwapToRow({ ...base, args: { amount0: -(5n * 10n ** 22n), amount1: 1_000_000n, sqrtPriceX96: 2n ** 96n } }, TOK_LO, USDC6, "0xT", "t", 15_000n);
+  const fill = (tx: `0x${string}`, logIndex: number) => ({ address: "0xHOOK", transactionHash: tx, logIndex, blockNumber: 7n, args: { poolId: "0xPOOL", tokensIn: 10n ** 22n, feeQuote: 3_000n, quotePaid: 200_000n } });
+  const merged = withBidFills([sell], [fill("0xs", 3)], pools, USDC6, new Map(), () => "t");
+  assert.equal(merged.length, 1);
+  assert.deepEqual([merged[0].size, merged[0].quote_amount, merged[0].fee, merged[0].usd_value], ["60000", "1.203", "0.018", 1.203]);
+  // a sell the bid took whole: its own row, sold by the transaction's sender, no price
+  const alone = withBidFills([], [fill("0xb", 9)], pools, USDC6, new Map([["0xb", "0xSELLER"]]), () => "t2");
+  assert.deepEqual([alone.length, alone[0].side, alone[0].size, alone[0].quote_amount, alone[0].trader, alone[0].price_hype, alone[0].log_index], [1, "sell", "10000", "0.203", "0xseller", null, 9]);
+  // another pool's fill is ignored
+  assert.equal(withBidFills([], [{ ...fill("0xc", 1), args: { ...fill("0xc", 1).args, poolId: "0xother" } }], pools, USDC6, new Map(), () => "t").length, 0);
+});
+
+test("ascend (all): pair assets priced in USD from Hyperliquid spot vs USDC, as Ascend does", async () => {
+  const { pairUsd } = await import("./indexer.ts");
+  const meta = { tokens: [{ name: "USDC", index: 0 }, { name: "HYPE", index: 150 }, { name: "KNTQ", index: 124 }, { name: "AAPLX", index: 856 }], universe: [{ name: "@107", tokens: [150, 0] }, { name: "@254", tokens: [124, 99] }, { name: "@334", tokens: [124, 0] }, { name: "@713", tokens: [856, 0] }] };
+  const mids = { "@107": "40.5", "@334": "0.31", "@713": "231.2", "@254": "9" };
+  assert.equal(pairUsd("USDC", null, null), 1);
+  assert.equal(pairUsd("WHYPE", meta, mids), 40.5);
+  assert.equal(pairUsd("KNTQ", meta, mids), 0.31); // the USDC market, not the USDH one
+  assert.equal(pairUsd("AAPLx", meta, mids), 231.2);
+  assert.equal(pairUsd("NOPE", meta, mids), null);
+  assert.equal(pairUsd("HYPE", meta, null), null);
+});
+
+test("ascend (all): a launch row, USD conversion and Ascend metadata", async () => {
+  const { ascendLaunchedToRow, rowInUsd, metadataColumns } = await import("./indexer.ts");
+  const r = ascendLaunchedToRow({ address: "0xLP", transactionHash: "0xt" as const, logIndex: 1, blockNumber: 5n, args: { poolId: "0xPOOL", token: "0xTOK", quote: "0xQ", fee: 10000, builderFee: 0 } }, "t", { name: "Blob", symbol: "BLOB" }, { symbol: "WHYPE", decimals: 18 });
+  assert.deepEqual([r.address, r.pool_id, r.quote, r.quote_symbol, r.supply, r.fee_pips], ["0xtok", "0xpool", "0xq", "WHYPE", 1_000_000_000, 10000]);
+  const row = { venue: "pool" as const, trader: "0x", market: "0xtok", side: "buy" as const, size: "100", quote_amount: "2", usd_value: 2, fee: null, ts: "t", price_hype: "0.0001" };
+  assert.deepEqual([rowInUsd(row, 40).usd_value, rowInUsd(row, 40).price_hype], [80, "0.004"]);
+  assert.deepEqual([rowInUsd(row, null).usd_value, rowInUsd(row, null).price_hype], [null, null]);
+  assert.equal(rowInUsd(row, 1), row);
+  assert.deepEqual(metadataColumns({ imageUri: "ipfs://bafkreicq4icrqxpbzs5kcws7bzlp4xcudtbfixyjreqmyrwct2zafkkv4q", twitter: " blob ", website: "" }), { image_cid: "bafkreicq4icrqxpbzs5kcws7bzlp4xcudtbfixyjreqmyrwct2zafkkv4q", description: null, website: null, twitter: "blob", telegram: null });
+  assert.equal(metadataColumns({ imageUri: "https://evil/x.png" }).image_cid, null);
+  assert.equal(metadataColumns(null).image_cid, null);
+});

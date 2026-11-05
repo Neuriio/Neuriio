@@ -3,7 +3,7 @@
 // and the USDC world (6 decimals, 1 USDC = $1). The tables keep their old names (`price_hype`, `virtual_hype`,
 // `quote_amount`): they hold amounts and prices in the world's quote token.
 
-import { formatEther, formatUnits, parseAbi } from "npm:viem@2";
+import { formatEther, formatUnits, parseAbi, parseEther, parseUnits } from "npm:viem@2";
 import { CATEGORIES } from "./launchPass.ts";
 
 export const launchpadEvents = parseAbi([
@@ -388,4 +388,130 @@ export function hookFeesByTx(
     out.set(key, [...(out.get(key) ?? []), fee]);
   }
   return out;
+}
+
+/** Ascend's launchpad: a pool's standing bid absorbing part (or all) of a sell. Not in the PoolManager's Swap. */
+export const bidFilled = parseAbi([
+  "event Filled(bytes32 indexed poolId, uint256 tokensIn, uint256 feeQuote, uint256 quotePaid)",
+])[0];
+
+/** Adds each standing-bid fill to its sell (same transaction and pool: tokens to `size`, the bid's USDC plus its fee to
+ *  `quote_amount`, its fee to `fee`); a fill with no AMM swap beside it becomes a sell of its own, with no price (the pool's
+ *  price didn't move). Ascend's docs: "the bid absorbing part of a sell". Returns the rows to store. */
+export function withBidFills(
+  rows: TradeRow[],
+  fills: Log<{ poolId: string; tokensIn: bigint; feeQuote: bigint; quotePaid: bigint }>[],
+  tokenOfPool: Map<string, string>,
+  q: Quote,
+  txFrom: Map<string, string>,
+  tsOf: (l: { blockNumber: bigint }) => string,
+): TradeRow[] {
+  const out = [...rows];
+  const sellOf = (tx: string, token: string) => out.find((r) => r.tx_hash === tx && r.market === token && r.side === "sell");
+  for (const f of [...fills].sort((a, b) => Number(a.blockNumber - b.blockNumber) || a.logIndex - b.logIndex)) {
+    const token = tokenOfPool.get(lc(f.args.poolId));
+    if (!token) continue;
+    const gross = f.args.quotePaid + f.args.feeQuote;
+    const sell = sellOf(f.transactionHash, lc(token));
+    if (sell) {
+      // exact: back to base units, add, format again
+      const quote = amt(parseUnits(sell.quote_amount, q.decimals) + gross, q);
+      sell.size = formatEther(parseEther(sell.size) + f.args.tokensIn);
+      sell.quote_amount = quote;
+      sell.usd_value = usd(quote, q);
+      sell.fee = amt(parseUnits(sell.fee ?? "0", q.decimals) + f.args.feeQuote, q);
+      continue;
+    }
+    const quote = amt(gross, q);
+    out.push({
+      venue: "pool",
+      trader: lc(txFrom.get(f.transactionHash) ?? ""),
+      market: lc(token),
+      side: "sell",
+      size: formatEther(f.args.tokensIn),
+      quote_amount: quote,
+      usd_value: usd(quote, q),
+      fee: amt(f.args.feeQuote, q),
+      tx_hash: f.transactionHash,
+      log_index: f.logIndex,
+      block_number: Number(f.blockNumber),
+      ts: tsOf(f),
+      price_hype: null,
+      curve_sold: null,
+    });
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------ every Ascend token (/trending, user 2026-11-04)
+
+/** Ascend's launchpad: every coin launched on Ascend, through us or not. */
+export const ascendLaunched = parseAbi([
+  "event Launched(bytes32 indexed poolId, address indexed token, address indexed creator, address quote, uint256 supplySeeded, uint256 devBuyTokens, uint24 fee, uint24 builderFee)",
+])[0];
+
+export type SpotMeta = { tokens: { name: string; index: number }[]; universe: { name: string; tokens: number[] }[] };
+
+/** USD per whole pair asset, from Hyperliquid's spot market against USDC (as Ascend's app prices its pairs): USDC is $1, a
+ *  wrapped HYPE is HYPE, anything else by its symbol (KNTQ, UBTC, AAPLX...). null if Hyperliquid has no such market. */
+export function pairUsd(symbol: string | null, meta: SpotMeta | null, mids: Record<string, string> | null): number | null {
+  if (!symbol) return null;
+  const s = symbol.toUpperCase();
+  if (s === "USDC" || s === "USDC.E") return 1;
+  const name = s === "WHYPE" ? "HYPE" : s;
+  if (!meta || !mids) return null;
+  const usdc = meta.tokens.find((t) => t.name.toUpperCase() === "USDC")?.index ?? 0;
+  const token = meta.tokens.find((t) => t.name.toUpperCase() === name);
+  if (!token) return null;
+  const pair = meta.universe.find((u) => u.tokens[0] === token.index && u.tokens[1] === usdc);
+  const px = pair ? Number(mids[pair.name]) : NaN;
+  return px > 0 ? px : null;
+}
+
+/** An Ascend launch -> ascend_tokens row. `supply` (whole tokens) defaults to Ascend's standard 1B. */
+export function ascendLaunchedToRow(
+  log: Log<{ poolId: string; token: string; quote: string; fee: number; builderFee: number }>,
+  ts: string,
+  token: { name: string | null; symbol: string | null; supply?: number },
+  quote: { symbol: string | null; decimals: number },
+) {
+  const a = log.args;
+  return {
+    address: lc(a.token),
+    pool_id: lc(a.poolId),
+    quote: lc(a.quote),
+    quote_symbol: quote.symbol,
+    quote_decimals: quote.decimals,
+    name: token.name,
+    symbol: token.symbol,
+    supply: token.supply ?? 1_000_000_000,
+    fee_pips: Number(a.fee),
+    builder_fee_pips: Number(a.builderFee),
+    launched_at: ts,
+    launch_block: Number(log.blockNumber),
+    launch_tx: log.transactionHash,
+  };
+}
+
+/** A trade row in its pair's units -> USD: the price after the trade and the USD value (null if the pair has no USD price). */
+export function rowInUsd(row: TradeRow, usdPerQuote: number | null): TradeRow {
+  if (usdPerQuote === 1) return row;
+  return {
+    ...row,
+    usd_value: usdPerQuote == null ? null : Number(row.quote_amount) * usdPerQuote,
+    price_hype: row.price_hype == null || usdPerQuote == null ? null : String(Number(row.price_hype) * usdPerQuote),
+  };
+}
+
+/** What Ascend's metadata API returns for a coin (GET /v1/tokens/<token>/metadata), as ascend_tokens columns. */
+export function metadataColumns(m: { imageUri?: string; description?: string; website?: string; twitter?: string; telegram?: string } | null) {
+  const cid = m?.imageUri?.startsWith("ipfs://") ? m.imageUri.slice(7) : null;
+  const clean = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
+  return {
+    image_cid: cid && /^[A-Za-z0-9]{20,120}$/.test(cid) ? cid : null,
+    description: clean(m?.description, 1000),
+    website: clean(m?.website, 300),
+    twitter: clean(m?.twitter, 100),
+    telegram: clean(m?.telegram, 100),
+  };
 }

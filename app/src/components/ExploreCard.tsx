@@ -35,7 +35,9 @@ import {
   DEMO,
   LANDING,
   SHOW_HYPE_USD,
+  ascendTokenUrl,
   displayName,
+  isOurs,
   getToken,
   handleOf,
   INTERVALS,
@@ -319,8 +321,12 @@ function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
       <header className="ex-modal-head">
         <Avatar handle={t.kind === "ftf" ? t.name ?? t.symbol : t.handle} pfp={t.x_pfp_url} size={52} className="ex-modal-avatar" />
         <div className="ex-head-names">
-          <span className="ex-handle">{t.kind === "ftf" ? t.name : t.x_name || handleOf(t.handle)}</span>
-          {t.kind === "ftf" ? (
+          <span className="ex-handle">{!isOurs(t) ? displayName(t) : t.kind === "ftf" ? t.name : t.x_name || handleOf(t.handle)}</span>
+          {!isOurs(t) ? (
+            <a className="ex-modal-x" href={ascendTokenUrl(t.address)} target="_blank" rel="noreferrer">
+              Not launched on Neuriio · view on Ascend <ExternalLink size={11} />
+            </a>
+          ) : t.kind === "ftf" ? (
             <span className="ex-ticker">{tickerOf(t.symbol)} · Friends Turned Fam</span>
           ) : (
             <a className="ex-modal-x" href={`https://x.com/${t.handle}`} target="_blank" rel="noreferrer">
@@ -330,7 +336,7 @@ function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
         </div>
       </header>
 
-      <ProfileBody t={t} profile={profile} members={members} />
+      {isOurs(t) && <ProfileBody t={t} profile={profile} members={members} />}
 
       <section className="ex-modal-section">
         <h3 className="ex-modal-label">Creator fees earned</h3>
@@ -340,7 +346,9 @@ function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
       </section>
 
       <p className="ex-order-note">
-        {displayName(t)} is a meme with no promise of value. {t.kind === "ftf" ? "Its members owe" : `${handleOf(t.handle)} owes`} holders nothing.
+        {!isOurs(t)
+          ? `${displayName(t)} was launched on Ascend, not through Neuriio. It's a meme with no promise of value.`
+          : `${displayName(t)} is a meme with no promise of value. ${t.kind === "ftf" ? "Its members owe" : `${handleOf(t.handle)} owes`} holders nothing.`}
       </p>
     </div>
   );
@@ -473,18 +481,31 @@ function TokenDetail({
       <header className="ex-head">
         <Avatar handle={t.handle} pfp={t.x_pfp_url} size={44} />
         <div className="ex-head-names">
-          <span className="ex-handle">{displayName(t)}</span>
+          <span className="ex-handle tr-name">
+            <span className="tr-name-text">{displayName(t)}</span>
+            {!isOurs(t) && <span className="tr-elsewhere">(Not Launched On Neuriio)</span>}
+          </span>
           <span className="ex-ticker">{tickerOf(t.symbol)}</span>
         </div>
         <span className="ex-chips">
           {sector && <span className="lp-chip ex-sector-chip">{sector}</span>}
-          <span className={`lp-chip${t.kind === "ftf" ? " ex-ftf-chip" : ""}`}>{t.kind === "ftf" ? "FTF" : cat}</span>
+          {isOurs(t) ? (
+            <span className={`lp-chip${t.kind === "ftf" ? " ex-ftf-chip" : ""}`}>{t.kind === "ftf" ? "FTF" : cat}</span>
+          ) : (
+            <span className="lp-chip">{(t.quote_symbol ?? "USDC").toUpperCase() === "WHYPE" ? "HYPE" : t.quote_symbol ?? "USDC"} pair</span>
+          )}
         </span>
         {!compact && (
           <>
-            <button className="ex-profile-btn" onClick={() => setShowProfile(true)}>
-              <UserRound size={13} aria-hidden /> Profile
-            </button>
+            {isOurs(t) ? (
+              <button className="ex-profile-btn" onClick={() => setShowProfile(true)}>
+                <UserRound size={13} aria-hidden /> Profile
+              </button>
+            ) : (
+              <a className="ex-profile-btn" href={ascendTokenUrl(t.address)} target="_blank" rel="noreferrer">
+                <ExternalLink size={13} aria-hidden /> Ascend
+              </a>
+            )}
             <span className="ex-earned" title="Lifetime creator fees: 10% of every trading fee, on the curve and in the pool, paid in USDC">
               <span className="ex-earned-label">Creator fees earned</span>
               <span className="ex-earned-value">

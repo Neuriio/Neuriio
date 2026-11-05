@@ -36,7 +36,17 @@ export type TokenStat = {
   name: string | null; // FTF display name
   member_x_user_ids: string[] | null; // FTF: its 4 members, founder first
   fromChain?: true; // read straight from the Launchpad because the indexer hasn't stored it yet (brand-new token)
+  // every Ascend coin (ascend_token_stats, /trending; user 2026-11-04): whether it launched through Neuriio, the coin's own
+  // name, and its pair. Absent on rows from token_stats (always ours, always USDC).
+  ours?: boolean;
+  token_name?: string | null;
+  quote_symbol?: string | null;
 };
+
+/** Whether a token launched through Neuriio (token_stats rows are always ours; ascend_token_stats says). */
+export const isOurs = (t: TokenStat) => t.ours !== false;
+/** A coin's page on Ascend's own app. */
+export const ascendTokenUrl = (address: string) => `https://app.ascendlaunch.xyz/tokens/${address.toLowerCase()}`;
 
 export type Candle = {
   bucket: string;
@@ -95,8 +105,9 @@ export const tickerOf = (symbol: string) => symbol.toLowerCase();
 /** X handles read in lower case everywhere (X itself ignores case). */
 export const handleOf = (handle: string) => `@${handle.toLowerCase()}`;
 
-/** How a token is shown: an FTF by its name, a person by "@handle". */
-export const displayName = (t: TokenStat) => (t.kind === "ftf" ? t.name ?? tickerOf(t.symbol) : handleOf(t.handle));
+/** How a token is shown: an FTF by its name, a person by "@handle", a coin launched elsewhere on Ascend by its own name. */
+export const displayName = (t: TokenStat) =>
+  !isOurs(t) ? t.token_name || tickerOf(t.symbol) : t.kind === "ftf" ? t.name ?? tickerOf(t.symbol) : handleOf(t.handle);
 
 /** Top `limit` tokens by a ranking (default: 24h volume), live order. */
 export async function topTokens(by: Ranking = "volume_usd_24h", limit = 25): Promise<TokenStat[]> {
@@ -121,24 +132,27 @@ export async function topByTotalVolume(): Promise<{ tokens: TokenStat[]; snapsho
 /** /trending splits tokens at this market cap, in USD: under it they're Early, at or above it Matured. */
 export const EARLY_MAX_MCAP = 70_000;
 
-/** /trending "Early": the top `limit` tokens under EARLY_MAX_MCAP, by total volume. */
+// /trending ranks EVERY coin on Ascend (user, 2026-11-04), ours and everyone else's, all in USD (ascend_token_stats: same columns
+// as token_stats, so `price_hype` / `mcap_hype` hold USD here).
+
+/** /trending "Early": the top `limit` Ascend coins under EARLY_MAX_MCAP, by total volume. */
 export async function earlyTokens(limit = 25): Promise<TokenStat[]> {
-  if (DEMO) return demoTokens().filter((t) => t.mcap_hype < EARLY_MAX_MCAP).sort((a, b) => b.volume_usd - a.volume_usd).slice(0, limit);
-  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&mcap_hype=lt.${EARLY_MAX_MCAP}&order=volume_usd.desc.nullslast&limit=${limit}`);
+  if (DEMO) return demoAscend().filter((t) => t.mcap_hype < EARLY_MAX_MCAP).sort((a, b) => b.volume_usd - a.volume_usd).slice(0, limit);
+  const rows = await rest<Record<string, unknown>[]>(`ascend_token_stats?select=*&mcap_hype=lt.${EARLY_MAX_MCAP}&order=volume_usd.desc.nullslast&limit=${limit}`);
   return rows.map(toStat);
 }
 
-/** /trending "Matured": the top `limit` tokens at or above EARLY_MAX_MCAP, by total volume. */
+/** /trending "Matured": the top `limit` Ascend coins at or above EARLY_MAX_MCAP, by total volume. */
 export async function maturedTokens(limit = 25): Promise<TokenStat[]> {
-  if (DEMO) return demoTokens().filter((t) => t.mcap_hype >= EARLY_MAX_MCAP).sort((a, b) => b.volume_usd - a.volume_usd).slice(0, limit);
-  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&mcap_hype=gte.${EARLY_MAX_MCAP}&order=volume_usd.desc.nullslast&limit=${limit}`);
+  if (DEMO) return demoAscend().filter((t) => t.mcap_hype >= EARLY_MAX_MCAP).sort((a, b) => b.volume_usd - a.volume_usd).slice(0, limit);
+  const rows = await rest<Record<string, unknown>[]>(`ascend_token_stats?select=*&mcap_hype=gte.${EARLY_MAX_MCAP}&order=volume_usd.desc.nullslast&limit=${limit}`);
   return rows.map(toStat);
 }
 
-/** /trending "Trending": the top `limit` tokens by 24h volume. Tokens with no trades in the last 24 hours aren't listed. */
+/** /trending "Trending": the top `limit` Ascend coins by 24h volume. Coins with no trades in the last 24 hours aren't listed. */
 export async function trendingTokens(limit = 25): Promise<TokenStat[]> {
-  if (DEMO) return demoTokens().filter((t) => t.volume_usd_24h > 0).sort((a, b) => b.volume_usd_24h - a.volume_usd_24h).slice(0, limit);
-  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&volume_usd_24h=gt.0&order=volume_usd_24h.desc&limit=${limit}`);
+  if (DEMO) return demoAscend().filter((t) => t.volume_usd_24h > 0).sort((a, b) => b.volume_usd_24h - a.volume_usd_24h).slice(0, limit);
+  const rows = await rest<Record<string, unknown>[]>(`ascend_token_stats?select=*&volume_usd_24h=gt.0&order=volume_usd_24h.desc&limit=${limit}`);
   return rows.map(toStat);
 }
 
@@ -165,11 +179,16 @@ export async function searchTokens(query: string, limit = 10): Promise<TokenStat
 export async function getToken(addressOrHandle: string, opts: { chainFallback?: boolean } = {}): Promise<TokenStat | null> {
   const v = addressOrHandle.trim().replace(/^@/, "");
   const byAddress = /^0x[0-9a-fA-F]{40}$/.test(v);
-  if (DEMO) return demoTokens().find((t) => (byAddress ? t.address === v.toLowerCase() : t.handle.toLowerCase() === v.toLowerCase())) ?? null;
+  if (DEMO) return demoAscend().find((t) => (byAddress ? t.address === v.toLowerCase() : isOurs(t) && t.handle.toLowerCase() === v.toLowerCase())) ?? null;
   if (!byAddress && !/^[A-Za-z0-9_]{1,15}$/.test(v)) return null;
   const filter = byAddress ? `address=eq.${v.toLowerCase()}` : `handle=ilike.${likeEscape(v)}`; // exact, any case
   const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&${filter}&limit=1`).catch(() => []);
   if (rows[0]) return toStat(rows[0]);
+  // a coin launched elsewhere on Ascend (opened from /trending)
+  if (byAddress) {
+    const [other] = await rest<Record<string, unknown>[]>(`ascend_token_stats?select=*&address=eq.${v.toLowerCase()}&ours=eq.false&limit=1`).catch(() => []);
+    if (other) return toStat(other);
+  }
   return opts.chainFallback === false ? null : tokenFromChain(v, byAddress);
 }
 
@@ -420,6 +439,47 @@ function rng(seed: number) {
 const hash = (str: string) => [...str].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
 let demoCache: TokenStat[] | null = null;
+/** ?demo /trending: our demo tokens plus a few coins launched elsewhere on Ascend (in USD, any pair). */
+let ascendDemoCache: TokenStat[] | null = null;
+function demoAscend(): TokenStat[] {
+  if (ascendDemoCache) return ascendDemoCache;
+  const base = demoTokens()[0];
+  const others: [string, string, string, number, number][] = [
+    ["e/acc", "EACC", "USDC", 1_110_000, 533_600],
+    ["Blob", "BLOB", "WHYPE", 37_000, 456_700],
+    ["AI", "AI", "USDC", 117_200, 337_400],
+    ["Elysium Cat", "ELYCAT", "WHYPE", 52_300, 246_600],
+    ["tod da wizord", "TOD", "KNTQ", 18_900, 163_700],
+    ["Ascend", "ASCEND", "USDC", 640_000, 218_900],
+  ];
+  const now = Date.now();
+  const extra = others.map(([name, symbol, quote, mcap, vol], i): TokenStat => ({
+    ...base,
+    address: `0x${(0xa5c0de00 + i).toString(16)}${"0".repeat(32)}`,
+    handle: symbol.toLowerCase(),
+    symbol,
+    creator: "",
+    x_user_id: "",
+    sector: null,
+    x_name: name,
+    x_pfp_url: null,
+    launched_at: new Date(now - (6 + i * 9) * 3600_000).toISOString(),
+    price_hype: mcap / 1e9,
+    mcap_hype: mcap,
+    price_hype_24h_ago: (mcap / 1e9) * (0.4 + i * 0.12),
+    volume_usd: vol * 1.6,
+    volume_usd_24h: vol,
+    kind: "individual",
+    name: null,
+    member_x_user_ids: null,
+    ours: false,
+    token_name: name,
+    quote_symbol: quote,
+  }));
+  ascendDemoCache = [...demoTokens().map((t) => ({ ...t, ours: true })), ...extra];
+  return ascendDemoCache;
+}
+
 function demoTokens(): TokenStat[] {
   if (demoCache) return demoCache;
   const now = Date.now();
@@ -550,7 +610,7 @@ function showcaseCandles(t: TokenStat, interval: number): Candle[] {
 }
 
 function demoCandles(address: string, interval: number, limit: number): Candle[] {
-  const t = demoTokens().find((x) => x.address === address.toLowerCase());
+  const t = demoAscend().find((x) => x.address === address.toLowerCase());
   if (!t) return [];
   if (LANDING) return showcaseCandles(t, interval);
   // one 5m history per token, merged into bigger candles, so every timeframe shows the same moves (user, 2026-11-03)
