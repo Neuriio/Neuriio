@@ -4509,6 +4509,16 @@ a.ex-row {
   opacity: 0.6;
   cursor: wait;
 }
+.launch-go-btn.is-closed {
+  cursor: not-allowed;
+  transform: none;
+}
+@media (max-width: 420px) {
+  .launch-go-btn.is-closed {
+    padding: 0 28px;
+    font-size: 18px;
+  }
+}
 .app:has(.launch-go) .dna-strand,
 .app:has(.launch-go) .launch-hype {
   display: none;

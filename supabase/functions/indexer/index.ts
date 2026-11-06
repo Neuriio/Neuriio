@@ -96,7 +96,8 @@ const WORLDS: (World | AscendWorld | AscendAllWorld)[] = Deno.env.get("WORLDS")
     usd: "hype",
     fromBlock: BigInt(env("INDEX_FROM_BLOCK")),
   }];
-const APP_REGISTRY = (Deno.env.get("APP_REGISTRY") ?? WORLDS.find((w) => w.kind !== "ascend_all")!.registry).toLowerCase();
+// with only the ascend_all world (before our launcher is deployed) there's no app registry: nothing is "ours" yet
+const APP_REGISTRY = (Deno.env.get("APP_REGISTRY") ?? WORLDS.find((w) => w.kind !== "ascend_all")?.registry ?? "0x0000000000000000000000000000000000000000").toLowerCase();
 const registryAbi = parseAbi(["function launchpadsLength() view returns (uint256)", "function launchpads(uint256) view returns (address)"]);
 const HL_INFO = env("HL_TESTNET") === "true" ? "https://api.hyperliquid-testnet.xyz/info" : "https://api.hyperliquid.xyz/info";
 const MAX_BLOCKS = 50_000n; // per run
@@ -352,34 +353,69 @@ const erc20Views = parseAbi([
   "function decimals() view returns (uint8)",
   "function totalSupply() view returns (uint256)",
 ]);
-const ALL_BLOCKS_PER_RUN = 20_000n; // the backfill from Ascend's deployment takes a few runs
-const ALL_LOG_STEP = 2_000n; // getLogs per call, inside providers' result limits
+// Mainnet blocks are ~0.2 s and busy stretches carry ~4,000 trades per 20,000 blocks (measured 2026-11-05), so a run works in
+// small chunks for a fixed time and saves its place after each; the backfill from Ascend's deployment takes a few hours.
+const ALL_LOG_STEP = 2_000n; // blocks per chunk: one getLogs per event, inside providers' range limits (Alchemy: 10,000)
+const ALL_RUN_MS = 30_000; // chunk after chunk for this long, then stop (the cron runs every minute)
+const LOOKUPS_AT_ONCE = 6; // each trade's trader is its transaction's sender: one lookup per transaction, a few at a time
 const METADATA_PER_RUN = 25;
+
+/** Runs `f` over `items`, at most `n` at a time, so a busy stretch never fires thousands of requests at the provider at once. */
+async function eachLimit<T>(items: T[], n: number, f: (item: T) => Promise<void>) {
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) await f(items[i++]);
+  }));
+}
 const quoteInfo = new Map<string, { symbol: string | null; decimals: number }>();
 
 /** Every Ascend coin: launches, then the swaps and bid fills in all their pools (read whole, then kept to Ascend pools), in USD. */
 async function indexAscendAll(world: AscendAllWorld, hypeUsdNow: number | null) {
   const key = "elysium:ascend_all";
+  const started = Date.now();
   const last = await getState(key);
-  const from = last ? BigInt(last) + 1n : world.fromBlock;
+  const first = last ? BigInt(last) + 1n : world.fromBlock;
   const head = await chain.getBlockNumber({ cacheTime: 0 });
-  if (from > head) return { world: "ascend_all", from: Number(from), to: Number(head), events: 0 };
-  const to = head - from > ALL_BLOCKS_PER_RUN ? from + ALL_BLOCKS_PER_RUN : head;
-  const ranged = async <T,>(get: (a: bigint, b: bigint) => Promise<T[]>) => {
-    const out: T[] = [];
-    for (let a = from; a <= to; a += ALL_LOG_STEP) out.push(...(await get(a, a + ALL_LOG_STEP - 1n < to ? a + ALL_LOG_STEP - 1n : to)));
-    return out;
+  if (first > head) return { world: "ascend_all", from: Number(first), to: Number(head), events: 0 };
+
+  // USD per pair asset, as Ascend's app prices them (Hyperliquid spot vs USDC): once per run
+  const [meta, mids] = await Promise.all([
+    hlInfo({ type: "spotMeta" }).catch(() => null) as Promise<SpotMeta | null>,
+    hlInfo({ type: "allMids" }).catch(() => null) as Promise<Record<string, string> | null>,
+  ]);
+  const usdOf = (t: { quote_symbol: string | null }) => {
+    const sym = t.quote_symbol?.toUpperCase();
+    return sym === "WHYPE" && hypeUsdNow ? hypeUsdNow : pairUsd(t.quote_symbol, meta, mids);
   };
 
+  let from = first, launched = 0, trades = 0;
+  while (from <= head && Date.now() - started < ALL_RUN_MS) {
+    const to = from + ALL_LOG_STEP - 1n < head ? from + ALL_LOG_STEP - 1n : head;
+    const r = await indexAscendChunk(world, from, to, usdOf);
+    launched += r.launched;
+    trades += r.trades;
+    await setState(key, to.toString());
+    from = to + 1n;
+  }
+  const art = await fetchAscendArt();
+  return { world: "ascend_all", from: Number(first), to: Number(from - 1n), head: Number(head), launched, trades, art };
+}
+
+/** One chunk of blocks: its launches, then the swaps and bid fills in every Ascend pool, as trade rows in USD. */
+async function indexAscendChunk(world: AscendAllWorld, from: bigint, to: bigint, usdOf: (t: { quote_symbol: string | null }) => number | null) {
   // 1. launches
-  const launches = await ranged((a, b) => chain.getLogs({ address: world.hook, event: ascendLaunched, fromBlock: a, toBlock: b }));
+  const launches = await chain.getLogs({ address: world.hook, event: ascendLaunched, fromBlock: from, toBlock: to });
+  // block times: from the logs themselves when the provider includes them (Alchemy does), else one lookup per block
   const tsOf = new Map<bigint, string>();
-  const stamp = (bs: bigint[]) =>
-    Promise.all([...new Set(bs)].filter((b) => !tsOf.has(b)).map(async (b) => {
+  const stamp = async (logs: { blockNumber: bigint | null; blockTimestamp?: bigint | null }[]) => {
+    for (const l of logs) if (l.blockTimestamp != null) tsOf.set(l.blockNumber!, new Date(Number(l.blockTimestamp) * 1000).toISOString());
+    const missing = [...new Set(logs.map((l) => l.blockNumber!))].filter((b) => !tsOf.has(b));
+    await eachLimit(missing, LOOKUPS_AT_ONCE, async (b) => {
       const blk = await chain.getBlock({ blockNumber: b });
       tsOf.set(b, new Date(Number(blk.timestamp) * 1000).toISOString());
-    }));
-  await stamp(launches.map((l) => l.blockNumber!));
+    });
+  };
+  await stamp(launches);
   const read = (address: `0x${string}`, functionName: "name" | "symbol" | "decimals" | "totalSupply") =>
     // deno-lint-ignore no-explicit-any
     chain.readContract({ address, abi: erc20Views, functionName } as any).catch(() => null);
@@ -412,27 +448,21 @@ async function indexAscendAll(world: AscendAllWorld, hypeUsdNow: number | null) 
   const inPools = <L extends { args: Record<string, unknown> }>(logs: L[], field: string) =>
     logs.filter((l) => poolInfo.has(String(l.args[field]).toLowerCase()));
   const [swaps, hooks, fills] = await Promise.all([
-    ranged((a, b) => chain.getLogs({ address: world.poolManager, event: poolManagerSwap, fromBlock: a, toBlock: b })).then((l) => inPools(l, "id")),
-    ranged((a, b) => chain.getLogs({ address: world.hook, event: hookSwap, fromBlock: a, toBlock: b })).then((l) => inPools(l, "poolId")),
-    ranged((a, b) => chain.getLogs({ address: world.hook, event: bidFilled, fromBlock: a, toBlock: b })).then((l) => inPools(l, "poolId")),
+    chain.getLogs({ address: world.poolManager, event: poolManagerSwap, fromBlock: from, toBlock: to }).then((l) => inPools(l, "id")),
+    chain.getLogs({ address: world.hook, event: hookSwap, fromBlock: from, toBlock: to }).then((l) => inPools(l, "poolId")),
+    chain.getLogs({ address: world.hook, event: bidFilled, fromBlock: from, toBlock: to }).then((l) => inPools(l, "poolId")),
   ]);
-  await stamp([...swaps, ...fills].map((l) => l.blockNumber!));
+  await stamp([...swaps, ...fills]);
+  // the trader (each transaction's sender) costs one lookup per trade, most of this world's RPC bill (user, 2026-11-05: keep it
+  // ~10-15M Alchemy compute units a month), so only our own launches get it; others' trades are stored with trader ""
+  const ours = new Set((await selectAll<{ address: string }>((a, b) => db.from("tokens").select("address").order("address").range(a, b))).map((t) => t.address));
+  const poolIsOurs = (l: { args: Record<string, unknown> }) => ours.has(tokenOfPool.get(String(l.args.id ?? l.args.poolId).toLowerCase()) ?? "");
   const txFrom = new Map<string, string>();
-  await Promise.all([...new Set([...swaps, ...fills].map((l) => l.transactionHash!))].map(async (h) => {
+  await eachLimit([...new Set([...swaps, ...fills].filter(poolIsOurs).map((l) => l.transactionHash!))], LOOKUPS_AT_ONCE, async (h) => {
     txFrom.set(h, (await chain.getTransaction({ hash: h })).from);
-  }));
+  });
 
-  // 3. USD per pair asset, as Ascend's app prices them (Hyperliquid spot vs USDC)
-  const [meta, mids] = await Promise.all([
-    hlInfo({ type: "spotMeta" }).catch(() => null) as Promise<SpotMeta | null>,
-    hlInfo({ type: "allMids" }).catch(() => null) as Promise<Record<string, string> | null>,
-  ]);
-  const usdOf = (t: { quote_symbol: string | null }) => {
-    const sym = t.quote_symbol?.toUpperCase();
-    return sym === "WHYPE" && hypeUsdNow ? hypeUsdNow : pairUsd(t.quote_symbol, meta, mids);
-  };
-
-  // 4. trades, pair by pair (each pool's pair sets its units), then in USD
+  // 3. trades, pair by pair (each pool's pair sets its units), then in USD
   const ts = (l: { blockNumber: bigint | null }) => tsOf.get(l.blockNumber!)!;
   const out: TradeRow[] = [];
   const byQuote = Map.groupBy(known, (t) => t.quote);
@@ -450,7 +480,7 @@ async function indexAscendAll(world: AscendAllWorld, hypeUsdNow: number | null) 
       const n = seen.get(k) ?? 0;
       seen.set(k, n + 1);
       // deno-lint-ignore no-explicit-any
-      return ascendSwapToRow(l as any, tokenOfPool.get(pool)!, q, txFrom.get(l.transactionHash!)!, ts(l), fees.get(k)?.[n] ?? null);
+      return ascendSwapToRow(l as any, tokenOfPool.get(pool)!, q, txFrom.get(l.transactionHash!) ?? "", ts(l), fees.get(k)?.[n] ?? null);
     });
     // deno-lint-ignore no-explicit-any
     const usd = usdOf(info);
@@ -458,9 +488,11 @@ async function indexAscendAll(world: AscendAllWorld, hypeUsdNow: number | null) 
     out.push(...withBidFills(swapRows, mine(fills, "poolId") as any, tokenOfPool, q, txFrom, ts as any).map((r) => rowInUsd(r, usd)));
   }
   await insertTrades(out, "tx_hash,log_index");
-  await setState(key, to.toString());
+  return { launched: rows.length, trades: out.length };
+}
 
-  // 5. art for a few coins each run: new ones first, then ones still without an image (Ascend publishes after the launch)
+/** Art for a few coins each run: new ones first, then ones still without an image (Ascend publishes after the launch). */
+async function fetchAscendArt() {
   const { data: due } = await db.from("ascend_tokens").select("address")
     .or(`metadata_checked_at.is.null,and(image_cid.is.null,metadata_checked_at.lt.${new Date(Date.now() - 15 * 60_000).toISOString()}),metadata_checked_at.lt.${new Date(Date.now() - 24 * 3600_000).toISOString()}`)
     .order("metadata_checked_at", { ascending: true, nullsFirst: true }).limit(METADATA_PER_RUN);
@@ -474,7 +506,7 @@ async function indexAscendAll(world: AscendAllWorld, hypeUsdNow: number | null) 
     if (error) throw new Error(`ascend metadata: ${error.message}`);
     if (body) art++;
   }
-  return { world: "ascend_all", from: Number(from), to: Number(to), launched: rows.length, trades: out.length, art };
+  return art;
 }
 
 /** An FTF that launched: copy its picture + category onto the token, then close its draft (matched by ticker; only one open

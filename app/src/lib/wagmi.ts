@@ -4,13 +4,14 @@
 // themselves through EIP-6963, so wagmi finds whichever are installed without any wallet SDK. Remembered in this browser: address only.
 import { createConfig, http } from "wagmi";
 import { elysiumTestnet } from "../chain";
-import { ELYSIUM_RPC } from "./config";
+import { ELYSIUM_RPC, RPC_VIA_PROXY } from "./config";
+import { proxyFetch } from "./rpcSession";
 
 export const wagmiConfig = createConfig({
   chains: [elysiumTestnet],
   connectors: [],
   multiInjectedProviderDiscovery: true,
-  transports: { [elysiumTestnet.id]: http(ELYSIUM_RPC) },
+  transports: { [elysiumTestnet.id]: http(ELYSIUM_RPC, RPC_VIA_PROXY ? { fetchFn: proxyFetch } : {}) },
 });
 
 /** The wallets on offer; `id` is the name each announces itself under. */

@@ -26,6 +26,7 @@ import {
 import { CORS, HttpError, internalError, json, privyAuth, userRow, type XUser } from "../_shared/privy.ts";
 import { env } from "../_shared/env.ts";
 import { claimLaunch } from "../_shared/launchClaim.ts";
+import { bannedMessage, tickerBanned } from "../_shared/bannedTickers.ts";
 import { isDefaultAvatar, PfpError, type PfpPrint, printPictureAt } from "../_shared/pfpHash.ts";
 
 
@@ -111,7 +112,8 @@ Deno.serve(async (req) => {
   const reg = (functionName: "tokenOfXUser" | "tokenOfCreator" | "tokenOfHandle", arg: bigint | `0x${string}`) =>
     // deno-lint-ignore no-explicit-any
     chain.readContract({ address: REGISTRY, abi: registryAbi, functionName, args: [arg] as any });
-  const [byX, byWallet, byHandle, reserved, approved, onchainSigner] = await Promise.all([
+  const [banned, byX, byWallet, byHandle, reserved, approved, onchainSigner] = await Promise.all([
+    tickerBanned(db, handle), // our own ban list (Supabase), checked even though the handle is theirs
     reg("tokenOfXUser", BigInt(xUserId)),
     reg("tokenOfCreator", creator),
     reg("tokenOfHandle", keccak256(toBytes(handle.toLowerCase()))),
@@ -122,6 +124,7 @@ Deno.serve(async (req) => {
   const mine = [byX, byWallet].find((a) => a !== zeroAddress);
   if (mine) return json(409, { error: "You already launched your token", token: mine });
   if (byHandle !== zeroAddress) return json(409, { error: `@${handle} was already launched by another account`, token: byHandle });
+  if (banned) return json(422, { error: bannedMessage(handle) });
   if (reserved) return json(422, { error: `$${handle.toUpperCase()} is reserved (it looks like a real asset), so @${handle} can't launch` });
   if (!approved || onchainSigner.toLowerCase() !== signer.address.toLowerCase()) {
     return json(503, { error: "Launches are paused" });

@@ -52,7 +52,7 @@ import {
   requestLaunchPass,
 } from "../lib/launch";
 import { EASE_OUT } from "../lib/motion";
-import { QUOTE, SUPABASE_URL } from "../lib/config";
+import { DEPLOYED, QUOTE, SUPABASE_URL } from "../lib/config";
 import { fileToBase64, FTF_NAME_RE, FTF_TICKER_RE, ftfCall, type FtfPassResponse, type FtfView } from "../lib/ftf";
 import { poll } from "../lib/poll";
 
@@ -122,6 +122,7 @@ export function LaunchCard() {
     return (
       <LaunchGo
         busy={!DEMO && !ready}
+        closed={!DEMO && !DEPLOYED}
         onLaunch={() => {
           if (loggedIn) return setStarted(true);
           setPending(true);
@@ -865,13 +866,14 @@ function InviteMore({ busy, onInvite }: { busy: boolean; onInvite: (handle: stri
  * and slowly flickers on and off at random (in the circle, more often near the button). Launch opens the flow on the
  * Category step (logging in first if needed).
  */
-function LaunchGo({ busy, onLaunch }: { busy: boolean; onLaunch: () => void }) {
+function LaunchGo({ busy, closed, onLaunch }: { busy: boolean; closed: boolean; onLaunch: () => void }) {
+  // closed: our launcher isn't on mainnet yet (deployments/elysium-mainnet.json "launcher" is null), so nothing can launch
   return (
     <div className="launch-go">
       <FlickerDots shape="band" />
       <FlickerDots shape="circle" />
-      <button className="launch-go-btn" onClick={onLaunch} disabled={busy}>
-        Launch
+      <button className={`launch-go-btn${closed ? " is-closed" : ""}`} onClick={onLaunch} disabled={busy || closed}>
+        {closed ? "Launches open soon" : "Launch"}
       </button>
     </div>
   );

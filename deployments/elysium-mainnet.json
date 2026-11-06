@@ -7,10 +7,10 @@
   "staking": null,
   "adapter": null,
   "timelock": null,
-  "safe": null,
+  "safe": "0x68Ed49C77dF7fB4928510d5Ac65C6074674D264E",
   "fromBlock": null,
   "builder": "0xB153AA503a2C95fC175275D6b93415869A77e3d1",
-  "treasury": "0x360603cbb3B30665AAF60C61c301a68F7288bebf",
+  "treasury": "0x68Ed49C77dF7fB4928510d5Ac65C6074674D264E",
   "ascend": {
     "deployBlock": 422319,
     "launchpad": "0xe0dEF4221b9840a610D4e7d55812a79A6431a8eC",

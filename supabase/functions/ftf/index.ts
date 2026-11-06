@@ -48,6 +48,7 @@ import { CORS, HttpError, internalError, json, privyAuth, userRow, type XUser } 
 import { env } from "../_shared/env.ts";
 import { rateLimit } from "../_shared/rateLimit.ts";
 import { claimLaunch } from "../_shared/launchClaim.ts";
+import { bannedMessage, tickerBanned } from "../_shared/bannedTickers.ts";
 import { PfpError, type PfpPrint, printImage, printPictureAt } from "../_shared/pfpHash.ts";
 
 const CHAIN_ID = Number(env("CHAIN_ID"));
@@ -186,6 +187,7 @@ async function create(who: XUser, body: Body) {
   const { name, ticker } = validFtfIdentity(body.name, body.ticker);
   const { count } = await db.from("ftf_drafts").select("id", { count: "exact", head: true }).eq("founder", who.xUserId).eq("status", "open");
   if ((count ?? 0) >= MAX_OPEN_DRAFTS) fail(429, `You can have ${MAX_OPEN_DRAFTS} open FTFs at a time`);
+  if (await tickerBanned(db, ticker)) fail(422, `${bannedMessage(ticker)}: pick another ticker`);
   if (await tickerReservedOnChain(ticker)) fail(422, `$${ticker} is reserved (it looks like a real asset): pick another ticker`);
   if (await tickerTakenOnChain(ticker)) fail(409, `$${ticker} is already an FTF`);
   await refuseVamp({ ticker, owners: [who.xUserId], pfp: null, deadline: new Date(), commit: false }); // early: nothing held yet
@@ -445,6 +447,8 @@ async function pass(who: XUser, body: Body) {
       fail(422, "We couldn't read the FTF's picture. Upload it again as a PNG or JPEG");
     }
   }
+  // banned after the draft was made: the FTF can't launch under this ticker
+  if (await tickerBanned(db, d.ticker)) fail(422, `${bannedMessage(d.ticker)}. Start a new FTF with another ticker`);
   await refuseVamp({ ticker: d.ticker, owners: ordered.map((m) => m.x_user_id), pfp: print, deadline: new Date(Number(deadline) * 1000) });
   const message = {
     founder: getAddress(wallets[0]!),

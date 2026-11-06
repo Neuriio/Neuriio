@@ -67,9 +67,10 @@ export const DEV_DEMO = import.meta.env.DEV && new URLSearchParams(location.sear
 /** The landing page "/" and /showcase (its Explore card, framed on phones): the demo data is a fixed showcase
  *  (no live trades; the top token shows set numbers). */
 export const LANDING = location.pathname === "/showcase"; // the showcase picture ("/" now opens the Feed)
-/** Fake data for the token lists, chart, live feed and trade box: dev ?demo, and always on the landing
- *  (its Explore card is a showcase; the signed-in account, Send and Points stay real). */
-export const DEMO = DEV_DEMO || LANDING;
+/** Fake data for the token lists, chart, live feed and trade box: ONLY the /showcase picture now. Every token anywhere else is
+ *  live, ?demo or not (user, 2026-11-04: "as close to live as possible"). DEV_DEMO still drives a few non-token previews
+ *  (the Neuriio panel's sample balance, Send). */
+export const DEMO = LANDING;
 /** The showcase's fixed HYPE price, so its USD numbers read exactly as set (the real price moves). */
 export const SHOW_HYPE_USD = 40;
 const SHOWCASE = "kntqkid"; // the landing's #1 token
@@ -137,21 +138,18 @@ export const EARLY_MAX_MCAP = 70_000;
 
 /** /trending "Early": the top `limit` Ascend coins under EARLY_MAX_MCAP, by total volume. */
 export async function earlyTokens(limit = 25): Promise<TokenStat[]> {
-  if (DEMO) return demoAscend().filter((t) => t.mcap_hype < EARLY_MAX_MCAP).sort((a, b) => b.volume_usd - a.volume_usd).slice(0, limit);
   const rows = await rest<Record<string, unknown>[]>(`ascend_token_stats?select=*&mcap_hype=lt.${EARLY_MAX_MCAP}&order=volume_usd.desc.nullslast&limit=${limit}`);
   return rows.map(toStat);
 }
 
 /** /trending "Matured": the top `limit` Ascend coins at or above EARLY_MAX_MCAP, by total volume. */
 export async function maturedTokens(limit = 25): Promise<TokenStat[]> {
-  if (DEMO) return demoAscend().filter((t) => t.mcap_hype >= EARLY_MAX_MCAP).sort((a, b) => b.volume_usd - a.volume_usd).slice(0, limit);
   const rows = await rest<Record<string, unknown>[]>(`ascend_token_stats?select=*&mcap_hype=gte.${EARLY_MAX_MCAP}&order=volume_usd.desc.nullslast&limit=${limit}`);
   return rows.map(toStat);
 }
 
 /** /trending "Trending": the top `limit` Ascend coins by 24h volume. Coins with no trades in the last 24 hours aren't listed. */
 export async function trendingTokens(limit = 25): Promise<TokenStat[]> {
-  if (DEMO) return demoAscend().filter((t) => t.volume_usd_24h > 0).sort((a, b) => b.volume_usd_24h - a.volume_usd_24h).slice(0, limit);
   const rows = await rest<Record<string, unknown>[]>(`ascend_token_stats?select=*&volume_usd_24h=gt.0&order=volume_usd_24h.desc&limit=${limit}`);
   return rows.map(toStat);
 }
@@ -179,7 +177,7 @@ export async function searchTokens(query: string, limit = 10): Promise<TokenStat
 export async function getToken(addressOrHandle: string, opts: { chainFallback?: boolean } = {}): Promise<TokenStat | null> {
   const v = addressOrHandle.trim().replace(/^@/, "");
   const byAddress = /^0x[0-9a-fA-F]{40}$/.test(v);
-  if (DEMO) return demoAscend().find((t) => (byAddress ? t.address === v.toLowerCase() : isOurs(t) && t.handle.toLowerCase() === v.toLowerCase())) ?? null;
+  if (DEMO) return demoTokens().find((t) => (byAddress ? t.address === v.toLowerCase() : t.handle.toLowerCase() === v.toLowerCase())) ?? null;
   if (!byAddress && !/^[A-Za-z0-9_]{1,15}$/.test(v)) return null;
   const filter = byAddress ? `address=eq.${v.toLowerCase()}` : `handle=ilike.${likeEscape(v)}`; // exact, any case
   const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&${filter}&limit=1`).catch(() => []);
@@ -439,47 +437,6 @@ function rng(seed: number) {
 const hash = (str: string) => [...str].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
 
 let demoCache: TokenStat[] | null = null;
-/** ?demo /trending: our demo tokens plus a few coins launched elsewhere on Ascend (in USD, any pair). */
-let ascendDemoCache: TokenStat[] | null = null;
-function demoAscend(): TokenStat[] {
-  if (ascendDemoCache) return ascendDemoCache;
-  const base = demoTokens()[0];
-  const others: [string, string, string, number, number][] = [
-    ["e/acc", "EACC", "USDC", 1_110_000, 533_600],
-    ["Blob", "BLOB", "WHYPE", 37_000, 456_700],
-    ["AI", "AI", "USDC", 117_200, 337_400],
-    ["Elysium Cat", "ELYCAT", "WHYPE", 52_300, 246_600],
-    ["tod da wizord", "TOD", "KNTQ", 18_900, 163_700],
-    ["Ascend", "ASCEND", "USDC", 640_000, 218_900],
-  ];
-  const now = Date.now();
-  const extra = others.map(([name, symbol, quote, mcap, vol], i): TokenStat => ({
-    ...base,
-    address: `0x${(0xa5c0de00 + i).toString(16)}${"0".repeat(32)}`,
-    handle: symbol.toLowerCase(),
-    symbol,
-    creator: "",
-    x_user_id: "",
-    sector: null,
-    x_name: name,
-    x_pfp_url: null,
-    launched_at: new Date(now - (6 + i * 9) * 3600_000).toISOString(),
-    price_hype: mcap / 1e9,
-    mcap_hype: mcap,
-    price_hype_24h_ago: (mcap / 1e9) * (0.4 + i * 0.12),
-    volume_usd: vol * 1.6,
-    volume_usd_24h: vol,
-    kind: "individual",
-    name: null,
-    member_x_user_ids: null,
-    ours: false,
-    token_name: name,
-    quote_symbol: quote,
-  }));
-  ascendDemoCache = [...demoTokens().map((t) => ({ ...t, ours: true })), ...extra];
-  return ascendDemoCache;
-}
-
 function demoTokens(): TokenStat[] {
   if (demoCache) return demoCache;
   const now = Date.now();
@@ -610,7 +567,7 @@ function showcaseCandles(t: TokenStat, interval: number): Candle[] {
 }
 
 function demoCandles(address: string, interval: number, limit: number): Candle[] {
-  const t = demoAscend().find((x) => x.address === address.toLowerCase());
+  const t = demoTokens().find((x) => x.address === address.toLowerCase());
   if (!t) return [];
   if (LANDING) return showcaseCandles(t, interval);
   // one 5m history per token, merged into bigger candles, so every timeframe shows the same moves (user, 2026-11-03)

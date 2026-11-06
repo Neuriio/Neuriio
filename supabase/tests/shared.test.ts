@@ -8,6 +8,7 @@ import jpeg from "jpeg-js";
 import { PNG } from "pngjs";
 import { canonicalFtfProfile, canonicalProfile, chainCategory, tickerPrefix, validFtfIdentity } from "./launchPass.ts";
 import { claimLaunch } from "./launchClaim.ts";
+import { bannedMessage, normalizeTicker, tickerBanned } from "./bannedTickers.ts";
 import { confirmsCopy, correlation, isDefaultAvatar, mirrorThumb, PFP_CONFIRM, PFP_HASH_BITS, PfpError, printImage, printPictureAt, WINDOWS } from "./pfpHash.ts";
 
 const log = <A>(args: A) => ({ args, address: "0xPAD", transactionHash: "0xabc" as const, logIndex: 3, blockNumber: 42n });
@@ -382,7 +383,12 @@ test("claimLaunch: turns the database's answer into a decision, and sends the ri
   }) as never;
   const claim = { ticker: "elonx", owners: ["1"], pfp: mine, deadline: new Date(0) };
   assert.equal(await claimLaunch(db({ conflict: null, claim: 7, suspects: [] }), claim), null);
-  assert.match((await claimLaunch(db({ conflict: "ticker", with: "ELONMUSK" }), claim))!, /\$ELONX is too close to \$ELONMUSK/);
+  assert.match((await claimLaunch(db({ conflict: "ticker", with: "ELONMUSK" }), claim))!, /\$ELONX is too close to \$ELONMUSK, which launched first/);
+  // a coin from another launchpad that reached the vamp-watch market cap
+  assert.match(
+    (await claimLaunch(db({ conflict: "ticker", with: "ELONCOIN", launchpad: "Ascend" }), claim))!,
+    /\$ELONX is too close to \$ELONCOIN, which already trades on Ascend/,
+  );
   assert.equal(calls[0].p_commit, true);
   assert.equal(calls[0].p_max_bits, PFP_HASH_BITS);
   assert.equal(calls[0].p_grid, mine.grid);
@@ -529,4 +535,29 @@ test("ascend (all): a launch row, USD conversion and Ascend metadata", async () 
   assert.deepEqual(metadataColumns({ imageUri: "ipfs://bafkreicq4icrqxpbzs5kcws7bzlp4xcudtbfixyjreqmyrwct2zafkkv4q", twitter: " blob ", website: "" }), { image_cid: "bafkreicq4icrqxpbzs5kcws7bzlp4xcudtbfixyjreqmyrwct2zafkkv4q", description: null, website: null, twitter: "blob", telegram: null });
   assert.equal(metadataColumns({ imageUri: "https://evil/x.png" }).image_cid, null);
   assert.equal(metadataColumns(null).image_cid, null);
+});
+
+test("ban list: any case or a $ matches the stored ticker; a lookup error refuses rather than letting the launch through", async () => {
+  assert.equal(normalizeTicker(" $scam "), "SCAM");
+  assert.equal(normalizeTicker("Elon_Musk"), "ELON_MUSK");
+  const asked: unknown[] = [];
+  const db = (rows: string[], error: { message: string } | null = null) =>
+    ({
+      from: (table: string) => ({
+        select: () => ({
+          eq: (col: string, v: string) => ({
+            maybeSingle: async () => {
+              asked.push([table, col, v]);
+              return { data: error ? null : rows.includes(v) ? { ticker: v } : null, error };
+            },
+          }),
+        }),
+      }),
+    }) as never;
+  assert.equal(await tickerBanned(db(["SCAM"]), "scam"), true);
+  assert.equal(await tickerBanned(db(["SCAM"]), "$Scam"), true);
+  assert.equal(await tickerBanned(db(["SCAM"]), "SCAMX"), false); // exact match only
+  assert.deepEqual(asked[0], ["banned_tickers", "ticker", "SCAM"]);
+  await assert.rejects(tickerBanned(db([], { message: "boom" }), "SCAM"), /banned_tickers: boom/);
+  assert.equal(bannedMessage("scam"), "$SCAM can't be launched on Neuriio");
 });

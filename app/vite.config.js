@@ -14,5 +14,12 @@ export default defineConfig(({ mode }) => ({
     include: ["react", "react-dom", "react-dom/client", "motion/react", "react-use-measure", "lucide-react", "@privy-io/react-auth"],
   },
   // 127.0.0.1 explicitly: plain "localhost" bound only IPv6 (::1) on this Mac, so browsers trying IPv4 got nothing
-  server: { host: "127.0.0.1", port: 5173, strictPort: true, fs: { allow: [".."] } },
+  // VITE_RPC_PROXY=on: chain requests go through /rpc, forwarded to the local stand-in for our Vercel proxy (app/api/_dev.ts)
+  server: {
+    host: "127.0.0.1",
+    port: 5173,
+    strictPort: true,
+    fs: { allow: [".."] },
+    proxy: process.env.VITE_RPC_PROXY === "on" ? { "/rpc": { target: "http://127.0.0.1:8787", changeOrigin: false } } : undefined,
+  },
 }));

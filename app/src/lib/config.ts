@@ -20,20 +20,27 @@ export const ASCEND = Object.fromEntries(
 ) as Record<"launchpad" | "escrowFactory" | "seatFactory" | "poolManager" | "universalRouter" | "v4Quoter" | "stateView" | "permit2" | "multicall3", Address>;
 export const EXPLORER = deployment.explorer;
 
-/** Elysium mainnet RPC for the app's reads and the wallet's sends (chain.ts): our Conduit key (build-time VITE_ELYSIUM_RPC:
- *  a Vercel variable, and app/.env.local locally; never in git; the bare key or the full URL). Elysium has no public RPC
- *  (partner access until its public launch), so there's no keyless fallback. The key ships in the page like any frontend RPC
- *  key: restrict it to our domains in the Conduit dashboard. */
+/** Elysium mainnet RPC for the app's reads and the wallet's sends (chain.ts).
+ *  Production: our own /rpc proxy (app/api/rpc.ts, user 2026-11-04, modelled on Ascend's): the provider's key never reaches the
+ *  browser; reads need a short-lived session cookie (lib/rpcSession.ts runs an invisible Turnstile check for it).
+ *  Local dev (or VITE_RPC_PROXY=off): straight to the provider with VITE_ELYSIUM_RPC from app/.env.local (the bare Conduit key
+ *  or a full URL, e.g. Alchemy's); never in git. Elysium has no public RPC, so there's no keyless fallback. */
 const MAINNET_RPC_BASE = "https://rpc-elysium-mainnet.t.conduit.xyz";
-/** A keyless public RPC to try first, if Elysium publishes one (VITE_ELYSIUM_PUBLIC_RPC); null: our key only. */
+/** A keyless public RPC to try first, if Elysium publishes one (VITE_ELYSIUM_PUBLIC_RPC); null: our proxy / key only. */
 const publicSetting = (import.meta.env.VITE_ELYSIUM_PUBLIC_RPC ?? "").trim();
 export const PUBLIC_RPC: string | null = publicSetting && publicSetting !== "off" ? publicSetting : null;
+/** Whether chain requests go through our /rpc proxy: production unless VITE_RPC_PROXY=off; in dev only with VITE_RPC_PROXY=on
+ *  (then app/api/_dev.ts stands in for Vercel). */
+const proxySetting = (import.meta.env.VITE_RPC_PROXY ?? "").trim();
+export const RPC_VIA_PROXY = proxySetting === "on" || (!import.meta.env.DEV && proxySetting !== "off");
 const rpcSetting = (import.meta.env.VITE_ELYSIUM_RPC ?? "").trim();
-export const ELYSIUM_RPC: string = !rpcSetting
-  ? MAINNET_RPC_BASE
-  : /^https?:\/\//.test(rpcSetting)
-    ? rpcSetting
-    : `${MAINNET_RPC_BASE}/${rpcSetting.replace(/^\/+/, "")}`; // a bare key
+export const ELYSIUM_RPC: string = RPC_VIA_PROXY
+  ? `${location.origin}/rpc`
+  : !rpcSetting
+    ? MAINNET_RPC_BASE
+    : /^https?:\/\//.test(rpcSetting)
+      ? rpcSetting
+      : `${MAINNET_RPC_BASE}/${rpcSetting.replace(/^\/+/, "")}`; // a bare key
 
 export const HL_TESTNET = false;
 

@@ -17,17 +17,20 @@ import {
   type Hex,
 } from "viem";
 import { elysiumTestnet } from "../chain";
-import { ELYSIUM_RPC, PUBLIC_RPC } from "./config";
+import { ELYSIUM_RPC, PUBLIC_RPC, RPC_VIA_PROXY } from "./config";
+import { proxyFetch } from "./rpcSession";
 
 /** Reads: Elysium's public RPC first (it rate-limits bursts per visitor), the app's own RPC as the backup; contract
  *  reads made together go out as one multicall. */
 export const safePub = createPublicClient({
   chain: elysiumTestnet,
   batch: { multicall: true },
-  transport: PUBLIC_RPC ? fallback([http(PUBLIC_RPC), http(ELYSIUM_RPC)]) : http(ELYSIUM_RPC),
+  transport: PUBLIC_RPC ? fallback([http(PUBLIC_RPC), http(ELYSIUM_RPC, RPC_VIA_PROXY ? { fetchFn: proxyFetch } : {})]) : http(ELYSIUM_RPC, RPC_VIA_PROXY ? { fetchFn: proxyFetch } : {}),
 });
 
-/** The Neuriio Safe on Elysium testnet (2026-10-22): 2 of 3. */
+/** The Neuriio Safe: 2 of 3, the treasury and the contracts' owner (user, 2026-11-05: same 3 owners as the testnet rehearsal, one
+ *  Safe). Same owners + salt 0 on Safe's canonical factory give the same address on mainnet as on testnet; it exists on mainnet
+ *  only once script/CreateSafe.s.sol has run there. */
 export const NEURIIO_SAFE: Address = "0x68Ed49C77dF7fB4928510d5Ac65C6074674D264E";
 /** Safe's canonical v1.3.0 GnosisSafeL2: every Neuriio Safe must run it (storage slot 0 of the proxy). */
 export const SAFE_L2: Address = "0x3E5c63644E683549055b9Be8653de26E0B4CD36E";

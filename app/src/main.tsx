@@ -4,7 +4,9 @@ import { Paused } from "./Paused";
 
 // Site-wide pause: every page shows this and the app never loads, so visitors make no RPC, Privy or Supabase calls.
 // Local dev always loads the app. Set to false to bring the app back in production.
-const PAUSED = !import.meta.env.DEV;
+// Except /safe (user, 2026-11-05): the Safe owners' approval page stays reachable on their own devices while the site is closed.
+const SAFE_PAGE = location.pathname.replace(/\/+$/, "") === "/safe";
+const PAUSED = !import.meta.env.DEV && !SAFE_PAGE;
 
 if (PAUSED) {
   document.body.style.margin = "0";

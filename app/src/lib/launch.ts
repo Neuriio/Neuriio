@@ -3,7 +3,8 @@
 // (src/launch/NeuriioLauncher.sol, AscendAdapter.sol; supabase/functions/launch-pass).
 import { createPublicClient, erc20Abi, fallback, formatUnits, http, type Transport, keccak256, parseAbi, parseEther, parseUnits, toBytes, type Address, type EIP1193Provider } from "viem";
 import { elysiumTestnet } from "../chain";
-import { ASCEND, ELYSIUM_RPC, LAUNCHER, PUBLIC_RPC, QUOTE, SUPABASE_URL } from "./config";
+import { ASCEND, ELYSIUM_RPC, LAUNCHER, PUBLIC_RPC, QUOTE, RPC_VIA_PROXY, SUPABASE_URL } from "./config";
+import { proxyFetch } from "./rpcSession";
 import { confirmed, nonceAfter, walletClientFor } from "./tx";
 
 /** NeuriioLauncher: where launches go, and the permanent record of identity (one token per X account / wallet / handle, FTF
@@ -106,7 +107,7 @@ export async function viaKey<T>(f: () => Promise<T>): Promise<T> {
     keyedHolds--;
   }
 }
-const keyed = patient(http(ELYSIUM_RPC, { timeout: 10_000, retryCount: 2 }));
+const keyed = patient(http(ELYSIUM_RPC, { timeout: 10_000, retryCount: 2, ...(RPC_VIA_PROXY ? { fetchFn: proxyFetch } : {}) }));
 const publicFirst = (pub: string): Transport => (opts) => {
   const both = fallback([http(pub, { timeout: 1_500, retryCount: 0 }), keyed])(opts);
   const direct = keyed(opts);

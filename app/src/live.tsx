@@ -6,6 +6,12 @@ import { WagmiProvider } from "wagmi";
 import { App } from "./App";
 import { elysiumTestnet } from "./chain";
 import { wagmiConfig } from "./lib/wagmi";
+import { RPC_VIA_PROXY } from "./lib/config";
+import { renewSession } from "./lib/rpcSession";
+
+// our /rpc proxy: get the session cookie up front, so the first reads (and Privy's wallet, which calls from this page too)
+// don't wait on a 401 and a retry
+if (RPC_VIA_PROXY) renewSession().catch(() => {});
 
 const appId = import.meta.env.VITE_PRIVY_APP_ID;
 const queryClient = new QueryClient();

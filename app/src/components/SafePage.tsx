@@ -22,7 +22,7 @@ import {
   type SafeState,
 } from "../lib/safe";
 import { poll } from "../lib/poll";
-import { ELYSIUM_RPC, PUBLIC_RPC } from "../lib/config";
+import { PUBLIC_RPC } from "../lib/config";
 
 const EXPLORER = elysiumTestnet.blockExplorers.default.url;
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -47,7 +47,9 @@ function readLink(): { safe: Address; link: Link; bad: string | null } {
   return { safe, link: { to: getAddress(to), data, nonce: n && /^\d+$/.test(n) ? BigInt(n) : null, note: q.get("note") }, bad: null };
 }
 
-/** Switches the wallet to Elysium testnet, adding the network first if the wallet doesn't know it. */
+/** Switches the wallet to Elysium (mainnet, 99901), adding the network first if the wallet doesn't know it. The wallet needs an
+ *  RPC it can call itself: Elysium's public RPC if there is one; our /rpc proxy refuses wallets (it needs our session cookie), and
+ *  in dev ELYSIUM_RPC carries our provider key, so without a public RPC the owner adds the network by hand. */
 async function switchToElysium(eth: EIP1193Provider) {
   const chainId = `0x${elysiumTestnet.id.toString(16)}` as const;
   try {
@@ -56,14 +58,17 @@ async function switchToElysium(eth: EIP1193Provider) {
     const code = (e as { code?: number; data?: { originalError?: { code?: number } } }).code;
     const inner = (e as { data?: { originalError?: { code?: number } } }).data?.originalError?.code;
     if (code !== 4902 && inner !== 4902) throw e;
+    if (!PUBLIC_RPC) {
+      throw new Error("Your wallet doesn't have Elysium yet. Add it by hand (chain ID 99901, currency HYPE, your own Elysium RPC URL), then try again.");
+    }
     await eth.request({
       method: "wallet_addEthereumChain",
       params: [
         {
           chainId,
-          chainName: "Elysium Testnet",
+          chainName: "Elysium",
           nativeCurrency: { name: "HYPE", symbol: "HYPE", decimals: 18 },
-          rpcUrls: [PUBLIC_RPC ?? ELYSIUM_RPC],
+          rpcUrls: [PUBLIC_RPC],
           blockExplorerUrls: [EXPLORER],
         },
       ],
@@ -196,7 +201,7 @@ export function SafePage() {
         <header className="safe-head">
           <img src="/brand/mark.png" alt="" className="safe-mark" />
           <h1>Neuriio Safe</h1>
-          <span className="safe-net">Elysium Testnet</span>
+          <span className="safe-net">Elysium</span>
         </header>
 
         <dl className="safe-facts">

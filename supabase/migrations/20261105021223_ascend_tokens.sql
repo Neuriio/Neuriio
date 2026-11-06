@@ -1,4 +1,4 @@
--- Every Ascend token, not only ours (user, 2026-11-04): /trending ranks all of Ascend with our three tiers. Filled by the indexer's
+-- APPLIED 2026-11-04. Every Ascend token, not only ours (user, 2026-11-04): /trending ranks all of Ascend with our three tiers. Filled by the indexer's
 -- "ascend_all" world from the Ascend launchpad's Launched events (any pair: USDC, HYPE, KNTQ, stocks), with token art from
 -- Ascend's public metadata API. Their trades go in `trades` like ours, with `price_hype` and `usd_value` in USD for every pair.
 create table public.ascend_tokens (
