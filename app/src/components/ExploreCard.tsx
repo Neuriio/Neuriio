@@ -1,13 +1,13 @@
 // /explore — launched tokens. Three columns, the chart dead-center (side cards are equal width):
-//   left card:  platform fees (lifetime, every token; not on the landing), then Top 25 by total volume (order re-ranked
-//               every minute by the database; numbers live)
+//   left card:  Trending, the top 25 Ascend coins by 24h volume (ours and everyone else's; refreshed every 20 s, prices live;
+//               user 2026-11-05: replaces the /trending page and the Platform fees counter)
 //   above the chart: search @handle (FTF names later)
 //   center:     the picked token (header, price + 24h change, stats, market-cap candle chart 5m-4H)
 //   right card: Buy / Sell / Stake tabs (the landing: just the order card)
 //   under the chart (same width): your positions
 // Phones (<= 860px): search, the chart card (no Profile button), then one card with four tabs:
 //   About (creator profile, bio, creator fees) · Trade (the order card) · Stake (the stake card) · Positions.
-//   The Top 25 moves to /trending on phones.
+//   The Trending list sits under those tabs on phones.
 // `/explore?t=<handle|address>` opens a token (e.g. right after its launch). `?demo` (dev) = sample data.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -15,6 +15,7 @@ import { AnimatePresence } from "motion/react";
 import { ExternalLink, Search, UserRound } from "lucide-react";
 import { CATEGORIES, SECTORS } from "../lib/launch";
 import { CandleChart, type ChartControls } from "./CandleChart";
+import { agoraCandles } from "../lib/agora";
 import { subscribeTrades, useLivePrices } from "../lib/live";
 import { tokenCreatorEarned } from "../lib/fees";
 import { formatUnits, type Address } from "viem";
@@ -25,9 +26,8 @@ import { StakeCard } from "./StakeCard";
 import { ProfileBody, ProfileModal, useCreatorProfile } from "./ProfileModal";
 import { useIsMobile } from "../lib/media";
 import { Avatar } from "./Avatar";
-import { compactUsd, tinyPrice, usd } from "../lib/format";
-import { FEE_WALLET, QUOTE } from "../lib/config";
-import { elysiumTestnet } from "../chain";
+import { compactUsd, tinyPrice } from "../lib/format";
+import { QUOTE } from "../lib/config";
 import {
   type Candle,
   candles,
@@ -35,17 +35,17 @@ import {
   DEMO,
   LANDING,
   SHOW_HYPE_USD,
-  ascendTokenUrl,
   displayName,
   isOurs,
   getToken,
   handleOf,
   INTERVALS,
-  platformFees,
   type IntervalSeconds,
   searchTokens,
   tickerOf,
-  topByTotalVolume,
+  agoraTrending,
+  elsewhereName,
+  elsewhereUrl,
   type TokenStat,
 } from "../lib/explore";
 import { poll } from "../lib/poll";
@@ -56,28 +56,27 @@ export function ExploreCard() {
   // launched tokens are priced in USDC ($1); the landing's sample data is in HYPE at a fixed price
   const hypeUsd = LANDING ? SHOW_HYPE_USD : QUOTE.usd;
   const [top, setTop] = useState<TokenStat[] | null>(null);
-  const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
   const live = useLivePrices(); // every token's latest price from the live feed
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<TokenStat[] | null>(null);
   const [picked, setPicked] = useState<TokenStat | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // top list (refreshes every 30 s); picks #1 unless ?t= names a token
+  // Trending (user, 2026-11-05, replacing the /trending page): the top 25 Ascend coins by 24h volume, ours and everyone else's
+  // (refreshes every 20 s); picks #1 unless ?t= names a token
   useEffect(() => {
     let alive = true;
     const load = () =>
-      topByTotalVolume().then(
-        ({ tokens: rows, snapshotAt: at }) => {
+      agoraTrending().then(
+        (rows) => {
           if (!alive) return;
           setTop(rows);
-          setSnapshotAt(at);
           setError(null);
           setPicked((p) => p ?? (START ? null : rows[0] ?? null));
         },
         (e) => alive && setError(String(e.message ?? e)),
       );
-    const stop = poll(load, 20_000); // the database re-ranks every minute
+    const stop = poll(load, 20_000);
     return () => {
       alive = false;
       stop();
@@ -179,12 +178,20 @@ export function ExploreCard() {
     </div>
   );
 
+  const trending = (
+    <section className="panel ex-card ex-list-card">
+      <CardBg />
+      <TrendingList rows={top} error={!!error} picked={picked} live={live} hypeUsd={hypeUsd} onPick={setPicked} />
+    </section>
+  );
+
   if (mobile)
     return (
       <div className="ex-grid">
         <div className="ex-main">
           {center}
           <MobileTabs t={picked} hypeUsd={hypeUsd} onPick={pickPosition} />
+          {trending}
         </div>
       </div>
     );
@@ -194,33 +201,7 @@ export function ExploreCard() {
       {/* separate widgets: list | chart | buy/sell/stake, with Positions below (user, 2026-11-01). The trade page will
           reuse this shell. */}
       <div className="ex-main">
-        <section className="panel ex-card ex-list-card">
-          <CardBg />
-          {!LANDING && <PlatformFees />}
-          <div className="ex-list-head">
-            <span>Top 25 · total volume</span>
-            <span>MCAP</span>
-          </div>
-          <ol className="ex-list">
-            {top?.map((t, i) => (
-              <li key={t.address}>
-                <button className={`ex-row${picked?.address === t.address ? " is-picked" : ""}`} onClick={() => setPicked(t)}>
-                  <span className="ex-rank">{i + 1}</span>
-                  <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
-                  <span className="ex-row-names">
-                    <span className="ex-row-handle">{displayName(t)}</span>
-                    <Change t={t} price={live[t.address]} />
-                  </span>
-                  <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
-                </button>
-              </li>
-            ))}
-            {top && top.length === 0 && <li className="ex-empty">No tokens traded yet.</li>}
-            {!top && !error && <li className="ex-empty">Loading…</li>}
-            {error && <li className="ex-empty">Couldn't load tokens.</li>}
-          </ol>
-          {snapshotAt && <p className="ex-list-foot">Ranked {ago(snapshotAt)} · every minute</p>}
-        </section>
+        {trending}
 
         {center}
 
@@ -323,8 +304,8 @@ function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
         <div className="ex-head-names">
           <span className="ex-handle">{!isOurs(t) ? displayName(t) : t.kind === "ftf" ? t.name : t.x_name || handleOf(t.handle)}</span>
           {!isOurs(t) ? (
-            <a className="ex-modal-x" href={ascendTokenUrl(t.address)} target="_blank" rel="noreferrer">
-              Not launched on Neuriio · view on Ascend <ExternalLink size={11} />
+            <a className="ex-modal-x" href={elsewhereUrl(t)} target="_blank" rel="noreferrer">
+              Not launched on Neuriio · view on {elsewhereName(t)} <ExternalLink size={11} />
             </a>
           ) : t.kind === "ftf" ? (
             <span className="ex-ticker">{tickerOf(t.symbol)} · Friends Turned Fam</span>
@@ -347,41 +328,65 @@ function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
 
       <p className="ex-order-note">
         {!isOurs(t)
-          ? `${displayName(t)} was launched on Ascend, not through Neuriio. It's a meme with no promise of value.`
+          ? `${displayName(t)} was launched on ${t.venue ?? (t.source === "agora" ? "another launchpad" : "Ascend")}, not through Neuriio. It's a meme with no promise of value.`
           : `${displayName(t)} is a meme with no promise of value. ${t.kind === "ftf" ? "Its members owe" : `${handleOf(t.handle)} owes`} holders nothing.`}
       </p>
     </div>
   );
 }
 
-/** Every USDC fee that has reached our fee wallet from Ascend (Neuriio's 0.5%), lifetime; refreshed every 15 s. Links to the wallet on
- *  the explorer. With no wallet set yet (config FEE_WALLET) it reads $0 and makes no calls. */
-function PlatformFees() {
-  const [total, setTotal] = useState<number | null>(FEE_WALLET ? null : 0);
-  useEffect(() => {
-    if (DEMO) return setTotal(48_213.37);
-    if (!FEE_WALLET) return;
-    let alive = true;
-    const load = () => platformFees().then((n) => alive && setTotal(n), () => {});
-    const stop = poll(load, 15_000);
-    return () => {
-      alive = false;
-      stop();
-    };
-  }, []);
-  const title = "Every fee Neuriio has received from trading (its 0.5% of each trade), shared with stakers, the KNTQ buyback and the treasury";
-  const value = <span className="ex-platform-value">{total === null ? "…" : usd(total)}</span>;
+/** Explore's list (user, 2026-11-05, replacing the /trending page): the top 25 Ascend coins by 24h volume, ours with the Neuriio
+ *  logo and everyone else's marked "(Not Launched On Neuriio)", as the Trending page showed them. Picking a row opens it here. */
+function TrendingList({
+  rows,
+  error,
+  picked,
+  live,
+  hypeUsd,
+  onPick,
+}: {
+  rows: TokenStat[] | null;
+  error: boolean;
+  picked: TokenStat | null;
+  live: Record<string, number>;
+  hypeUsd: number;
+  onPick: (t: TokenStat) => void;
+}) {
   return (
-    <div className="ex-platform" title={title}>
-      <span className="ex-platform-label">Platform fees</span>
-      {FEE_WALLET ? (
-        <a className="ex-platform-link" href={`${elysiumTestnet.blockExplorers.default.url}/address/${FEE_WALLET}`} target="_blank" rel="noopener noreferrer">
-          {value}
-        </a>
-      ) : (
-        value
-      )}
-    </div>
+    <>
+      <div className="ex-list-head">
+        <span>
+          <span className="tr-title">Trending</span> · 24h volume
+        </span>
+        <span>MCAP</span>
+      </div>
+      <ol className="ex-list">
+        {rows?.map((t, i) => (
+          <li key={t.address}>
+            <button className={`ex-row${picked?.address === t.address ? " is-picked" : ""}`} onClick={() => onPick(t)}>
+              <span className="ex-rank">{i + 1}</span>
+              <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
+              <span className="ex-row-names">
+                <span className="ex-row-handle tr-name">
+                  <span className="tr-name-text">{displayName(t)}</span>
+                  {isOurs(t) ? (
+                    <img className="tr-ours" src="/brand/logo.png" alt="Launched on Neuriio" title="Launched on Neuriio" />
+                  ) : (
+                    <span className="tr-elsewhere">(Not Launched On Neuriio)</span>
+                  )}
+                </span>
+                <Change t={t} price={live[t.address]} />
+              </span>
+              <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
+            </button>
+          </li>
+        ))}
+        {rows && rows.length === 0 && <li className="ex-empty">No trades in the last 24 hours.</li>}
+        {!rows && !error && <li className="ex-empty">Loading…</li>}
+        {error && <li className="ex-empty">Couldn't load tokens.</li>}
+      </ol>
+      {rows && <p className="ex-list-foot">Top 15 on Elysium by 24h volume · data from Agora</p>}
+    </>
   );
 }
 
@@ -463,7 +468,7 @@ function TokenDetail({
   useEffect(() => {
     let alive = true;
     setData(null);
-    const load = () => candles(t.address, interval, 300).then((c) => alive && setData(c), () => {});
+    const load = () => (t.source === "agora" ? agoraCandles : candles)(t.address, interval, 300).then((c) => alive && setData(c), () => {});
     reloadCandles.current = load;
     const stop = poll(load, 10_000);
     return () => {
@@ -502,8 +507,8 @@ function TokenDetail({
                 <UserRound size={13} aria-hidden /> Profile
               </button>
             ) : (
-              <a className="ex-profile-btn" href={ascendTokenUrl(t.address)} target="_blank" rel="noreferrer">
-                <ExternalLink size={13} aria-hidden /> Ascend
+              <a className="ex-profile-btn" href={elsewhereUrl(t)} target="_blank" rel="noreferrer">
+                <ExternalLink size={13} aria-hidden /> {elsewhereName(t)}
               </a>
             )}
             <span className="ex-earned" title="Lifetime creator fees: 10% of every trading fee, on the curve and in the pool, paid in USDC">
@@ -523,7 +528,7 @@ function TokenDetail({
       <dl className="ex-stats">
         <div><dt>Market cap</dt><dd>{usdOr(price * 1e9)}</dd></div>
         <div><dt>24h volume</dt><dd>{compactUsd(t.volume_usd_24h)}</dd></div>
-        <div><dt>All-time volume</dt><dd>{compactUsd(t.volume_usd)}</dd></div>
+        <div><dt>{t.source === "agora" ? "7d volume" : "All-time volume"}</dt><dd>{compactUsd(t.volume_usd)}</dd></div>
         <div><dt>24h trades</dt><dd>{t.trades_24h.toLocaleString("en-US")}</dd></div>
       </dl>
 

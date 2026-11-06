@@ -1,11 +1,12 @@
 // The app's sections as links in the header (user, 2026-10-18, like Blockworks), on every page but the landing and at
 // every size: beside the logo on wide screens, in their own row under it on narrower ones (they scroll sideways if
-// they don't fit). Home (new; the /feed page, renamed by the user 2026-11-03), Launch, Trending and Explore; trading
-// (Perps, Spot, Outcome: the future /trade page) shows as "Trade · Soon". The current page is highlighted.
+// they don't fit). Home (new; the /feed page, renamed by the user 2026-11-03), Launch, Swap (replaced Trending, user
+// 2026-11-05) and Explore; trading (Perps, Spot, Outcome: the future /trade page) shows as "Trade · Soon". The current page is
+// highlighted.
 const PAGES = [
   { label: "Home", href: "/feed", isNew: true },
   { label: "Launch", href: "/launch" },
-  { label: "Trending", href: "/trending" },
+  { label: "Swap", href: "/swap" },
   { label: "Explore", href: "/explore" },
 ];
 

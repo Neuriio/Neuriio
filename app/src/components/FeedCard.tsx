@@ -16,7 +16,7 @@ import { PortfolioPanel } from "./PortfolioPanel";
 import { NotificationsList, NotificationsModal } from "./NotificationsModal";
 import { useIsMobile } from "../lib/media";
 import { SendModal, type SendTarget } from "./SendModal";
-import { useNotifications } from "../lib/ftf";
+import { noticeKey, useNotifications } from "../lib/ftf";
 import { commentOn, commentsOf, createPost, latestPosts, likedBy, likePost, POST_MAX, type CommentRow, type PostRow } from "../lib/posts";
 import { EASE_OUT } from "../lib/motion";
 import { compactUsd } from "../lib/format";
@@ -330,12 +330,16 @@ function NoticesBox() {
         <span className="feed-muted feed-notices-empty">Nothing new.</span>
       ) : (
         items.slice(0, 2).map((n) => (
-          <button key={n.kind === "hype" ? `hype:${n.id}` : `${n.kind}:${n.draftId}:${n.from.x_user_id}`} className="feed-notice" onClick={() => setOpen(true)}>
+          <button key={noticeKey(n)} className="feed-notice" onClick={() => setOpen(true)}>
             <Avatar handle={n.from.x_handle ?? "?"} pfp={n.from.x_pfp_url ?? null} size={22} />
             <span className="feed-notice-text">
               <b>{n.from.x_handle ? handleOf(n.from.x_handle) : "someone"}</b>{" "}
               {n.kind === "hype" ? (
                 "asked for testnet HYPE"
+              ) : n.kind === "trading" ? (
+                <>
+                  applied for trading on <b>{n.name ?? n.symbol ?? "a token"}</b>
+                </>
               ) : (
                 <>
                   {n.kind === "invite" ? "invited you to" : "asked to join"} <b>{n.name}</b>

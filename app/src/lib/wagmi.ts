@@ -14,10 +14,14 @@ export const wagmiConfig = createConfig({
   transports: { [elysiumTestnet.id]: http(ELYSIUM_RPC, RPC_VIA_PROXY ? { fetchFn: proxyFetch } : {}) },
 });
 
-/** The wallets on offer; `id` is the name each announces itself under. */
+/** The wallets on offer; `id` is the name each announces itself under. `logo`: each wallet's current app icon (public/wallets,
+ *  from RainbowKit's maintained set, 2026-11-05), shown whether or not the wallet is installed. */
 export const WALLETS = [
-  { id: "io.rabby", name: "Rabby", install: "https://rabby.io" },
-  { id: "app.phantom", name: "Phantom", install: "https://phantom.com" },
-  { id: "com.coinbase.wallet", name: "Coinbase", install: "https://www.coinbase.com/wallet" },
-  { id: "io.metamask", name: "MetaMask", install: "https://metamask.io" },
+  { id: "io.rabby", name: "Rabby", install: "https://rabby.io", logo: "/wallets/rabby.svg" },
+  { id: "app.phantom", name: "Phantom", install: "https://phantom.com", logo: "/wallets/phantom.svg" },
+  { id: "com.coinbase.wallet", name: "Coinbase", install: "https://www.coinbase.com/wallet", logo: "/wallets/coinbase.svg" },
+  { id: "io.metamask", name: "MetaMask", install: "https://metamask.io", logo: "/wallets/metamask.svg" },
 ] as const;
+
+/** A connected wallet's logo: ours for the wallets we list, else the icon the wallet announced (if any). */
+export const walletLogo = (connector: { id: string; icon?: string }) => WALLETS.find((w) => w.id === connector.id)?.logo ?? connector.icon;

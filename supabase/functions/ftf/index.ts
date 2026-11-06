@@ -27,6 +27,10 @@
 //   hype       {}                      ask for testnet HYPE to your Neuriio wallet (one open request; again 24 h after sent)
 //   hypeDone   { id, sent }            admin: mark a request sent (or dismissed)
 //
+// "Apply For Trading" (a token launched anywhere else on Elysium; admins = app_config.trading_admins, see requests in their inbox):
+//   applyTrading { token }             ask for that coin to be tradable on Neuriio (one open request per user per coin)
+//   tradingDone  { id }                admin: dismiss a request once handled
+//
 // Secrets: PRIVY_APP_ID, PRIVY_APP_SECRET, LAUNCH_SIGNER_KEY, LAUNCHPAD_ADDRESS, CHAIN_ID, RPC_URL; optional FAUCET_KEY
 // (the faucet wallet's key: its own wallet, never the deployer/owner key; without it every claim falls back)
 
@@ -237,8 +241,8 @@ async function inbox(who: XUser) {
     const d = byId.get(r.draft_id)!;
     return { kind: "request", draftId: d.id, name: d.name, ticker: d.ticker, from: { x_user_id: r.x_user_id, ...cards.get(r.x_user_id) }, at: r.created_at };
   });
-  const hype = await hypeNotices(who);
-  return { items: [...invites, ...requests, ...hype].sort((a, b) => String(b.at).localeCompare(String(a.at))) };
+  const [hype, trading] = await Promise.all([hypeNotices(who), tradingNotices(who)]);
+  return { items: [...invites, ...requests, ...hype, ...trading].sort((a, b) => String(b.at).localeCompare(String(a.at))) };
 }
 
 /** Founder, once all 4 accepted: category + about + links (the picture comes from `pfp`). */
@@ -619,9 +623,66 @@ async function hypeNotices(who: XUser) {
   }));
 }
 
+// ------------------------------------------------------------------ "Apply For Trading" (user, 2026-11-05)
+// A token launched anywhere else on Elysium isn't tradable through Neuriio. A logged-in user can ask; the request shows in the
+// trading admins' inboxes (app_config.trading_admins, X user IDs), who dismiss it once handled.
+
+async function isTradingAdmin(who: XUser) {
+  const { data, error } = await db.from("app_config").select("value").eq("key", "trading_admins").maybeSingle();
+  if (error) dbError("trading admins", error.message);
+  return String(data?.value ?? "").split(",").map((s) => s.trim()).includes(who.xUserId);
+}
+
+async function applyTrading(who: XUser, body: Body) {
+  const token = String(body.token ?? "").toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(token)) fail(400, "Unknown token");
+  // any token on Elysium (Explore's list comes from Agora, every launchpad): it must be a contract that answers as an ERC-20
+  const [{ data: ours, error: e2 }, code, symbol] = await Promise.all([
+    db.from("tokens").select("address").eq("address", token).maybeSingle(),
+    chain.getCode({ address: token as `0x${string}` }).catch(() => undefined),
+    chain.readContract({ address: token as `0x${string}`, abi: erc20Abi, functionName: "symbol" }).catch(() => null),
+  ]);
+  if (e2) dbError("apply trading lookup", e2.message);
+  if (!code || code === "0x" || symbol === null) fail(404, "Unknown token");
+  if (ours) fail(409, "This token already trades on Neuriio");
+  const { error } = await db.from("trading_requests").insert({ x_user_id: who.xUserId, token });
+  if (error && error.code !== "23505") dbError("apply trading", error.message); // 23505: you already asked for this one
+  return { status: "applied" };
+}
+
+async function tradingDone(who: XUser, body: Body) {
+  if (!(await isTradingAdmin(who))) fail(403, "Only an admin can do that");
+  const id = Number(body.id);
+  if (!Number.isSafeInteger(id)) fail(400, "Unknown request");
+  const { error } = await db.from("trading_requests").update({ status: "done", done_at: new Date().toISOString() })
+    .eq("id", id).eq("status", "pending");
+  if (error) dbError("trading done", error.message);
+  return { ok: true };
+}
+
+/** Admins only: open trading requests, as inbox items (with the coin's name and ticker). */
+async function tradingNotices(who: XUser) {
+  if (!(await isTradingAdmin(who))) return [];
+  const { data, error } = await db.from("trading_requests").select("id, x_user_id, token, created_at").eq("status", "pending")
+    .order("created_at", { ascending: false }).limit(50);
+  if (error) dbError("trading inbox", error.message);
+  const rows = data ?? [];
+  const tokens: string[] = [...new Set<string>(rows.map((r) => String(r.token)))];
+  // each coin's name and ticker, read from the token itself (any launchpad)
+  const read = (address: string, functionName: "name" | "symbol") =>
+    chain.readContract({ address: address as `0x${string}`, abi: erc20Abi, functionName }).then((v) => String(v), () => null);
+  const coins = await Promise.all(tokens.map(async (address) => ({ address, name: await read(address, "name"), symbol: await read(address, "symbol") })));
+  const coinOf = new Map(coins.map((c) => [c.address, c]));
+  const cards = await cardsOf(rows.map((r) => r.x_user_id as string));
+  return rows.map((r) => ({
+    kind: "trading", id: r.id, token: r.token, name: coinOf.get(r.token)?.name ?? null, symbol: coinOf.get(r.token)?.symbol ?? null,
+    from: { x_user_id: r.x_user_id, ...cards.get(r.x_user_id) }, at: r.created_at,
+  }));
+}
+
 const ACTIONS: Record<string, (who: XUser, body: Body) => Promise<unknown>> = {
   create, mine, inbox, profile, pfp, invite, request, approve, accept, decline, leave, remove, cancel, pass,
-  hypeStatus, hype, hypeDone, claimHype,
+  hypeStatus, hype, hypeDone, claimHype, applyTrading, tradingDone,
 };
 
 // ------------------------------------------------------------------ entry

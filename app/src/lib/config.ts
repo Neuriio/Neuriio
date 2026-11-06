@@ -44,6 +44,10 @@ export const ELYSIUM_RPC: string = RPC_VIA_PROXY
 
 export const HL_TESTNET = false;
 
+/** The DEX aggregator contract the /swap page routes through (user, 2026-11-05: Ascend's; the user sends the address). null:
+ *  the Swap page shows tokens and balances but no quotes, and its Swap button stays off. */
+export const SWAP_AGGREGATOR: Address | null = null;
+
 /** Supabase project (launch passes, registration, points). Functions use the Privy token. */
 export const SUPABASE_URL = "https://yviymgfgaepmtijgyyyo.supabase.co";
 /** Publishable key: public by design (browser reads of public tables/views: token_stats, token_candles, leaderboard). */

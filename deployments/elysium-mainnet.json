@@ -8,6 +8,7 @@
   "adapter": null,
   "timelock": null,
   "safe": "0x68Ed49C77dF7fB4928510d5Ac65C6074674D264E",
+  "launchSigner": "0xd83E9d3f0ec627d63439Ce052EbE72d9F7f807C3",
   "fromBlock": null,
   "builder": "0xB153AA503a2C95fC175275D6b93415869A77e3d1",
   "treasury": "0x68Ed49C77dF7fB4928510d5Ac65C6074674D264E",

@@ -6,6 +6,7 @@ import { erc20Abi, keccak256, toBytes, zeroAddress, type Address } from "viem";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 import { CATEGORIES, type CategoryId, LAUNCHPAD, launchpadAbi as padViews, pub, REGISTRY, registryAbi, SECTORS, type SectorId } from "./launch";
 import { spotNow } from "./trade";
+import { agoraTokenUrl, agoraToken, agoraTop } from "./agora";
 
 export type TokenStat = {
   address: string;
@@ -41,12 +42,19 @@ export type TokenStat = {
   ours?: boolean;
   token_name?: string | null;
   quote_symbol?: string | null;
+  // a token from Agora's feed (lib/agora.ts, user 2026-11-05): any Elysium launchpad. Prices are in USD per "1e9-supply unit"
+  // (price × 1e9 = market cap), `volume_usd` is its 7-day volume, and `venue` its launchpad (Montra, Kleos, Ascend, ...).
+  source?: "agora";
+  venue?: string | null;
 };
 
 /** Whether a token launched through Neuriio (token_stats rows are always ours; ascend_token_stats says). */
 export const isOurs = (t: TokenStat) => t.ours !== false;
 /** A coin's page on Ascend's own app. */
 export const ascendTokenUrl = (address: string) => `https://app.ascendlaunch.xyz/tokens/${address.toLowerCase()}`;
+/** Where to see a token that wasn't launched on Neuriio: its Agora page (Agora's list), else Ascend's. */
+export const elsewhereUrl = (t: TokenStat) => (t.source === "agora" ? agoraTokenUrl(t.address) : ascendTokenUrl(t.address));
+export const elsewhereName = (t: TokenStat) => (t.source === "agora" ? "Agora" : "Ascend");
 
 export type Candle = {
   bucket: string;
@@ -148,6 +156,16 @@ export async function maturedTokens(limit = 25): Promise<TokenStat[]> {
   return rows.map(toStat);
 }
 
+/** Explore's Trending list (user, 2026-11-05): Agora's top 15 Elysium tokens by 24h volume, every launchpad. Any of ours in
+ *  it is shown as our own token_stats row (Neuriio logo, profile, trading), in Agora's order. */
+export async function agoraTrending(): Promise<TokenStat[]> {
+  const rows = await agoraTop();
+  if (!rows.length) return rows;
+  const ours = await rest<Record<string, unknown>[]>(`token_stats?select=*&address=in.(${rows.map((r) => r.address).join(",")})`).catch(() => []);
+  const byAddress = new Map(ours.map((r) => [String(r.address).toLowerCase(), toStat(r)]));
+  return rows.map((r) => byAddress.get(r.address) ?? r);
+}
+
 /** /trending "Trending": the top `limit` Ascend coins by 24h volume. Coins with no trades in the last 24 hours aren't listed. */
 export async function trendingTokens(limit = 25): Promise<TokenStat[]> {
   const rows = await rest<Record<string, unknown>[]>(`ascend_token_stats?select=*&volume_usd_24h=gt.0&order=volume_usd_24h.desc&limit=${limit}`);
@@ -182,10 +200,10 @@ export async function getToken(addressOrHandle: string, opts: { chainFallback?: 
   const filter = byAddress ? `address=eq.${v.toLowerCase()}` : `handle=ilike.${likeEscape(v)}`; // exact, any case
   const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&${filter}&limit=1`).catch(() => []);
   if (rows[0]) return toStat(rows[0]);
-  // a coin launched elsewhere on Ascend (opened from /trending)
+  // a token launched elsewhere (Explore's Trending list comes from Agora, user 2026-11-05)
   if (byAddress) {
-    const [other] = await rest<Record<string, unknown>[]>(`ascend_token_stats?select=*&address=eq.${v.toLowerCase()}&ours=eq.false&limit=1`).catch(() => []);
-    if (other) return toStat(other);
+    const other = await agoraToken(v);
+    if (other) return other;
   }
   return opts.chainFallback === false ? null : tokenFromChain(v, byAddress);
 }

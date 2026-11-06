@@ -9,7 +9,7 @@ import { ExternalLink, LoaderCircle, Plus, X } from "lucide-react";
 import { DEMO, tickerOf } from "../lib/explore";
 import { compactUsd, shortAddress, usd } from "../lib/format";
 import { DEMO_HISTORY, DEMO_PORTFOLIO, fetchPortfolio, recordSnapshot, type Portfolio, type Snapshot } from "../lib/portfolio";
-import { WALLETS } from "../lib/wagmi";
+import { WALLETS, walletLogo } from "../lib/wagmi";
 import { DotNumber } from "./DotNumber";
 import { poll } from "../lib/poll";
 
@@ -84,8 +84,10 @@ export function PortfolioPanel() {
 
 function WalletChip({ address, connector }: { address: string; connector: Connector }) {
   const { mutate: disconnect } = useDisconnect();
+  const logo = walletLogo(connector);
   return (
     <span className="pf-wallet" title={address}>
+      {logo && <img className="pf-wallet-logo" src={logo} alt="" />}
       {connector.name} · {shortAddress(address)}
       <button className="pf-wallet-x" aria-label={`Remove ${address}`} onClick={() => disconnect({ connector })}>
         <X size={11} />
@@ -277,13 +279,13 @@ function AddWalletModal({ open, onClose }: { open: boolean; onClose: () => void 
               <li key={w.id}>
                 {c ? (
                   <button className="pf-option" disabled={isPending || on} onClick={() => connect({ connector: c }, { onSuccess: onClose })}>
-                    {c.icon ? <img src={c.icon} alt="" /> : <span className="pf-option-icon">{w.name[0]}</span>}
+                    <img src={w.logo} alt="" />
                     <span>{w.name}</span>
                     <em>{on ? "Added" : busy ? <LoaderCircle size={13} className="spin" /> : "Connect"}</em>
                   </button>
                 ) : (
                   <a className="pf-option" href={w.install} target="_blank" rel="noreferrer">
-                    <span className="pf-option-icon">{w.name[0]}</span>
+                    <img src={w.logo} alt="" />
                     <span>{w.name}</span>
                     <em>
                       Install <ExternalLink size={11} />

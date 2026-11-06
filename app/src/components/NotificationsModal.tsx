@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { usePrivy } from "@privy-io/react-auth";
 import { Bell, Check, Copy, X } from "lucide-react";
-import { ftfCall, type Notice, useNotifications } from "../lib/ftf";
+import { ftfCall, type Notice, noticeKey, useNotifications } from "../lib/ftf";
 import { handleOf, tickerOf } from "../lib/explore";
 import { EASE_OUT } from "../lib/motion";
 import { Avatar } from "./Avatar";
@@ -73,7 +73,7 @@ export function NotificationsList() {
   const [error, setError] = useState<string | null>(null);
 
   const [copied, setCopied] = useState<number | null>(null);
-  const keyOf = (n: Notice) => (n.kind === "hype" ? `hype:${n.id}` : `${n.kind}:${n.draftId}:${n.from.x_user_id}`);
+  const keyOf = noticeKey;
 
   const act = async (n: Notice, yes: boolean) => {
     const key = keyOf(n);
@@ -81,6 +81,7 @@ export function NotificationsList() {
     setError(null);
     try {
       if (n.kind === "hype") await ftfCall(getAccessToken, "hypeDone", { id: n.id, sent: yes });
+      else if (n.kind === "trading") await ftfCall(getAccessToken, "tradingDone", { id: n.id });
       else if (n.kind === "invite") await ftfCall(getAccessToken, yes ? "accept" : "decline", { draftId: n.draftId });
       else await ftfCall(getAccessToken, yes ? "approve" : "remove", { draftId: n.draftId, xUserId: n.from.x_user_id });
       refresh();
@@ -123,6 +124,27 @@ export function NotificationsList() {
                       <Check size={13} strokeWidth={3} /> Sent
                     </button>
                     <button className="nt-no" disabled={busy === key} onClick={() => act(n, false)}>
+                      Dismiss
+                    </button>
+                  </div>
+                </li>
+              );
+            }
+            if (n.kind === "trading") {
+              return (
+                <li key={key} className="nt-item">
+                  <Avatar handle={n.from.x_handle ?? "?"} pfp={n.from.x_pfp_url ?? null} size={34} />
+                  <div className="nt-text">
+                    <span>
+                      <b>{who}</b> applied for trading on <b>{n.name ?? n.symbol ?? "a token"}</b>
+                      {n.symbol && <span className="nt-ticker"> {n.symbol}</span>}
+                    </span>
+                    <a className="nt-sub" href={`/explore?t=${n.token}`}>
+                      {n.token.slice(0, 6)}…{n.token.slice(-4)} · open in Explore
+                    </a>
+                  </div>
+                  <div className="nt-actions">
+                    <button className="nt-no" disabled={busy === key} onClick={() => act(n, true)}>
                       Dismiss
                     </button>
                   </div>

@@ -12,7 +12,7 @@ import { useTickerLogos } from "./lib/tickers";
 import { LaunchCard } from "./components/LaunchCard";
 import { ExploreCard } from "./components/ExploreCard";
 import { FeedCard } from "./components/FeedCard";
-import { TrendingCard } from "./components/TrendingCard";
+import { SwapCard } from "./components/SwapCard";
 import { DnaStrand } from "./components/DnaStrand";
 import { LandingBg, LandingFrame, LandingHero, Showcase } from "./components/Landing";
 import { useRegisterOnLogin } from "./lib/register";
@@ -23,7 +23,8 @@ import { TradeMock } from "./components/TradeMock";
 // One layout for every page; the center card changes by path (app.neuriio.xyz/launch, ...).
 // "/" opens the Feed (public launch, user 2026-10-20: no landing page, no passcode); any other unknown path shows Explore.
 // The address bar is set to the page shown. (The landing page's code stays, unused, for a later marketing site.)
-const ROUTES = ["/showcase", "/safe", "/trade", "/launch", "/feed", "/explore", "/trending"];
+// (/trending was removed 2026-11-05: its Trending list now lives in Explore, so old /trending links land on Explore)
+const ROUTES = ["/showcase", "/safe", "/trade", "/launch", "/feed", "/explore", "/swap"];
 const RAW = location.pathname.replace(/\/+$/, "") || "/";
 const PAGE = RAW === "/" ? "/feed" : ROUTES.includes(RAW) ? RAW : "/explore";
 if (RAW !== PAGE) history.replaceState(null, "", PAGE + location.search + location.hash);
@@ -95,13 +96,13 @@ function Page() {
         <main className="stage stage-explore ex-wide">
           <TradeMock />
         </main>
-      ) : PAGE === "/trending" ? (
-        // trending: the Top 25 between the launch page's dot strands (shown on phones too)
+      ) : PAGE === "/swap" ? (
+        // swap: one centered swap card between the launch page's dot strands
         <>
-          <DnaStrand side="left" fixed phone />
-          <DnaStrand side="right" phase={1.3} fixed phone />
-          <main className="stage stage-trending">
-            <TrendingCard />
+          <DnaStrand side="left" fixed />
+          <DnaStrand side="right" phase={1.3} fixed />
+          <main className="stage stage-swap">
+            <SwapCard />
           </main>
         </>
       ) : (

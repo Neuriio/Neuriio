@@ -49,7 +49,13 @@ type NoticeFrom = { x_user_id: string; x_handle?: string; x_name?: string | null
 export type Notice =
   | { kind: "invite" | "request"; draftId: string; name: string; ticker: string; from: NoticeFrom; at: string }
   /** admins only: someone asked for testnet HYPE (HypeButton) */
-  | { kind: "hype"; id: number; wallet: string; from: NoticeFrom; at: string };
+  | { kind: "hype"; id: number; wallet: string; from: NoticeFrom; at: string }
+  /** admins only: someone asked for a coin launched elsewhere on Ascend to be tradable on Neuriio (Apply For Trading) */
+  | { kind: "trading"; id: number; token: string; name: string | null; symbol: string | null; from: NoticeFrom; at: string };
+
+/** A notice's stable key (lists and "busy" state). */
+export const noticeKey = (n: Notice) =>
+  n.kind === "hype" || n.kind === "trading" ? `${n.kind}:${n.id}` : `${n.kind}:${n.draftId}:${n.from.x_user_id}`;
 
 /** Your latest manual request, and whether you've had your one faucet claim. */
 /** `claimed`: this X account got its 0.2 HYPE from the faucet; `usdcClaimed`: its 1,000 test USDC. */
@@ -184,7 +190,7 @@ function demoCall(action: string, body: Record<string, unknown>): unknown {
     case "accept":
     case "decline":
     case "approve":
-      demoNotices = demoNotices.filter((n) => n.kind === "hype" || n.draftId !== body.draftId || (body.xUserId && n.from.x_user_id !== body.xUserId));
+      demoNotices = demoNotices.filter((n) => n.kind === "hype" || n.kind === "trading" || n.draftId !== body.draftId || (body.xUserId && n.from.x_user_id !== body.xUserId));
       return snapshot();
     case "cancel":
       demo.view = { draft: null, members: [] };

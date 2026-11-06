@@ -6,10 +6,10 @@ import { useEffect, useMemo, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { Check, Pencil } from "lucide-react";
 import { formatEther, formatUnits, parseEther, parseUnits, type Address } from "viem";
-import { candles, DEMO, displayName, tickerOf, type TokenStat } from "../lib/explore";
+import { candles, DEMO, displayName, isOurs, tickerOf, type TokenStat } from "../lib/explore";
+import { ftfCall } from "../lib/ftf";
 import { compactUsd } from "../lib/format";
 import { SUPABASE_URL } from "../lib/config";
-import { ascendTokenUrl } from "../lib/explore";
 import { balances, buyGraduates, FEE_BPS, friendlyTradeError, minOut, prepareTrading, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
 import { QUOTE } from "../lib/config";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
@@ -111,17 +111,8 @@ export function OrderCard({ t, hypeUsd, fixedSide }: { t: TokenStat | null; hype
   }, [t?.address, t?.graduated, side, amountIn]);
 
   if (!t) return <p className="ex-empty">Pick a token.</p>;
-  // a coin launched elsewhere on Ascend against HYPE, KNTQ or a stock token: our trade box only pays in USDC
-  if (t.quote_symbol && t.quote_symbol.toUpperCase() !== "USDC") {
-    return (
-      <p className="ex-order-note ex-other-pair">
-        {tickerOf(t.symbol)} trades against {t.quote_symbol.toUpperCase() === "WHYPE" ? "HYPE" : t.quote_symbol}, not USDC.{" "}
-        <a href={ascendTokenUrl(t.address)} target="_blank" rel="noreferrer">
-          Trade it on Ascend
-        </a>
-      </p>
-    );
-  }
+  // a coin launched elsewhere on Ascend (user, 2026-11-05): not tradable here, whatever its pair; anyone can ask for it
+  if (!isOurs(t)) return <NotTradable t={t} />;
 
   const feeBps = FEE_BPS;
   const unitIn = side === "buy" ? QUOTE.symbol : tickerOf(t.symbol);
@@ -423,4 +414,46 @@ function niceMax(v: number) {
   if (v <= 0) return 0;
   const p = 10 ** Math.floor(Math.log10(v));
   return ([1, 1.5, 3, 6, 10].find((m) => m * p >= v) ?? 10) * p;
+}
+
+/** A coin launched elsewhere on Ascend (user, 2026-11-05): "Token Not Tradable", and "Apply For Trading", which puts a request in
+ *  the trading admins' notifications (the ftf function's applyTrading; one open request per user per coin). */
+function NotTradable({ t }: { t: TokenStat }) {
+  const { ready, authenticated, login, getAccessToken } = usePrivy();
+  const [state, setState] = useState<"idle" | "busy" | "applied">("idle");
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setState("idle");
+    setError(null);
+  }, [t.address]);
+  const apply = async () => {
+    if (!authenticated) return login();
+    setState("busy");
+    setError(null);
+    try {
+      await ftfCall(getAccessToken, "applyTrading", { token: t.address });
+      setState("applied");
+    } catch (e) {
+      setState("idle");
+      setError((e as Error).message);
+    }
+  };
+  return (
+    <div className="ex-not-tradable">
+      <p className="ex-not-tradable-title">Token Not Tradable</p>
+      <button className="lock-login ex-apply" disabled={!ready || state !== "idle"} onClick={apply}>
+        {state === "applied" ? (
+          <>
+            <Check size={13} strokeWidth={3} /> Applied
+          </>
+        ) : state === "busy" ? (
+          "Applying…"
+        ) : (
+          "Apply For Trading"
+        )}
+      </button>
+      {state === "applied" && <p className="ex-order-note">Thanks. The Neuriio team has your request.</p>}
+      {error && <p className="lp-warn">{error}</p>}
+    </div>
+  );
 }

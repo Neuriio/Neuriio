@@ -2741,7 +2741,7 @@ a.ex-row {
     padding: 18px 16px;
   }
   .ex-list-card {
-    height: 320px;
+    height: min(620px, 75vh); /* phones: the Trending list under the token, ~8 rows before it scrolls */
   }
   .ex-stats {
     flex-wrap: nowrap;
@@ -4428,8 +4428,9 @@ a.ex-row {
   .ex-wide .ex-main {
     position: relative; /* the search bar centers on the page, above the widget */
     display: grid;
+    /* side columns equal (2026-11-05: the Trending list needs room for "(Not Launched On Neuriio)") */
     grid-template-columns:
-      clamp(224px, 15.5vw, 290px) minmax(0, 1fr)
+      clamp(260px, 19vw, 330px) minmax(0, 1fr)
       clamp(260px, 19vw, 330px);
     grid-template-areas: "list chart order";
     height: clamp(480px, calc(100vh - 200px), 900px);
@@ -4454,7 +4455,7 @@ a.ex-row {
 /* narrow windows: slimmer side columns, so the chart keeps its room */
 @media (max-width: 1180px) and (min-width: 861px) {
   .ex-wide .ex-main {
-    grid-template-columns: clamp(200px, 20vw, 240px) minmax(0, 1fr) clamp(250px, 25vw, 290px);
+    grid-template-columns: clamp(250px, 25vw, 290px) minmax(0, 1fr) clamp(250px, 25vw, 290px);
   }
 }
 
@@ -5509,6 +5510,13 @@ a.ex-row {
   color: var(--muted);
   white-space: nowrap;
 }
+/* Explore's narrow list column: the label gets its own line under the name (our logo stays beside the name) */
+.ex-list .tr-elsewhere {
+  flex-basis: 100%;
+  min-width: 0;
+  line-height: 1.2;
+  white-space: normal; /* on a narrow laptop it takes two lines rather than being cut */
+}
 /* the trade box for a coin paired against HYPE, KNTQ or a stock token: it trades on Ascend */
 .ex-other-pair {
   margin: 0;
@@ -5521,4 +5529,226 @@ a.ex-row {
   color: var(--text);
   font-weight: 600;
   text-decoration: underline;
+}
+
+/* ---- /swap (user, 2026-11-05; replaced /trending): one centered swap card ---- */
+.stage-swap {
+  position: relative; /* in the page flow, so phones scroll */
+  top: auto;
+  left: auto;
+  transform: none;
+  width: min(460px, calc(100vw - 32px));
+  margin: 176px auto 0;
+  padding-bottom: 110px; /* room for the footer links */
+}
+.app-nav .stage-swap {
+  margin-top: max(120px, calc(var(--header-bottom) + 40px));
+}
+.sw-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+}
+.sw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.sw-title {
+  font-size: 17px;
+  font-weight: 700;
+}
+.sw-net {
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--text-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.sw-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  background: rgba(10, 6, 18, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.sw-box-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sw-max {
+  padding: 0;
+  font: inherit;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.sw-max:hover {
+  color: var(--text);
+}
+.sw-box-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sw-input,
+.sw-output {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: 0;
+  outline: none;
+}
+.sw-output {
+  color: var(--muted);
+}
+.sw-token {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px 5px 5px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: rgba(70, 55, 100, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.sw-token:hover {
+  border-color: rgba(236, 221, 255, 0.35);
+}
+.sw-flip {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin: -16px auto;
+  z-index: 1;
+  color: var(--text);
+  background: #1b1428;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  cursor: pointer;
+}
+.sw-flip:hover {
+  border-color: rgba(236, 221, 255, 0.35);
+}
+.sw-go {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+}
+.sw-go:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.sw-note {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  text-align: center;
+  color: var(--muted);
+}
+.sw-picker {
+  max-height: min(620px, 100%);
+  overflow: hidden; /* only the list scrolls */
+}
+.sw-search {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  flex-shrink: 0;
+}
+.sw-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(236, 221, 255, 0.25) transparent;
+}
+.sw-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.sw-row:hover {
+  background: rgba(70, 55, 100, 0.35);
+}
+.sw-row-names {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.sw-row-symbol {
+  font-size: 14px;
+  font-weight: 600;
+}
+.sw-row-name {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sw-row-mcap {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* the trade box for a coin launched elsewhere on Ascend (user, 2026-11-05): not tradable here, with Apply For Trading */
+.ex-not-tradable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 12px;
+  text-align: center;
+}
+.ex-not-tradable-title {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.ex-apply {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ex-apply:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.ex-not-tradable .ex-order-note {
+  margin: 0;
 }
