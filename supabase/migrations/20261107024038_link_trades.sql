@@ -1,3 +1,4 @@
+-- APPLIED 2026-11-07 (mainnet backend switch).
 -- Trader activity stays tracked (user, 2026-11-01): the first piece of how Neuriio will be earned, not displayed anywhere.
 -- This is the part of award_points() that tags trades with their trader's X account, without the points. Returns rows tagged.
 create or replace function public.link_trades() returns integer

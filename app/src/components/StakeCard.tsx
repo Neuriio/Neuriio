@@ -6,7 +6,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { formatEther, formatUnits, parseEther, type Address } from "viem";
-import { DEMO, displayName, tickerOf, type TokenStat } from "../lib/explore";
+import { DEMO, displayName, isOurs, tickerOf, type TokenStat } from "../lib/explore";
+import { NotTradable } from "./OrderCard";
 import { QUOTE } from "../lib/config";
 import { amount as fmtAmount } from "../lib/format";
 import { useNeuriio } from "../lib/neuriio";
@@ -32,6 +33,8 @@ export function StakeCard({ t }: { t: TokenStat | null }) {
     login,
     provider: () => elysiumProvider(wallet!),
   };
+  // a token launched elsewhere: the same box as Buy / Sell (user, 2026-11-06); staking opens once it's approved for trading
+  if (t && !isOurs(t)) return <NotTradable t={t} />;
   return (
     <div className="ex-stake">
       {t ? (

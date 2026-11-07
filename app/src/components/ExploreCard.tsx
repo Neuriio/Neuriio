@@ -15,7 +15,7 @@ import { AnimatePresence } from "motion/react";
 import { ExternalLink, Search, UserRound } from "lucide-react";
 import { CATEGORIES, SECTORS } from "../lib/launch";
 import { CandleChart, type ChartControls } from "./CandleChart";
-import { agoraCandles } from "../lib/agora";
+import { agoraCandles, VENUE_LOGOS } from "../lib/agora";
 import { subscribeTrades, useLivePrices } from "../lib/live";
 import { tokenCreatorEarned } from "../lib/fees";
 import { formatUnits, type Address } from "viem";
@@ -44,8 +44,6 @@ import {
   searchTokens,
   tickerOf,
   agoraTrending,
-  elsewhereName,
-  elsewhereUrl,
   type TokenStat,
 } from "../lib/explore";
 import { poll } from "../lib/poll";
@@ -304,9 +302,10 @@ function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
         <div className="ex-head-names">
           <span className="ex-handle">{!isOurs(t) ? displayName(t) : t.kind === "ftf" ? t.name : t.x_name || handleOf(t.handle)}</span>
           {!isOurs(t) ? (
-            <a className="ex-modal-x" href={elsewhereUrl(t)} target="_blank" rel="noreferrer">
-              Not launched on Neuriio · view on {elsewhereName(t)} <ExternalLink size={11} />
-            </a>
+            <span className="ex-row-sub">
+              <span className="ex-ticker">{tickerOf(t.symbol)}</span>
+              <VenueChip t={t} />
+            </span>
           ) : t.kind === "ftf" ? (
             <span className="ex-ticker">{tickerOf(t.symbol)} · Friends Turned Fam</span>
           ) : (
@@ -321,9 +320,11 @@ function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
 
       <section className="ex-modal-section">
         <h3 className="ex-modal-label">Creator fees earned</h3>
-        <span className="ex-earned-value">
-          {earned === null ? "…" : compactUsd(earned * hypeUsd)}
-        </span>
+        {isOurs(t) ? (
+          <span className="ex-earned-value">{earned === null ? "…" : compactUsd(earned * hypeUsd)}</span>
+        ) : (
+          <span className="ex-earned-elsewhere" title="Not launched on Neuriio">N/A</span>
+        )}
       </section>
 
       <p className="ex-order-note">
@@ -366,18 +367,17 @@ function TrendingList({
             <button className={`ex-row${picked?.address === t.address ? " is-picked" : ""}`} onClick={() => onPick(t)}>
               <span className="ex-rank">{i + 1}</span>
               <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
+              {/* user, 2026-11-06: $TICKER in white, where it launched under it; market cap with the 24h change under it */}
               <span className="ex-row-names">
-                <span className="ex-row-handle tr-name">
-                  <span className="tr-name-text">{displayName(t)}</span>
-                  {isOurs(t) ? (
-                    <img className="tr-ours" src="/brand/logo.png" alt="Launched on Neuriio" title="Launched on Neuriio" />
-                  ) : (
-                    <span className="tr-elsewhere">(Not Launched On Neuriio)</span>
-                  )}
+                <span className="ex-row-handle" title={displayName(t)}>${t.symbol.replace(/^\$/, "")}</span>
+                <span className="ex-row-sub">
+                  <VenueChip t={t} />
                 </span>
+              </span>
+              <span className="ex-row-right">
+                <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
                 <Change t={t} price={live[t.address]} />
               </span>
-              <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
             </button>
           </li>
         ))}
@@ -486,11 +486,11 @@ function TokenDetail({
       <header className="ex-head">
         <Avatar handle={t.handle} pfp={t.x_pfp_url} size={44} />
         <div className="ex-head-names">
-          <span className="ex-handle tr-name">
-            <span className="tr-name-text">{displayName(t)}</span>
-            {!isOurs(t) && <span className="tr-elsewhere">(Not Launched On Neuriio)</span>}
+          <span className="ex-handle">{displayName(t)}</span>
+          <span className="ex-row-sub">
+            <span className="ex-ticker">{tickerOf(t.symbol)}</span>
+            <VenueChip t={t} />
           </span>
-          <span className="ex-ticker">{tickerOf(t.symbol)}</span>
         </div>
         <span className="ex-chips">
           {sector && <span className="lp-chip ex-sector-chip">{sector}</span>}
@@ -502,20 +502,19 @@ function TokenDetail({
         </span>
         {!compact && (
           <>
-            {isOurs(t) ? (
+            {/* tokens launched elsewhere get no button here: we don't send people off to other sites (user, 2026-11-06) */}
+            {isOurs(t) && (
               <button className="ex-profile-btn" onClick={() => setShowProfile(true)}>
                 <UserRound size={13} aria-hidden /> Profile
               </button>
-            ) : (
-              <a className="ex-profile-btn" href={elsewhereUrl(t)} target="_blank" rel="noreferrer">
-                <ExternalLink size={13} aria-hidden /> {elsewhereName(t)}
-              </a>
             )}
             <span className="ex-earned" title="Lifetime creator fees: 10% of every trading fee, on the curve and in the pool, paid in USDC">
               <span className="ex-earned-label">Creator fees earned</span>
-              <span className="ex-earned-value">
-                {earned === null ? "…" : compactUsd(earned * hypeUsd)}
-              </span>
+              {isOurs(t) ? (
+                <span className="ex-earned-value">{earned === null ? "…" : compactUsd(earned * hypeUsd)}</span>
+              ) : (
+                <span className="ex-earned-elsewhere" title="Not launched on Neuriio">N/A</span>
+              )}
             </span>
           </>
         )}
@@ -559,7 +558,28 @@ function TokenDetail({
 export function Change({ t, price }: { t: TokenStat; price?: number }) {
   const c = price != null && t.price_hype_24h_ago > 0 ? (price / t.price_hype_24h_ago - 1) * 100 : change24h(t);
   if (c == null) return <span className="ex-change">—</span>;
-  return <span className={`ex-change ${c >= 0 ? "price-up" : "price-down"}`}>{`${c >= 0 ? "+" : ""}${c.toFixed(1)}%`}</span>;
+  // big moves read like Agora's: +80.2K% rather than +80225.0%
+  const text = Math.abs(c) >= 1000 ? `${(c / 1000).toFixed(1)}K%` : `${c.toFixed(1)}%`;
+  return <span className={`ex-change ${c >= 0 ? "price-up" : "price-down"}`}>{`${c >= 0 ? "+" : ""}${text}`}</span>;
+}
+
+/** Where a token launched, as a small chip (like Agora's): Neuriio with our logo, else its launchpad (Montra, Kleos, ...). */
+export function VenueChip({ t }: { t: TokenStat }) {
+  if (isOurs(t))
+    return (
+      <span className="ex-venue is-ours" title="Launched on Neuriio">
+        <img src="/brand/logo.png" alt="" />
+        Neuriio
+      </span>
+    );
+  const venue = t.venue ?? (t.source === "agora" ? "Other" : "Ascend");
+  const logo = VENUE_LOGOS[venue];
+  return (
+    <span className="ex-venue" title={`Launched on ${venue}, not on Neuriio`}>
+      {logo && <img src={logo} alt="" />}
+      {venue}
+    </span>
+  );
 }
 
 /** The /launch cards' background: lavender tint + dot grid. `side` = where it glows (each card faces the page center). */

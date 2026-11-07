@@ -58,8 +58,27 @@ function imageOf(image: string | null): string | null {
 }
 
 /** Launchpad names as Agora shows them. */
-const VENUES: Record<string, string> = { montra: "Montra", kleos: "Kleos", ascend: "Ascend", elyspump: "ElysPump", boxa: "BOXA", obol: "Obol", volta: "Volta", rons: "RONS", stockium: "Stockium", eleos: "Eleos" };
+const VENUES: Record<string, string> = { montra: "Montra", kleos: "Kleos", ascend: "Ascend", elyspump: "ElysPump", boxa: "BOXA", obol: "Obol", volta: "Volta", rons: "RONS", stockium: "Stockium", eleos: "Eleos", elyxa: "Elyxa", petals: "Petals" };
 const venueOf = (a: AgoraToken) => VENUES[a.launchpad] ?? (a.launchpad === "other" ? null : a.launchpad);
+
+/** Launchpad logos (app/public/launchpads, 64 px, 2026-11-06). From each launchpad's own site: Ascend (app.ascendlaunch.xyz),
+ *  ElysPump (elysp.com; NOT elyspump.com, which Cloudflare flags as phishing), Stockium (stockium.fun), Eleos (eleos.fun).
+ *  No official site found for the other 8, so those are Agora's copies (agoradex.app/launchpads/*, user's choice): Montra,
+ *  BOXA, Kleos, Obol, Volta, Elyxa, RONS, Petals. Swap them for official files when we have them. */
+export const VENUE_LOGOS: Record<string, string> = {
+  Ascend: "/launchpads/ascend.png",
+  ElysPump: "/launchpads/elyspump.png",
+  Stockium: "/launchpads/stockium.png",
+  Eleos: "/launchpads/eleos.svg",
+  Montra: "/launchpads/montra.png",
+  BOXA: "/launchpads/boxa.png",
+  Kleos: "/launchpads/kleos.png",
+  Obol: "/launchpads/obol.svg",
+  Volta: "/launchpads/volta.png",
+  Elyxa: "/launchpads/elyxa.png",
+  RONS: "/launchpads/rons.png",
+  Petals: "/launchpads/petals.png",
+};
 
 /** USD per "1e9-supply unit": price × 1e9 = market cap, whatever the token's real supply (most are 1e9 already). */
 function unitPrice(a: AgoraToken, hypeUsd: number) {
@@ -108,10 +127,24 @@ export function agoraToStat(a: AgoraToken, hypeUsd: number): TokenStat {
   };
 }
 
+/** The top-15 feed, shared: Explore's list and the site footer read the same answer (kept 20 s). `head`: the latest
+ *  Elysium block Agora has read (the footer's block number, without our own RPC calls). */
+export type AgoraSnapshot = { tokens: TokenStat[]; hypeUsd: number; head: number | null };
+let shared: { at: number; p: Promise<AgoraSnapshot> } | null = null;
+export function agoraSnapshot(): Promise<AgoraSnapshot> {
+  if (shared && Date.now() - shared.at < 20_000) return shared.p;
+  const p = getJson<TopFeed & { synced?: { head?: number } }>({ list: "top" }).then((feed) => {
+    lastHypeUsd = feed.hypeUsd;
+    return { tokens: feed.tokens.map((a) => agoraToStat(a, feed.hypeUsd)), hypeUsd: feed.hypeUsd, head: feed.synced?.head ?? null };
+  });
+  shared = { at: Date.now(), p };
+  p.catch(() => (shared = null)); // a failed answer isn't kept
+  return p;
+}
+
 /** Agora's top 15 Elysium tokens by 24h volume (every launchpad), as Explore rows. */
 export async function agoraTop(): Promise<TokenStat[]> {
-  const feed = await getJson<TopFeed>({ list: "top" });
-  return feed.tokens.map((a) => agoraToStat(a, feed.hypeUsd));
+  return (await agoraSnapshot()).tokens;
 }
 
 let lastHypeUsd = 0; // the single-token answer may not carry the HYPE price: reuse the list's

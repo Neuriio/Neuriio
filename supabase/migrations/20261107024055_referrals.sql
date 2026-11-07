@@ -1,3 +1,4 @@
+-- APPLIED 2026-11-07 (mainnet backend switch).
 -- Referral codes (user, 2026-11-03): a partner protocol gets a code; the traders it brings in are tied to it, and the partner is paid
 -- weekly BY HAND from the KNTQ + treasury shares on their volume (never the stakers' 40%). Written only by the `referral` edge function
 -- (codes: by us, in SQL). Private: no anon/authenticated access; the app reads its own status through the function.

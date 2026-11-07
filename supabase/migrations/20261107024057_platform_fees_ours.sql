@@ -1,3 +1,4 @@
+-- APPLIED 2026-11-07 (mainnet backend switch).
 -- Platform fees counter, hardened (security pass 2026-11-04): count only fees matched to one of our launches. The fee router now
 -- drops BuilderPaid events from contracts that aren't real Ascend escrows (anyone can emit one), and unmatched receipts (a real
 -- escrow that isn't ours) are held, not ours to show.

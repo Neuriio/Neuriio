@@ -6,7 +6,7 @@ import { CardStack } from "./components/CardStack";
 import { TopNav } from "./components/TopNav";
 import { HeaderSearch } from "./components/HeaderSearch";
 import { HypeButton } from "./components/HypeButton";
-import { SocialLinks } from "./components/SocialLinks";
+import { SiteFooter } from "./components/SiteFooter";
 import { LogoMarquee } from "./components/LogoMarquee";
 import { useTickerLogos } from "./lib/tickers";
 import { LaunchCard } from "./components/LaunchCard";
@@ -112,7 +112,7 @@ function Page() {
         </main>
       )}
 
-      {PAGE !== "/" && <SocialLinks />}
+      {PAGE !== "/" && <SiteFooter />}
     </div>
   );
 }

@@ -418,7 +418,7 @@ function niceMax(v: number) {
 
 /** A coin launched elsewhere on Ascend (user, 2026-11-05): "Token Not Tradable", and "Apply For Trading", which puts a request in
  *  the trading admins' notifications (the ftf function's applyTrading; one open request per user per coin). */
-function NotTradable({ t }: { t: TokenStat }) {
+export function NotTradable({ t }: { t: TokenStat }) {
   const { ready, authenticated, login, getAccessToken } = usePrivy();
   const [state, setState] = useState<"idle" | "busy" | "applied">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -449,7 +449,7 @@ function NotTradable({ t }: { t: TokenStat }) {
         ) : state === "busy" ? (
           "Applying…"
         ) : (
-          "Apply For Trading"
+          "Owner Apply" // user, 2026-11-06: makes clear it's for the token's owner, not everyone
         )}
       </button>
       {state === "applied" && <p className="ex-order-note">Thanks. The Neuriio team has your request.</p>}
