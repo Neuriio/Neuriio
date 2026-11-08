@@ -44,10 +44,10 @@ export const ELYSIUM_RPC: string = RPC_VIA_PROXY
 
 export const HL_TESTNET = false;
 
-/** NeuriioSwap (src/trade/NeuriioSwap.sol, user 2026-11-07): trades tokens launched elsewhere (Montra first) in their own pools,
- *  with our 0.5% on top, in HYPE. From deployments/elysium-mainnet.json "swap" once the real (timelock-owned) one exists. Local dev
- *  only: VITE_NEURIIO_SWAP in app/.env.local points at a TEST instance you own, for small trades before the audit. null: tokens
- *  launched elsewhere stay "Token Not Tradable". */
+/** NeuriioSwap (src/trade/NeuriioSwap.sol, user 2026-11-07): trades tokens launched elsewhere in their own pools, with our 0.5%
+ *  on top, in HYPE. From deployments/elysium-mainnet.json "swap": 0x630B…4946, live on the site since 2026-11-08 (user: "its all
+ *  audited and approved"). Local dev can override it with VITE_NEURIIO_SWAP in app/.env.local. A token whose pool it hasn't
+ *  approved stays "Token Not Tradable". */
 const swapSetting = import.meta.env.DEV ? (import.meta.env.VITE_NEURIIO_SWAP ?? "").trim() : "";
 export const NEURIIO_SWAP: Address | null = (swapSetting || (deployment as { swap?: string | null }).swap || null) as Address | null;
 

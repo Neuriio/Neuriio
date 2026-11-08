@@ -473,7 +473,14 @@ function OutsideToken({ t, fixedSide }: { t: TokenStat; fixedSide?: Side }) {
     };
   }, [t.address]);
   if (pool === undefined) return <p className="ex-empty">…</p>;
-  if (!pool) return <NotTradable t={t} />;
+  // not tradable here yet: still show its Volume and Launch check (they don't depend on trading)
+  if (!pool)
+    return (
+      <>
+        <NotTradable t={t} />
+        <TradeBars address={t.address} nonce={0} elsewhere />
+      </>
+    );
   return <HypeOrderCard t={t} pool={pool} fixedSide={fixedSide} />;
 }
 
