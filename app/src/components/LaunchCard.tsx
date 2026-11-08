@@ -50,8 +50,7 @@ import {
   launchFtfArgs,
   launchpadAbi,
   MAX_LINKS,
-  requestLaunchPass,
-} from "../lib/launch";
+  requestLaunchPass, estimateFirstBuy } from "../lib/launch";
 import { EASE_OUT } from "../lib/motion";
 import { DEPLOYED, QUOTE, SUPABASE_URL } from "../lib/config";
 import { fileToBase64, FTF_NAME_RE, FTF_TICKER_RE, ftfCall, type FtfPassResponse, type FtfView } from "../lib/ftf";
@@ -91,6 +90,8 @@ const FTF_SIZE = 4;
 const X_LABEL = /^(x|twitter)$/i; // a personal token's X link is its account's: nothing else can call itself that
 const STAGES = ["Checking your X account", "Launching on Elysium", "You're live"] as const;
 const QUICK_BUYS = ["0", "10", "50", "100"]; // USDC
+const compactTokens = (n: number) => new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(n);
+const pctLabel = (p: number) => (p >= 1 ? p.toFixed(2) : p >= 0.01 ? p.toFixed(3) : "<0.01") + "%";
 const TESTNET_PARAMS: CurveParams = { startPrice: 0, feeBps: 150 }; // until the chain answers (no estimate shown)
 
 type Link = { label: string; url: string };
@@ -178,7 +179,19 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
   const [balance, setBalance] = useState<{ usdc: number; gas: number } | null>(null);
 
   useEffect(() => {
-    fetchCurveParams().then(setParams).catch(() => {});
+    // retry until it answers (on the live site the first chain read can wait on the security session)
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const load = () =>
+      fetchCurveParams().then(
+        (p) => alive && setParams(p),
+        () => alive && (timer = setTimeout(load, 5_000)),
+      );
+    load();
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
   }, []);
   // already launched personally? (one per X account and wallet) Then only an FTF is left to launch.
   useEffect(() => {
@@ -672,7 +685,20 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                       {balance !== null && <span className="lp-balance">Balance {amount(balance.usdc)} USDC</span>}
                     </div>
                     <p className="lp-est">
-                      {buy > 0 ? <>You buy first, at market, in the same transaction as your launch.</> : <>Launch with no first buy. Anyone can be first.</>}
+                      {buy > 0 ? (
+                        params.startPrice > 0 ? (
+                          // the opening-price estimate (user, 2026-11-09: it wasn't shown); matches real early buys on mainnet
+                          <>
+                            About <b>{compactTokens(estimateFirstBuy(buy, params).tokens)} tokens</b> ·{" "}
+                            <b>{pctLabel(estimateFirstBuy(buy, params).pctOfSupply)} of supply</b>, bought first in the same transaction as
+                            your launch.
+                          </>
+                        ) : (
+                          <>You buy first, at market, in the same transaction as your launch.</>
+                        )
+                      ) : (
+                        <>Launch with no first buy. Anyone can be first.</>
+                      )}
                     </p>
                     {noGas && <p className="lp-warn">Add a little HYPE for gas to your Neuriio wallet on Elysium first (Account → deposit address).</p>}
                     {!noGas && lowUsdc && <p className="lp-warn">Not enough USDC for this first buy.</p>}
