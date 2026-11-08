@@ -1,4 +1,5 @@
-// Live trades for charts: keeper/watcher.mjs broadcasts every curve/pool trade on the private Supabase Realtime
+// Live trades for charts. Neuriio's own trades (user, 2026-11-07): the record-trade function broadcasts each one about a
+// second after it lands (lib/recordTrade.ts). Before that: keeper/watcher.mjs broadcasts every curve/pool trade on the private Supabase Realtime
 // channel "trades:<token>" as soon as its block appears (the indexer stores the same trade about a minute later), and
 // all of them on "trades:all" in one message per second. Receive-only for the app (migration
 // 20260928020000_live_trades.sql). A tab hidden for a minute closes its live channels until it's shown again.
@@ -111,7 +112,18 @@ export function subscribeTrades(
   if (LANDING) return () => {}; // the landing's showcase chart stays still
   if (DEMO) return keepLive(() => demoFeed(token, onTrade, startPriceHype ?? 1e-7));
   const seen = new Set<string>();
-  return keepLive(() => {
+  // this browser's own trades (record-trade's answer), before or instead of the broadcast
+  const local = (e: Event) => {
+    for (const t of (e as CustomEvent<LiveTrade[]>).detail) {
+      if (t.token.toLowerCase() !== token.toLowerCase()) continue;
+      const id = `${t.tx}:${t.logIndex}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      onTrade(t);
+    }
+  };
+  window.addEventListener(LOCAL_TRADES, local);
+  const stopLive = keepLive(() => {
     const channel = rt().channel(`trades:${token.toLowerCase()}`, { config: { private: true } });
     channel
       .on("broadcast", { event: "trade" }, ({ payload }) => {
@@ -127,6 +139,17 @@ export function subscribeTrades(
       rt().removeChannel(channel);
     };
   }, onResume);
+  return () => {
+    window.removeEventListener(LOCAL_TRADES, local);
+    stopLive();
+  };
+}
+
+const LOCAL_TRADES = "neuriio:trades";
+/** Trades this browser just placed (lib/recordTrade): onto open charts, live prices and Positions right away. */
+export function addLocalTrades(trades: LiveTrade[]) {
+  onTrades(trades);
+  window.dispatchEvent(new CustomEvent(LOCAL_TRADES, { detail: trades }));
 }
 
 function demoFeed(token: string, onTrade: (t: LiveTrade) => void, start: number) {

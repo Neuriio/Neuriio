@@ -224,7 +224,7 @@ export function SendModal({ target, onClose }: { target: SendTarget | null; onCl
                   {busy ? "Sending…" : picked && units ? `Send ${value} ${symOf(picked)}` : "Send"}
                 </button>
                 <p className="send-note">
-                  {byAddress ? "Elysium testnet only: double-check the address, sends can't be undone." : "Goes straight to their Neuriio wallet."} You
+                  {byAddress ? "Elysium mainnet only: double-check the address, sends can't be undone." : "Goes straight to their Neuriio wallet."} You
                   pay a little HYPE for gas.
                 </p>
               </>

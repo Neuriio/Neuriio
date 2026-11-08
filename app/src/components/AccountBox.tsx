@@ -176,7 +176,7 @@ function DepositAddress({ address, onSend }: { address: string; onSend?: () => v
         </span>
       </button>
       <span className="deposit-foot">
-        <span className="deposit-note">Elysium Testnet Only</span>
+        <span className="deposit-note">Elysium Mainnet Only</span>
         {onSend && (
           <button className="feed-act feed-send" onClick={onSend}>
             Send <b>$</b>

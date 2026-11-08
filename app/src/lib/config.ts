@@ -44,9 +44,13 @@ export const ELYSIUM_RPC: string = RPC_VIA_PROXY
 
 export const HL_TESTNET = false;
 
-/** The DEX aggregator contract the /swap page routes through (user, 2026-11-05: Ascend's; the user sends the address). null:
- *  the Swap page shows tokens and balances but no quotes, and its Swap button stays off. */
-export const SWAP_AGGREGATOR: Address | null = null;
+/** NeuriioSwap (src/trade/NeuriioSwap.sol, user 2026-11-07): trades tokens launched elsewhere (Montra first) in their own pools,
+ *  with our 0.5% on top, in HYPE. From deployments/elysium-mainnet.json "swap" once the real (timelock-owned) one exists. Local dev
+ *  only: VITE_NEURIIO_SWAP in app/.env.local points at a TEST instance you own, for small trades before the audit. null: tokens
+ *  launched elsewhere stay "Token Not Tradable". */
+const swapSetting = import.meta.env.DEV ? (import.meta.env.VITE_NEURIIO_SWAP ?? "").trim() : "";
+export const NEURIIO_SWAP: Address | null = (swapSetting || (deployment as { swap?: string | null }).swap || null) as Address | null;
+
 
 /** Supabase project (launch passes, registration, points). Functions use the Privy token. */
 export const SUPABASE_URL = "https://yviymgfgaepmtijgyyyo.supabase.co";

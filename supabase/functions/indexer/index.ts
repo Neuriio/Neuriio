@@ -9,6 +9,7 @@
 //    (default: the first world), which scopes what the app lists (token_stats), so a new world is indexed (charts,
 //    history) before the app switches to it.
 // 2. Hyperliquid: each user's fills that carry our builder fee (= placed through Neuriio) -> trades
+// 2b. Creator fees (creatorFees.ts): each tracked token's Ascend escrow -> creator_fees, every 5 minutes.
 // 3. link_trades(): tags new trades with their trader's X account. Trader activity is kept for how Neuriio will be earned
 //    (first piece: user, 2026-11-01); it isn't displayed anywhere.
 //
@@ -58,6 +59,7 @@ import {
   type TradeRow,
 } from "../_shared/indexer.ts";
 import { json } from "../_shared/privy.ts";
+import { indexCreatorFees } from "./creatorFees.ts";
 import { env } from "../_shared/env.ts";
 
 
@@ -96,6 +98,16 @@ const WORLDS: (World | AscendWorld | AscendAllWorld)[] = Deno.env.get("WORLDS")
     usd: "hype",
     fromBlock: BigInt(env("INDEX_FROM_BLOCK")),
   }];
+// Explore's list and charts for every Ascend coin come from our own chain data (user, 2026-11-07: "just track the chain", no
+// Agora): with an "ascend" world and no "ascend_all" one in WORLDS, add it (every 5 minutes, see indexAscendAll).
+{
+  const ours = WORLDS.find((w) => w.kind === "ascend") as AscendWorld | undefined;
+  if (ours && !WORLDS.some((w) => w.kind === "ascend_all")) {
+    WORLDS.push({ kind: "ascend_all", registry: ours.hook, poolManager: ours.poolManager, hook: ours.hook, fromBlock: 422_319n });
+  }
+}
+/** NeuriioSwap (trading tokens launched elsewhere): its trades' traders are recorded for Positions (comma list). */
+const NEURIIO_SWAPS = (Deno.env.get("NEURIIO_SWAPS") ?? "0x630B8f610abEAe77FD39f802136F57Dd2B2f4946").split(",").map((a) => getAddress(a.trim()));
 // with only the ascend_all world (before our launcher is deployed) there's no app registry: nothing is "ours" yet
 const APP_REGISTRY = (Deno.env.get("APP_REGISTRY") ?? WORLDS.find((w) => w.kind !== "ascend_all")?.registry ?? "0x0000000000000000000000000000000000000000").toLowerCase();
 const registryAbi = parseAbi(["function launchpadsLength() view returns (uint256)", "function launchpads(uint256) view returns (address)"]);
@@ -103,6 +115,13 @@ const HL_INFO = env("HL_TESTNET") === "true" ? "https://api.hyperliquid-testnet.
 const MAX_BLOCKS = 50_000n; // per run
 const chain = createPublicClient({ transport: http(env("RPC_URL")) });
 const db = createClient(env("SUPABASE_URL"), env("NEURIIO_DB_KEY"), { auth: { persistSession: false } });
+/** The chain head, remembered: the run ends by publishing the latest one (app_config.elysium_head: the site footer's block). */
+let seenHead = 0n;
+async function headNow() {
+  const h = await chain.getBlockNumber({ cacheTime: 0 });
+  if (h > seenHead) seenHead = h;
+  return h;
+}
 
 const hlInfo = async (body: unknown) => {
   const res = await fetch(HL_INFO, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -155,7 +174,7 @@ async function indexElysium(world: World, hypeUsd: number | null) {
   const key = `elysium:registry:${registry}`;
   const last = await getState(key);
   const from = last ? BigInt(last) + 1n : world.fromBlock;
-  const head = await chain.getBlockNumber({ cacheTime: 0 });
+  const head = await headNow();
   if (from > head) return { from: Number(from), to: Number(head), events: 0 };
   const to = head - from > MAX_BLOCKS ? from + MAX_BLOCKS : head;
 
@@ -274,7 +293,7 @@ async function indexAscend(world: AscendWorld) {
   const key = `elysium:registry:${registry}`;
   const last = await getState(key);
   const from = last ? BigInt(last) + 1n : world.fromBlock;
-  const head = await chain.getBlockNumber({ cacheTime: 0 });
+  const head = await headNow();
   if (from > head) return { registry, from: Number(from), to: Number(head), events: 0 };
   const to = head - from > MAX_BLOCKS ? from + MAX_BLOCKS : head;
 
@@ -359,6 +378,8 @@ const ALL_LOG_STEP = 2_000n; // blocks per chunk: one getLogs per event, inside 
 const ALL_RUN_MS = 30_000; // chunk after chunk for this long, then stop (the cron runs every minute)
 const LOOKUPS_AT_ONCE = 6; // each trade's trader is its transaction's sender: one lookup per transaction, a few at a time
 const METADATA_PER_RUN = 25;
+const ALL_EVERY_MS = 5 * 60_000;
+const ALL_CAUGHT_UP = 3_000n; // blocks (~10 minutes): behind more than this, every run keeps catching up
 
 /** Runs `f` over `items`, at most `n` at a time, so a busy stretch never fires thousands of requests at the provider at once. */
 async function eachLimit<T>(items: T[], n: number, f: (item: T) => Promise<void>) {
@@ -375,8 +396,12 @@ async function indexAscendAll(world: AscendAllWorld, hypeUsdNow: number | null) 
   const started = Date.now();
   const last = await getState(key);
   const first = last ? BigInt(last) + 1n : world.fromBlock;
-  const head = await chain.getBlockNumber({ cacheTime: 0 });
+  const head = await headNow();
   if (first > head) return { world: "ascend_all", from: Number(first), to: Number(head), events: 0 };
+  // caught up: every 5 minutes is enough (list numbers, chart history); Neuriio's own trades arrive at once via record-trade
+  const lastAt = Number((await getState("elysium:ascend_all:at")) ?? 0);
+  if (head - first < ALL_CAUGHT_UP && Date.now() - lastAt < ALL_EVERY_MS) return { world: "ascend_all", skipped: "ran in the last 5 minutes" };
+  await setState("elysium:ascend_all:at", String(Date.now()));
 
   // USD per pair asset, as Ascend's app prices them (Hyperliquid spot vs USDC): once per run
   const [meta, mids] = await Promise.all([
@@ -457,8 +482,10 @@ async function indexAscendChunk(world: AscendAllWorld, from: bigint, to: bigint,
   // ~10-15M Alchemy compute units a month), so only our own launches get it; others' trades are stored with trader ""
   const ours = new Set((await selectAll<{ address: string }>((a, b) => db.from("tokens").select("address").order("address").range(a, b))).map((t) => t.address));
   const poolIsOurs = (l: { args: Record<string, unknown> }) => ours.has(tokenOfPool.get(String(l.args.id ?? l.args.poolId).toLowerCase()) ?? "");
+  // ...plus every trade made through NeuriioSwap (Positions shows those too): its events name the transactions
+  const viaSwap = new Set((await chain.getLogs({ address: NEURIIO_SWAPS, fromBlock: from, toBlock: to })).map((l) => l.transactionHash!));
   const txFrom = new Map<string, string>();
-  await eachLimit([...new Set([...swaps, ...fills].filter(poolIsOurs).map((l) => l.transactionHash!))], LOOKUPS_AT_ONCE, async (h) => {
+  await eachLimit([...new Set([...swaps, ...fills].filter((l) => poolIsOurs(l) || viaSwap.has(l.transactionHash!)).map((l) => l.transactionHash!))], LOOKUPS_AT_ONCE, async (h) => {
     txFrom.set(h, (await chain.getTransaction({ hash: h })).from);
   });
 
@@ -595,10 +622,28 @@ Deno.serve(async () => {
   } catch (e) {
     result.elysiumError = failed("elysium", e);
   }
+  // creator fees for our launches and Ascend's top tokens (creator_fees): the app reads them from there, not the chain
+  try {
+    const ascend = WORLDS.find((w) => w.kind === "ascend");
+    result.creatorFees = await indexCreatorFees({
+      chain,
+      db,
+      appRegistry: APP_REGISTRY,
+      oursFrom: ascend?.fromBlock ?? 0n,
+      hypeUsd: (result.hypeUsd as number | null) ?? null,
+      getState,
+      setState,
+    });
+  } catch (e) {
+    result.creatorFees = failed("creator fees", e);
+  }
   try {
     result.hyperliquid = await indexHyperliquid();
   } catch (e) {
     result.hyperliquidError = failed("hyperliquid", e);
+  }
+  if (seenHead > 0n) {
+    await db.from("app_config").upsert({ key: "elysium_head", value: seenHead.toString(), updated_at: new Date().toISOString() });
   }
   const { data: linked, error } = await db.rpc("link_trades");
   result.tradesLinked = error ? failed("link_trades", error) : linked;

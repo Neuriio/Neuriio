@@ -1,31 +1,34 @@
-// Creator fees on Ascend (user, 2026-11-04): the creator's share of Ascend's 1% fee builds up in each token's own CreatorEscrow
-// on Ascend, paid to the creator (an FTF: to its seat, which splits it 4 ways). Below a $40k market cap most of it is held until
-// the token qualifies (Ascend's docs, Creator fee release). Claiming happens on Ascend's escrow, not through us.
-import { parseAbi, type Address } from "viem";
-import { ASCEND } from "./config";
-import { pub } from "./launch";
-import { poolIdOf, poolKeyOf } from "./trade";
+// Creator fees on Ascend (user, 2026-11-07): what a token's creator has earned, for our launches and Ascend's top tokens alike.
+// The indexer (supabase/functions/indexer/creatorFees.ts) reads each token's CreatorEscrow every 5 minutes into creator_fees:
+// the sum of its Credited payouts (Ascend pays creators automatically on each settle, so "claimable" is nearly always 0) plus
+// what's held back below Ascend's $40k market cap. The app only reads that table: no RPC calls per visitor.
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 
-const factoryAbi = parseAbi(["function escrowOf(bytes32 poolId) view returns (address)"]);
-const escrowAbi = parseAbi([
-  "function recipient() view returns (address)",
-  "function claimable(address account) view returns (uint256)",
-  "function held() view returns (uint256)",
-]);
+export type CreatorFees = {
+  /** Lifetime creator earnings in USD (paid out + held), at the indexer's last run. */
+  usd: number;
+  /** The held part's share of it (0..1): forfeited if the token doesn't qualify within Ascend's 14 days. */
+  heldShare: number;
+};
 
-/** A token's CreatorEscrow on Ascend. */
-export async function escrowOf(token: Address): Promise<Address> {
-  return pub.readContract({ address: ASCEND.escrowFactory, abi: factoryAbi, functionName: "escrowOf", args: [poolIdOf(poolKeyOf(token))] });
-}
-
-/** The creator fees a token has waiting (USDC base units): what its creator can claim now plus what's held until it qualifies.
- *  Not lifetime: claimed fees drop out (lifetime needs the escrow's Settled events, from the indexer). */
-export async function tokenCreatorEarned(token: Address): Promise<bigint> {
-  const escrow = await escrowOf(token);
-  const recipient = await pub.readContract({ address: escrow, abi: escrowAbi, functionName: "recipient" });
-  const [claimable, held] = await Promise.all([
-    pub.readContract({ address: escrow, abi: escrowAbi, functionName: "claimable", args: [recipient] }),
-    pub.readContract({ address: escrow, abi: escrowAbi, functionName: "held" }),
-  ]);
-  return claimable + held;
+/** A token's creator fees, or null when the indexer doesn't track it (yet). Kept a minute per token. */
+const cache = new Map<string, { at: number; p: Promise<CreatorFees | null> }>();
+export function creatorFees(token: string): Promise<CreatorFees | null> {
+  const k = token.toLowerCase();
+  const hit = cache.get(k);
+  if (hit && Date.now() - hit.at < 60_000) return hit.p;
+  const p = fetch(`${SUPABASE_URL}/rest/v1/creator_fees?token=eq.${k}&select=earned_usd,credited,held`, {
+    headers: { apikey: SUPABASE_PUBLISHABLE_KEY },
+  })
+    .then((r) => (r.ok ? r.json() : []))
+    .then((rows: { earned_usd: number | string; credited: number | string; held: number | string }[]) => {
+      const r = rows[0];
+      if (!r) return null;
+      const credited = Number(r.credited);
+      const held = Number(r.held);
+      return { usd: Number(r.earned_usd), heldShare: credited + held > 0 ? held / (credited + held) : 0 };
+    })
+    .catch(() => null);
+  cache.set(k, { at: Date.now(), p });
+  return p;
 }

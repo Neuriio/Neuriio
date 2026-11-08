@@ -4400,7 +4400,7 @@ a.ex-row {
 }
 .ex-wide .ex-card {
   margin: 0;
-  background: #170f22;
+  background: #120c1d; /* the page's own dark purple (user, 2026-11-07; was #170f22, briefly grey): list, chart, buy/sell, positions */
   border: 1px solid var(--ex-frame);
   border-radius: 6px;
   box-shadow: none;
@@ -5615,6 +5615,43 @@ a.ex-row {
 .sw-output {
   color: var(--muted);
 }
+.sw-output.is-set {
+  color: var(--text);
+}
+/* the quote's details (wired 2026-11-08): rate, minimum, price impact, route */
+.sw-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: rgba(10, 6, 18, 0.35);
+  border: 1px solid rgba(236, 221, 255, 0.08);
+  border-radius: 5px;
+}
+.sw-details div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+}
+.sw-details dt {
+  color: var(--muted);
+}
+.sw-details dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.sw-warn,
+.sw-msg {
+  margin: 8px 0 0;
+  font-size: 12px;
+  text-align: center;
+}
+.sw-warn {
+  color: #f5c46b;
+}
 .sw-token {
   display: inline-flex;
   flex-shrink: 0;
@@ -5627,8 +5664,14 @@ a.ex-row {
   color: var(--text);
   background: rgba(70, 55, 100, 0.45);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 5px; /* matches the Swap button (user, 2026-11-08) */
   cursor: pointer;
+}
+/* token logos: no box, just the round logo (user, 2026-11-08); the circle crop hides KNTQ's dark square corners */
+.ex-avatar.sw-logo {
+  background: transparent;
+  border: none;
+  border-radius: 50%;
 }
 .sw-token:hover {
   border-color: rgba(236, 221, 255, 0.35);
@@ -5657,12 +5700,6 @@ a.ex-row {
 .sw-go:disabled {
   opacity: 0.55;
   cursor: default;
-}
-.sw-note {
-  margin: 2px 0 0;
-  font-size: 11.5px;
-  text-align: center;
-  color: var(--muted);
 }
 .sw-picker {
   max-height: min(620px, 100%);
@@ -5927,4 +5964,99 @@ a.site-foot-item:hover {
   .site-foot-coin:nth-child(n + 8) {
     display: none;
   }
+}
+
+/* Explore's list header (user, 2026-11-07): Verified / Neuriio toggle; rows: $TICKER + market cap, chip under, 24h volume right */
+.ex-list-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: rgba(10, 6, 18, 0.45);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.ex-list-tab {
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.ex-list-tab.is-on {
+  color: var(--text);
+  background: rgba(70, 55, 100, 0.55);
+}
+.ex-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.ex-row-ticker-main {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ex-row-mcap-inline {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* the HYPE pair mark on the bottom-left corner of a token's picture (user, 2026-11-07): Hyperliquid's brand-kit blob on a small
+   dark disc so it reads over any picture */
+.ex-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.ex-pair-badge {
+  position: absolute;
+  bottom: -4px;
+  left: -4px;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  background: #0f2a26;
+  border: 1.5px solid #120c1d;
+  border-radius: 50%;
+}
+
+/* a token launched elsewhere: its creator's X / website / Telegram as small icon links (user, 2026-11-07) */
+.ex-token-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ex-token-links a {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  color: var(--text-2);
+  background: rgba(70, 55, 100, 0.35);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.ex-token-links a:hover {
+  color: var(--text);
+  border-color: rgba(236, 221, 255, 0.35);
+}
+.ex-token-link-x {
+  width: 11px;
+  height: 11px;
+  filter: brightness(0) invert(1);
+  opacity: 0.85;
+}
+.ex-about .ex-token-links {
+  margin: 4px 0 2px;
 }

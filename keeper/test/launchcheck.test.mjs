@@ -306,6 +306,29 @@ test("chain: selling shows up, and a recheck reuses the first look without readi
   }
 });
 
+test("chain: a recheck reads only the blocks since the last one, and still catches a later transfer between early wallets", async () => {
+  const [a, b] = [await person(), await person()];
+  const l = await launch();
+  await buy(l, [a]);
+  await buy(l, [b]);
+  const one = await run(l);
+  assert.equal(one.summary.linked_wallets, 0); // two fast buyers, nothing ties them yet
+  const scanned = BigInt(one.saved.scannedTo);
+  await send(a, l.token, tokenA.abi, "transfer", [b.account.address, 1n * E18]); // passes tokens later: now linked
+  const real = pub.getLogs;
+  const ranges = [];
+  pub.getLogs = (q) => (ranges.push(q.fromBlock), real(q));
+  try {
+    const two = await run(l, null, {}, JSON.parse(JSON.stringify(one.saved)));
+    assert.equal(two.summary.linked_wallets, 2);
+    assert.ok(ranges.length > 0 && ranges.every((from) => from > scanned)); // nothing before the last check is read again
+    const three = await run(l, null, {}, JSON.parse(JSON.stringify(two.saved)));
+    assert.equal(three.summary.linked_wallets, 2); // the link is kept, not just found once
+  } finally {
+    pub.getLogs = real;
+  }
+});
+
 test("chain: no buyers yet is nothing to show, not an error", async () => {
   assert.equal(await run(await launch()), null);
 });

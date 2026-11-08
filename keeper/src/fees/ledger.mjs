@@ -31,8 +31,9 @@ export function memoryLedger() {
   };
 }
 
-/** Supabase, through its REST API with the service key. */
-export function supabaseLedger(url, serviceKey) {
+/** Supabase, through its REST API with the service key. `prefix` "partner_" + cursor "fees:partner:cursor" = the partner fee
+ *  tables (20261107200000_partner_fees.sql), whose receipts also store quote / fee_raw / price_usd. */
+export function supabaseLedger(url, serviceKey, { prefix = "", cursor = "fees:cursor" } = {}) {
   const api = async (path, { method = "GET", body, prefer } = {}) => {
     const res = await fetch(`${url}/rest/v1/${path}`, {
       method,
@@ -45,9 +46,9 @@ export function supabaseLedger(url, serviceKey) {
   };
   const toReceipt = (r) => ({ txHash: r.tx_hash, logIndex: r.log_index, amount: BigInt(r.amount), token: r.token });
   const toItem = (i) => ({ id: i.id, seq: i.seq, kind: i.kind, token: i.token, amount: BigInt(i.amount), status: i.status, txHash: i.tx_hash, rawTx: i.raw_tx });
-  const CURSOR = "fees:cursor";
+  const CURSOR = cursor;
   const loadRun = async (run) => {
-    const items = await api(`fee_run_items?run_id=eq.${run.id}&order=seq`);
+    const items = await api(`${prefix}fee_run_items?run_id=eq.${run.id}&order=seq`);
     return { id: run.id, status: run.status, total: BigInt(run.total), items: items.map(toItem) };
   };
   return {
@@ -58,20 +59,30 @@ export function supabaseLedger(url, serviceKey) {
     setCursor: (b) => api("indexer_state?on_conflict=key", { method: "POST", body: { key: CURSOR, value: b.toString() }, prefer: "resolution=merge-duplicates" }),
     addReceipts: async (rows) => {
       if (!rows.length) return;
-      await api("fee_receipts?on_conflict=tx_hash,log_index", {
+      await api(`${prefix}fee_receipts?on_conflict=tx_hash,log_index`, {
         method: "POST",
         prefer: "resolution=ignore-duplicates",
-        body: rows.map((r) => ({ tx_hash: r.txHash, log_index: r.logIndex, block_number: r.blockNumber.toString(), from_address: r.from, amount: r.amount.toString(), token: r.token, pool: r.pool, reason: r.reason })),
+        body: rows.map((r) => ({
+          tx_hash: r.txHash,
+          log_index: r.logIndex,
+          block_number: r.blockNumber.toString(),
+          from_address: r.from,
+          amount: r.amount.toString(),
+          token: r.token,
+          pool: r.pool,
+          reason: r.reason,
+          ...(r.quote === undefined ? {} : { quote: r.quote, fee_raw: r.feeRaw.toString(), price_usd: r.priceUsd ?? null }),
+        })),
       });
     },
-    unpaidMatched: async () => (await api("fee_receipts?token=not.is.null&run_id=is.null&select=tx_hash,log_index,amount,token")).map(toReceipt),
-    unmatchedTotal: async () => (await api("fee_receipts?token=is.null&run_id=is.null&select=amount")).reduce((a, r) => a + BigInt(r.amount), 0n),
+    unpaidMatched: async () => (await api(`${prefix}fee_receipts?token=not.is.null&run_id=is.null&select=tx_hash,log_index,amount,token`)).map(toReceipt),
+    unmatchedTotal: async () => (await api(`${prefix}fee_receipts?token=is.null&run_id=is.null&select=amount`)).reduce((a, r) => a + BigInt(r.amount), 0n),
     openRun: async () => {
-      const rows = await api("fee_runs?status=neq.done&order=id&limit=1");
+      const rows = await api(`${prefix}fee_runs?status=neq.done&order=id&limit=1`);
       return rows[0] ? loadRun(rows[0]) : null;
     },
     createRun: async (total, picked, items) => {
-      const id = await api("rpc/fee_create_run", {
+      const id = await api(`rpc/${prefix}fee_create_run`, {
         method: "POST",
         body: {
           p_total: total.toString(),
@@ -82,19 +93,19 @@ export function supabaseLedger(url, serviceKey) {
       return loadRun({ id, status: "open", total: total.toString() });
     },
     saveSigned: async (item, txHash, rawTx) => {
-      await api(`fee_run_items?id=eq.${item.id}`, { method: "PATCH", body: { tx_hash: txHash, raw_tx: rawTx } });
+      await api(`${prefix}fee_run_items?id=eq.${item.id}`, { method: "PATCH", body: { tx_hash: txHash, raw_tx: rawTx } });
       Object.assign(item, { txHash, rawTx });
     },
     setItemStatus: async (item, status) => {
-      await api(`fee_run_items?id=eq.${item.id}`, { method: "PATCH", body: { status } });
+      await api(`${prefix}fee_run_items?id=eq.${item.id}`, { method: "PATCH", body: { status } });
       item.status = status;
     },
     addToItem: async (item, amount) => {
       item.amount += amount;
-      await api(`fee_run_items?id=eq.${item.id}`, { method: "PATCH", body: { amount: item.amount.toString() } });
+      await api(`${prefix}fee_run_items?id=eq.${item.id}`, { method: "PATCH", body: { amount: item.amount.toString() } });
     },
     setRunStatus: async (run, status, note) => {
-      await api(`fee_runs?id=eq.${run.id}`, { method: "PATCH", body: { status, note: note ?? null } });
+      await api(`${prefix}fee_runs?id=eq.${run.id}`, { method: "PATCH", body: { status, note: note ?? null } });
       Object.assign(run, { status, note });
     },
   };

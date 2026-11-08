@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { formatUnits, type Address } from "viem";
+import { type Address } from "viem";
 import { Bell, Heart, MessageCircle, Search, X } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { PortfolioPanel } from "./PortfolioPanel";
@@ -22,7 +22,7 @@ import { EASE_OUT } from "../lib/motion";
 import { compactUsd } from "../lib/format";
 import { QUOTE } from "../lib/config";
 import { profileOf, type Profile } from "../lib/profile";
-import { tokenCreatorEarned } from "../lib/fees";
+import { creatorFees } from "../lib/fees";
 import { CATEGORIES, launchedTokenOf, SECTORS } from "../lib/launch";
 import { DEMO, displayName, getToken, handleOf, searchTokens, tickerOf, topTokens, type TokenStat } from "../lib/explore";
 import { poll } from "../lib/poll";
@@ -216,7 +216,6 @@ function Me() {
   const { ready, authenticated, user, login } = usePrivy();
   const { wallets } = useWallets();
   const address = (DEMO ? undefined : wallets.find((w) => w.walletClientType === "privy")?.address) as Address | undefined;
-  const hypeUsd = QUOTE.usd; // launched tokens are priced in USDC
   const [token, setToken] = useState<TokenStat | null | undefined>(undefined); // undefined = loading, null = none
   const [earned, setEarned] = useState<number | null>(null);
 
@@ -233,10 +232,10 @@ function Me() {
     launchedTokenOf(address)
       .then(async (a) => {
         if (!a) return alive && setToken(null);
-        const [t, w] = await Promise.all([getToken(a), tokenCreatorEarned(a)]);
+        const [t, f] = await Promise.all([getToken(a), creatorFees(a)]);
         if (!alive) return;
         setToken(t);
-        setEarned(Number(formatUnits(w, QUOTE.decimals)));
+        setEarned(f?.usd ?? 0); // USD, from the indexer's creator_fees
       })
       .catch(() => alive && setToken(null));
     return () => {
@@ -279,7 +278,7 @@ function Me() {
             <div className="feed-me-fees" title="Lifetime creator fees: 10% of every trading fee, on the curve and in the pool, paid in USDC">
               <span className="feed-side-title">Creator fees earned</span>
               <span className="feed-me-fees-value">
-                {earned === null ? "…" : compactUsd(earned * hypeUsd)}
+                {earned === null ? "…" : compactUsd(earned)}
               </span>
             </div>
           </>

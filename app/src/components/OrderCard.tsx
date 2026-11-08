@@ -11,6 +11,8 @@ import { ftfCall } from "../lib/ftf";
 import { compactUsd } from "../lib/format";
 import { SUPABASE_URL } from "../lib/config";
 import { balances, buyGraduates, FEE_BPS, friendlyTradeError, minOut, prepareTrading, quote, SLIPPAGE_BPS, trade, type Side } from "../lib/trade";
+import { HYPE_SLIPPAGE_BPS, hypeBalances, hypeMinOut, hypeQuote, hypeTrade, swapPoolOf, type SwapPool } from "../lib/hypeSwap";
+import { amount as fmtAmount } from "../lib/format";
 import { QUOTE } from "../lib/config";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { elysiumProvider } from "../lib/tx";
@@ -111,8 +113,8 @@ export function OrderCard({ t, hypeUsd, fixedSide }: { t: TokenStat | null; hype
   }, [t?.address, t?.graduated, side, amountIn]);
 
   if (!t) return <p className="ex-empty">Pick a token.</p>;
-  // a coin launched elsewhere on Ascend (user, 2026-11-05): not tradable here, whatever its pair; anyone can ask for it
-  if (!isOurs(t)) return <NotTradable t={t} />;
+  // a token launched elsewhere (user, 2026-11-05/07): tradable in HYPE once NeuriioSwap approved its pool, else Owner Apply
+  if (!isOurs(t)) return <OutsideToken key={t.address} t={t} fixedSide={fixedSide} />;
 
   const feeBps = FEE_BPS;
   const unitIn = side === "buy" ? QUOTE.symbol : tickerOf(t.symbol);
@@ -346,7 +348,8 @@ const BAR_DAYS = 7;
 
 /** Under the order box: this token's daily volume, last 7 days, from the stored 4H candles (refreshes after your own trade and every
  *  minute), then the Launch check. */
-function TradeBars({ address, nonce }: { address: string; nonce: number }) {
+/** `elsewhere`: a coin launched elsewhere on Ascend (its candles come from our indexer like ours; only the launch check differs). */
+function TradeBars({ address, nonce, elsewhere }: { address: string; nonce: number; elsewhere?: boolean }) {
   const [days, setDays] = useState<{ day: string; vol: number }[] | null>(null);
   useEffect(() => {
     let alive = true;
@@ -365,11 +368,11 @@ function TradeBars({ address, nonce }: { address: string; nonce: number }) {
       alive = false;
       stop();
     };
-  }, [address, nonce]);
+  }, [address, nonce, elsewhere]);
   return (
     <div className="ex-bars">
       <BarCard title="Volume" unit="7d" values={days?.map((d) => ({ day: d.day, v: d.vol })) ?? null} />
-      <LaunchCheckCard address={address} />
+      <LaunchCheckCard address={address} elsewhere={elsewhere} />
     </div>
   );
 }
@@ -454,6 +457,185 @@ export function NotTradable({ t }: { t: TokenStat }) {
       </button>
       {state === "applied" && <p className="ex-order-note">Thanks. The Neuriio team has your request.</p>}
       {error && <p className="lp-warn">{error}</p>}
+    </div>
+  );
+}
+
+/** A token launched elsewhere: the HYPE trade box when NeuriioSwap trades its pool (user, 2026-11-07), else "Token Not
+ *  Tradable" with Owner Apply. */
+function OutsideToken({ t, fixedSide }: { t: TokenStat; fixedSide?: Side }) {
+  const [pool, setPool] = useState<SwapPool | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    swapPoolOf(t.address as Address).then((p) => alive && setPool(p));
+    return () => {
+      alive = false;
+    };
+  }, [t.address]);
+  if (pool === undefined) return <p className="ex-empty">…</p>;
+  if (!pool) return <NotTradable t={t} />;
+  return <HypeOrderCard t={t} pool={pool} fixedSide={fixedSide} />;
+}
+
+const HYPE_QUICK = ["0.1", "0.5", "1", "5"];
+const PAIR_QUICK = ["5", "10", "25", "100"]; // a non-HYPE pair, e.g. USDC
+
+/** Buy with HYPE / sell for HYPE through NeuriioSwap: the token's own pool (its launchpad's fee) plus our 0.5%. */
+function HypeOrderCard({ t, pool, fixedSide }: { t: TokenStat; pool: SwapPool; fixedSide?: Side }) {
+  const { ready, authenticated, login } = usePrivy();
+  const { wallets } = useWallets();
+  const wallet = wallets.find((w) => w.walletClientType === "privy");
+  const account = wallet?.address as Address | undefined;
+  const loggedIn = ready && authenticated && !!wallet;
+  const [ownSide, setSide] = useState<Side>("buy");
+  const side = fixedSide ?? ownSide;
+  const [amount, setAmount] = useState("");
+  const [bal, setBal] = useState<{ pay: bigint; tokens: bigint; gas: bigint } | null>(null);
+  const [out, setOut] = useState<bigint | null>(null);
+  const [quoting, setQuoting] = useState(false);
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [nonce, setNonce] = useState(0);
+  const unitIn = side === "buy" ? pool.symbol : tickerOf(t.symbol);
+  const unitOut = side === "buy" ? tickerOf(t.symbol) : pool.symbol;
+  const decIn = side === "buy" ? pool.decimals : 18; // Ascend and Montra tokens have 18 decimals
+  const decOut = side === "buy" ? 18 : pool.decimals;
+  const venue = "Ascend";
+
+  const amountIn = useMemo(() => {
+    try {
+      return amount ? parseUnits(amount, decIn) : 0n;
+    } catch {
+      return 0n;
+    }
+  }, [amount, decIn]);
+
+  useEffect(() => {
+    setAmount("");
+    setStatus({ kind: "idle" });
+  }, [side]);
+
+  useEffect(() => {
+    if (!account) return setBal(null);
+    let alive = true;
+    hypeBalances(account, t.address as Address, pool).then((b) => alive && setBal(b), () => {});
+    return () => {
+      alive = false;
+    };
+  }, [account, t.address, nonce]);
+
+  useEffect(() => {
+    setOut(null);
+    if (amountIn === 0n) return;
+    let alive = true;
+    setQuoting(true);
+    const id = setTimeout(() => {
+      hypeQuote(pool, side, amountIn)
+        .then((o) => alive && setOut(o), () => alive && setOut(null))
+        .finally(() => alive && setQuoting(false));
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(id);
+    };
+  }, [pool, side, amountIn]);
+
+  const have = bal ? (side === "buy" ? bal.pay : bal.tokens) : null;
+  const gasReserve = parseEther("0.001");
+  const tooMuch = have !== null && (side === "buy" && pool.inHype ? amountIn + gasReserve > have : amountIn > have);
+  const noGas = bal !== null && bal.gas === 0n;
+  const fmtIn = (v: bigint) => fmtAmount(Number(formatUnits(v, decIn)));
+  const fmt = (v: bigint) => fmtAmount(Number(formatUnits(v, decOut)));
+
+  async function submit() {
+    if (!wallet || !account || !out) return;
+    setStatus({ kind: "busy", label: side === "buy" ? "Buying…" : "Selling…" });
+    try {
+      const provider = await elysiumProvider(wallet);
+      await hypeTrade(provider, account, pool, { token: t.address as Address, side, amountIn, minOut: hypeMinOut(out) });
+      setStatus({ kind: "done", text: side === "buy" ? `Bought ${fmt(out)} ${unitOut}` : `Sold for ${fmt(out)} ${unitOut}` });
+      setAmount("");
+      setNonce((n) => n + 1);
+    } catch (e) {
+      setStatus({ kind: "error", text: friendlyTradeError((e as Error).message) });
+    }
+  }
+
+  let cta = side === "buy" ? `Buy ${tickerOf(t.symbol)}` : `Sell ${tickerOf(t.symbol)}`;
+  let disabled = false;
+  if (!loggedIn) cta = "Log in to trade";
+  else if (status.kind === "busy") (cta = status.label), (disabled = true);
+  else if (amountIn === 0n) disabled = true;
+  else if (noGas) (cta = "You need a little HYPE for gas"), (disabled = true);
+  else if (tooMuch) (cta = side === "buy" && pool.inHype ? "Not enough HYPE (keep some for gas)" : "Not enough balance"), (disabled = true);
+  else if (!out) (cta = quoting ? "Getting a quote…" : "No quote"), (disabled = true);
+
+  return (
+    <div className="ex-order">
+      {!fixedSide && (
+        <div className="ex-order-tabs" role="tablist">
+          {(["buy", "sell"] as const).map((s) => (
+            <button key={s} role="tab" aria-selected={side === s} className={`ex-order-tab is-${s}${side === s ? " is-on" : ""}`} onClick={() => setSide(s)}>
+              {s === "buy" ? "Buy" : "Sell"}
+            </button>
+          ))}
+        </div>
+      )}
+      <label className="ex-order-field">
+        <span className="ex-order-label-row">
+          <span className="ex-order-label">Amount</span>
+          {have !== null && (
+            <span className="ex-order-bal">
+              Balance {fmtIn(have)} {unitIn}
+            </span>
+          )}
+        </span>
+        <span className="ex-order-input">
+          <input
+            inputMode="decimal"
+            placeholder="0.0"
+            value={amount}
+            onChange={(e) => {
+              setAmount(e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"));
+              setStatus({ kind: "idle" });
+            }}
+          />
+          <span className="ex-order-unit">{unitIn}</span>
+        </span>
+        <span className="ex-order-sub"> </span>
+      </label>
+      <div className="ex-order-quick">
+        {side === "buy"
+          ? (pool.inHype ? HYPE_QUICK : PAIR_QUICK).map((v) => (
+              <button key={v} className="ex-range" onClick={() => setAmount(v)}>
+                {v}
+              </button>
+            ))
+          : QUICK_SELL.map((pct) => (
+              <button key={pct} className="ex-range" disabled={!bal || bal.tokens === 0n} onClick={() => bal && setAmount(formatEther((bal.tokens * BigInt(pct)) / 100n))}>
+                {pct}%
+              </button>
+            ))}
+      </div>
+      <dl className="ex-order-est">
+        <div>
+          <dt>You receive</dt>
+          <dd>{out ? `${fmt(out)} ${unitOut}` : quoting ? "…" : "—"}</dd>
+        </div>
+        <div>
+          <dt>Minimum ({Number(HYPE_SLIPPAGE_BPS) / 100}% slippage)</dt>
+          <dd>{out ? `${fmt(hypeMinOut(out))} ${unitOut}` : "—"}</dd>
+        </div>
+        <div>
+          <dt title={`${venue}'s own fee is inside the quote; Neuriio adds 0.5%`}>Fee</dt>
+          <dd title={`${venue}'s own fee is inside the quote; Neuriio adds 0.5%`}>{venue} + 0.5%</dd>
+        </div>
+      </dl>
+      {status.kind === "done" && <p className="ex-order-msg price-up">{status.text}</p>}
+      {status.kind === "error" && <p className="ex-order-msg price-down">{status.text}</p>}
+      <button className={`ex-order-cta is-${side}`} disabled={disabled} onClick={loggedIn ? submit : login}>
+        {cta}
+      </button>
+      <TradeBars address={t.address} nonce={nonce} elsewhere />
     </div>
   );
 }

@@ -16,7 +16,8 @@ const HEADLINE: Record<LaunchCheck["status"], string> = {
   none: "No early buyers",
 };
 
-export function LaunchCheckCard({ address }: { address: string }) {
+/** `elsewhere`: a token launched on another launchpad, which our launch-check service doesn't analyse yet. */
+export function LaunchCheckCard({ address, elsewhere }: { address: string; elsewhere?: boolean }) {
   const [check, setCheck] = useState<LaunchCheck | null | undefined>(undefined);
   useEffect(() => {
     if (DEMO) return setCheck(demoLaunchCheck(address));
@@ -37,7 +38,9 @@ export function LaunchCheckCard({ address }: { address: string }) {
       {check === undefined ? (
         <p className="ex-check-note">…</p>
       ) : check === null ? (
-        <p className="ex-check-note">Not checked yet. It runs about a minute after the first buy.</p>
+        <p className="ex-check-note">
+          {elsewhere ? "Not checked yet for tokens launched on other launchpads." : "Not checked yet. It runs about a minute after the first buy."}
+        </p>
       ) : (
         <>
           <p className="ex-check-headline">{HEADLINE[check.status]}</p>

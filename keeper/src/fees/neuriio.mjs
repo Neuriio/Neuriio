@@ -4,6 +4,9 @@
 // This replays the staking contract's own events with its own math, rather than reading its earned(), because notifyReward is open to
 // anyone: someone could stake their own token, pay USDC into its pool, claim it straight back and repeat, for free Neuriio. So only
 // rewards sent by the fee wallet count. If the fee wallet is the only payer, a staker's Neuriio is exactly 100 x what they earned.
+// It reads NeuriioPartnerStaking too (user, 2026-11-07: outside tokens' stakers earn Neuriio the same way), in the same tally so the
+// 1B cap is shared. Its pools are kept apart (key "<token>:p") so a token in both contracts never mixes them; a wallet's Neuriio
+// for a token is the sum of both. Keys without ":p" are the original contract's, unchanged, so saved tallies still load.
 import { parseAbiItem } from "viem";
 
 export const NEURIIO_PER_USDC = 100n;
@@ -44,9 +47,10 @@ function settle(p, pos) {
   pos.accPaid = p.acc;
 }
 
-/** Applies one event, oldest first: { kind, user, token, amount, time, fromFeeWallet }. Lower-case addresses. */
+/** Applies one event, oldest first: { kind, user, token, amount, time, fromFeeWallet, partner }. Lower-case addresses. */
 export function applyEvent(s, e) {
-  const p = poolOf(s, e.token);
+  const key = e.partner ? `${e.token}:p` : e.token;
+  const p = poolOf(s, key);
   update(p, e.time);
   if (e.kind === "RewardAdded") {
     if (!e.fromFeeWallet) return;
@@ -59,7 +63,7 @@ export function applyEvent(s, e) {
     p.end = e.time + DRIP;
     return;
   }
-  const pos = positionOf(s, e.user, e.token);
+  const pos = positionOf(s, e.user, key);
   settle(p, pos);
   if (e.kind === "Staked") {
     pos.amount += e.amount;
@@ -72,14 +76,17 @@ export function applyEvent(s, e) {
 
 /** Everyone's Neuriio at `now`, in millionths: [{ wallet, token, minted }]. */
 export function balancesAt(s, now) {
-  const out = [];
+  const sum = new Map(); // wallet:token -> earned, both contracts together
   for (const [key, pos] of Object.entries(s.positions)) {
-    const [wallet, token] = key.split(":");
-    const p = s.pools[token];
+    const [wallet, token, partner] = key.split(":");
+    const p = s.pools[partner ? `${token}:${partner}` : token];
     const earned = pos.owed + (pos.amount * (accNow(p, now) - pos.accPaid)) / ACC;
-    if (earned > 0n) out.push({ wallet, token, minted: earned * NEURIIO_PER_USDC });
+    if (earned > 0n) sum.set(`${wallet}:${token}`, (sum.get(`${wallet}:${token}`) ?? 0n) + earned);
   }
-  return out;
+  return [...sum].map(([k, earned]) => {
+    const [wallet, token] = k.split(":");
+    return { wallet, token, minted: earned * NEURIIO_PER_USDC };
+  });
 }
 
 /** Bigints don't survive JSON: amounts go into the database as strings. */
@@ -93,9 +100,13 @@ export function tallyFromJson(j) {
   };
 }
 
-/** `cfg`: { staking, feeWallet, fromBlock, confirmations, maxRange }. `store`: load() -> { next, tally } | null, and save(next, tally, changed). */
+/** `cfg`: { staking, partnerStaking (optional: NeuriioPartnerStaking), feeWallet, fromBlock, confirmations, maxRange }. The partner
+ *  contract must be set before anyone can stake in it (before its first listing executes): events before this tally's place are
+ *  never read back. `store`: load() -> { next, tally } | null, and save(next, tally, changed). */
 export function makeNeuriioTally({ pub, store, cfg, log = () => {} }) {
   const feeWallet = cfg.feeWallet.toLowerCase();
+  const partner = cfg.partnerStaking?.toLowerCase();
+  const contracts = partner ? [cfg.staking, cfg.partnerStaking] : cfg.staking;
   const last = new Map(); // what's already saved, so only changes are sent
   const times = new Map();
   const timeOf = async (blockNumber) => {
@@ -104,7 +115,13 @@ export function makeNeuriioTally({ pub, store, cfg, log = () => {} }) {
   };
 
   async function eventOf(l) {
-    const e = { kind: l.eventName, token: l.args.token.toLowerCase(), amount: l.args.amount, time: await timeOf(l.blockNumber) };
+    const e = {
+      kind: l.eventName,
+      token: l.args.token.toLowerCase(),
+      amount: l.args.amount,
+      time: await timeOf(l.blockNumber),
+      partner: l.address.toLowerCase() === partner,
+    };
     if (l.eventName === "RewardAdded") {
       const tx = await pub.getTransaction({ hash: l.transactionHash });
       return { ...e, fromFeeWallet: tx.from.toLowerCase() === feeWallet };
@@ -126,7 +143,7 @@ export function makeNeuriioTally({ pub, store, cfg, log = () => {} }) {
     if (from > head) return;
     while (from <= head) {
       const to = from + BigInt(cfg.maxRange) - 1n < head ? from + BigInt(cfg.maxRange) - 1n : head;
-      const logs = await pub.getLogs({ address: cfg.staking, events: EVENTS, fromBlock: from, toBlock: to });
+      const logs = await pub.getLogs({ address: contracts, events: EVENTS, fromBlock: from, toBlock: to });
       logs.sort((a, b) => (a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1));
       for (const l of logs) applyEvent(tally, await eventOf(l));
       await store.save(to + 1n, tally, changes(tally, await timeOf(to)));

@@ -12,13 +12,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence } from "motion/react";
-import { ExternalLink, Search, UserRound } from "lucide-react";
+import { ExternalLink, Globe, Search, Send, UserRound } from "lucide-react";
 import { CATEGORIES, SECTORS } from "../lib/launch";
 import { CandleChart, type ChartControls } from "./CandleChart";
-import { agoraCandles, VENUE_LOGOS } from "../lib/agora";
 import { subscribeTrades, useLivePrices } from "../lib/live";
-import { tokenCreatorEarned } from "../lib/fees";
-import { formatUnits, type Address } from "viem";
+import { creatorFees, type CreatorFees } from "../lib/fees";
 import { OrderCard } from "./OrderCard";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { PositionsCard } from "./PositionsCard";
@@ -43,7 +41,10 @@ import {
   type IntervalSeconds,
   searchTokens,
   tickerOf,
-  agoraTrending,
+  verifiedTokens,
+  tokenLinks,
+  type TokenLinks as Links,
+  topTokens,
   type TokenStat,
 } from "../lib/explore";
 import { poll } from "../lib/poll";
@@ -60,12 +61,15 @@ export function ExploreCard() {
   const [picked, setPicked] = useState<TokenStat | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Trending (user, 2026-11-05, replacing the /trending page): the top 25 Ascend coins by 24h volume, ours and everyone else's
-  // (refreshes every 20 s); picks #1 unless ?t= names a token
+  // the list (user, 2026-11-07): "Verified" = Ascend's top 15 tokens by 24h volume (our own chain data); "Neuriio" = our own
+  // launches by 24h volume. Refreshes every 20 s; picks #1 of the first load unless ?t= names a token
+  const [listMode, setListMode] = useState<ListMode>("verified");
   useEffect(() => {
     let alive = true;
+    setTop(null);
+    setError(null);
     const load = () =>
-      agoraTrending().then(
+      (listMode === "verified" ? verifiedTokens(15) : topTokens("volume_usd_24h", 15)).then(
         (rows) => {
           if (!alive) return;
           setTop(rows);
@@ -79,7 +83,7 @@ export function ExploreCard() {
       alive = false;
       stop();
     };
-  }, []);
+  }, [listMode]);
 
   useEffect(() => {
     if (START) getToken(START).then((t) => t && setPicked(t), () => {});
@@ -179,7 +183,7 @@ export function ExploreCard() {
   const trending = (
     <section className="panel ex-card ex-list-card">
       <CardBg />
-      <TrendingList rows={top} error={!!error} picked={picked} live={live} hypeUsd={hypeUsd} onPick={setPicked} />
+      <TrendingList mode={listMode} onMode={setListMode} rows={top} error={!!error} picked={picked} live={live} hypeUsd={hypeUsd} onPick={setPicked} />
     </section>
   );
 
@@ -218,10 +222,17 @@ export function ExploreCard() {
 }
 
 /** Desktop: one widget with Buy / Sell / Stake tabs. Both cards stay mounted, so switching to Stake and back keeps a
- *  typed amount. */
+ *  typed amount. A Neuriio coin opens on Stake (user, 2026-11-08); others on Buy. */
 function TradeTabs({ t, hypeUsd }: { t: TokenStat | null; hypeUsd: number }) {
   const [tab, setTab] = useState<"buy" | "sell" | "stake">("buy");
   const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [shown, setShown] = useState<string | undefined>(undefined);
+  if (t?.address !== shown) {
+    // a different coin was picked (set during render, so the old tab never flashes): a Neuriio coin opens on Stake; another
+    // coin leaves Stake for Buy/Sell and otherwise keeps the tab
+    setShown(t?.address);
+    setTab(t && isOurs(t) ? "stake" : (was) => (was === "stake" ? side : was));
+  }
   const pick = (x: "buy" | "sell" | "stake") => {
     setTab(x);
     if (x !== "stake") setSide(x);
@@ -265,6 +276,12 @@ function MobileTabs({
   onPick: (address: string) => void;
 }) {
   const [tab, setTab] = useState<MobileTab>("about");
+  const [shown, setShown] = useState<string | undefined>(undefined);
+  if (t?.address !== shown) {
+    // a Neuriio coin opens on Stake (user, 2026-11-08); leaving it for another coin goes back to About, else the tab stays
+    setShown(t?.address);
+    setTab(t && isOurs(t) ? "stake" : (was) => (was === "stake" ? "about" : was));
+  }
   return (
     <section className="panel ex-card ex-mtabs-card">
       <CardBg side="top" />
@@ -317,28 +334,32 @@ function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
       </header>
 
       {isOurs(t) && <ProfileBody t={t} profile={profile} members={members} />}
+      {!isOurs(t) && <TokenLinks t={t} />}
 
       <section className="ex-modal-section">
         <h3 className="ex-modal-label">Creator fees earned</h3>
-        {isOurs(t) ? (
-          <span className="ex-earned-value">{earned === null ? "…" : compactUsd(earned * hypeUsd)}</span>
-        ) : (
-          <span className="ex-earned-elsewhere" title="Not launched on Neuriio">N/A</span>
-        )}
+        <EarnedValue earned={earned} />
       </section>
 
       <p className="ex-order-note">
         {!isOurs(t)
-          ? `${displayName(t)} was launched on ${t.venue ?? (t.source === "agora" ? "another launchpad" : "Ascend")}, not through Neuriio. It's a meme with no promise of value.`
+          ? `${displayName(t)} was launched on Ascend, not through Neuriio. It's a meme with no promise of value.`
           : `${displayName(t)} is a meme with no promise of value. ${t.kind === "ftf" ? "Its members owe" : `${handleOf(t.handle)} owes`} holders nothing.`}
       </p>
     </div>
   );
 }
 
-/** Explore's list (user, 2026-11-05, replacing the /trending page): the top 25 Ascend coins by 24h volume, ours with the Neuriio
- *  logo and everyone else's marked "(Not Launched On Neuriio)", as the Trending page showed them. Picking a row opens it here. */
+/** Whether a token trades against HYPE (native HYPE or WHYPE). */
+const isHypePair = (t: TokenStat) => ["HYPE", "WHYPE"].includes((t.quote_symbol ?? "").toUpperCase());
+
+type ListMode = "verified" | "neuriio";
+
+/** Explore's list (user, 2026-11-07): a Verified / Neuriio toggle. Each row: $TICKER with its market cap beside it, where it
+ *  launched under it, and its 24h volume on the right. Picking a row opens it here. */
 function TrendingList({
+  mode,
+  onMode,
   rows,
   error,
   picked,
@@ -346,6 +367,8 @@ function TrendingList({
   hypeUsd,
   onPick,
 }: {
+  mode: ListMode;
+  onMode: (m: ListMode) => void;
   rows: TokenStat[] | null;
   error: boolean;
   picked: TokenStat | null;
@@ -356,10 +379,14 @@ function TrendingList({
   return (
     <>
       <div className="ex-list-head">
-        <span>
-          <span className="tr-title">Trending</span> · 24h volume
+        <span className="ex-list-toggle" role="tablist" aria-label="Which tokens">
+          {(["verified", "neuriio"] as const).map((m) => (
+            <button key={m} role="tab" aria-selected={mode === m} className={`ex-list-tab${mode === m ? " is-on" : ""}`} onClick={() => onMode(m)}>
+              {m === "verified" ? "Verified" : "Neuriio"}
+            </button>
+          ))}
         </span>
-        <span>MCAP</span>
+        <span>24h vol</span>
       </div>
       <ol className="ex-list">
         {rows?.map((t, i) => (
@@ -367,44 +394,55 @@ function TrendingList({
             <button className={`ex-row${picked?.address === t.address ? " is-picked" : ""}`} onClick={() => onPick(t)}>
               <span className="ex-rank">{i + 1}</span>
               <Avatar handle={t.handle} pfp={t.x_pfp_url} size={28} />
-              {/* user, 2026-11-06: $TICKER in white, where it launched under it; market cap with the 24h change under it */}
               <span className="ex-row-names">
-                <span className="ex-row-handle" title={displayName(t)}>${t.symbol.replace(/^\$/, "")}</span>
+                <span className="ex-row-handle ex-row-top" title={displayName(t)}>
+                  <span className="ex-row-ticker-main">${t.symbol.replace(/^\$/, "")}</span>
+                  <span className="ex-row-mcap-inline">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
+                </span>
                 <span className="ex-row-sub">
                   <VenueChip t={t} />
                 </span>
               </span>
               <span className="ex-row-right">
-                <span className="ex-row-mcap">{hypeUsd ? compactUsd((live[t.address] ?? t.price_hype) * 1e9 * hypeUsd) : "…"}</span>
-                <Change t={t} price={live[t.address]} />
+                <span className="ex-row-mcap">{compactUsd(t.volume_usd_24h)}</span>
               </span>
             </button>
           </li>
         ))}
-        {rows && rows.length === 0 && <li className="ex-empty">No trades in the last 24 hours.</li>}
+        {rows && rows.length === 0 && (
+          <li className="ex-empty">{mode === "neuriio" ? "No tokens launched on Neuriio yet." : "No trades in the last 24 hours."}</li>
+        )}
         {!rows && !error && <li className="ex-empty">Loading…</li>}
         {error && <li className="ex-empty">Couldn't load tokens.</li>}
       </ol>
-      {rows && <p className="ex-list-foot">Top 15 on Elysium by 24h volume · data from Agora</p>}
     </>
   );
 }
 
-/** Lifetime creator fees this token has earned (NeuriioFees.creatorEarned), in USDC (the landing's samples: HYPE);
- *  null while loading. */
+/** Lifetime creator fees this token has earned on Ascend (lib/fees: the indexer's creator_fees, no RPC calls), for our launches
+ *  and Ascend's top tokens alike. undefined while loading; null when the indexer doesn't track it. */
 function useCreatorEarned(t: TokenStat) {
-  const [earned, setEarned] = useState<number | null>(null);
+  const [earned, setEarned] = useState<CreatorFees | null | undefined>(undefined);
   useEffect(() => {
-    if (DEMO) return setEarned((t.volume_usd / (LANDING ? SHOW_HYPE_USD : QUOTE.usd)) * 0.01 * 0.1); // demo: 10% of a 1% fee
+    if (DEMO) return setEarned({ usd: t.volume_usd * 0.01 * 0.1, heldShare: 0 }); // demo: 10% of a 1% fee
     let alive = true;
-    const load = () => tokenCreatorEarned(t.address as Address).then((w) => alive && setEarned(Number(formatUnits(w, QUOTE.decimals))), () => {});
-    const stop = poll(load, 60_000);
+    setEarned(undefined);
+    const load = () => creatorFees(t.address).then((f) => alive && setEarned(f));
+    const stop = poll(load, 5 * 60_000); // the indexer refreshes it every 5 minutes
     return () => {
       alive = false;
       stop();
     };
   }, [t.address, t.volume_usd]);
   return earned;
+}
+
+/** "$6.9K", "…" while loading, "N/A" when not tracked; the tooltip says how much is held back. */
+function EarnedValue({ earned }: { earned: CreatorFees | null | undefined }) {
+  if (earned === undefined) return <span className="ex-earned-value">…</span>;
+  if (earned === null) return <span className="ex-earned-elsewhere" title="Not tracked yet">N/A</span>;
+  const held = earned.heldShare > 0.005 ? ` ${Math.round(earned.heldShare * 100)}% of it is held by Ascend until the token holds a $40k market cap, and lost if it doesn't within 14 days.` : "";
+  return <span className="ex-earned-value" title={`Paid to the creator by Ascend, lifetime.${held}`}>{compactUsd(earned.usd)}</span>;
 }
 
 /** `compact` (phones): header + stats + timeframes + chart only; profile and fees live in the About tab. */
@@ -420,7 +458,7 @@ function TokenDetail({
   compact?: boolean;
 }) {
   const [grad, setGrad] = useState<GradStage>(null); // everyone watching sees the graduation (the buyer's own is in OrderCard)
-  const [interval, setInterval_] = useState<IntervalSeconds>(300); // 5m: a token's first candle, then every timeframe from there
+  const [interval, setInterval_] = useState<IntervalSeconds>(1800); // 30m on load and on every token picked (user, 2026-11-07); this view remounts per token
   const [data, setData] = useState<Candle[] | null>(null);
   const [controls, setControls] = useState<ChartControls | null>(null);
   const [showProfile, setShowProfile] = useState(false);
@@ -468,7 +506,7 @@ function TokenDetail({
   useEffect(() => {
     let alive = true;
     setData(null);
-    const load = () => (t.source === "agora" ? agoraCandles : candles)(t.address, interval, 300).then((c) => alive && setData(c), () => {});
+    const load = () => candles(t.address, interval, 300).then((c) => alive && setData(c), () => {});
     reloadCandles.current = load;
     const stop = poll(load, 10_000);
     return () => {
@@ -484,7 +522,11 @@ function TokenDetail({
     <div className="ex-detail">
       <GraduatingOverlay stage={grad} name={displayName(t)} />
       <header className="ex-head">
-        <Avatar handle={t.handle} pfp={t.x_pfp_url} size={44} />
+        <span className="ex-avatar-wrap">
+          <Avatar handle={t.handle} pfp={t.x_pfp_url} size={44} />
+          {/* paired with HYPE: Hyperliquid's brand-kit mark on the picture's bottom-left corner (user, 2026-11-07) */}
+          {!isOurs(t) && isHypePair(t) && <img className="ex-pair-badge" src="/pairs/hype.svg" alt="HYPE pair" title="Paired with HYPE" />}
+        </span>
         <div className="ex-head-names">
           <span className="ex-handle">{displayName(t)}</span>
           <span className="ex-row-sub">
@@ -496,8 +538,8 @@ function TokenDetail({
           {sector && <span className="lp-chip ex-sector-chip">{sector}</span>}
           {isOurs(t) ? (
             <span className={`lp-chip${t.kind === "ftf" ? " ex-ftf-chip" : ""}`}>{t.kind === "ftf" ? "FTF" : cat}</span>
-          ) : (
-            <span className="lp-chip">{(t.quote_symbol ?? "USDC").toUpperCase() === "WHYPE" ? "HYPE" : t.quote_symbol ?? "USDC"} pair</span>
+          ) : isHypePair(t) ? null : ( // HYPE pairs: the mark sits on the picture instead
+            <span className="lp-chip">{t.quote_symbol ?? "USDC"} pair</span>
           )}
         </span>
         {!compact && (
@@ -508,14 +550,11 @@ function TokenDetail({
                 <UserRound size={13} aria-hidden /> Profile
               </button>
             )}
-            <span className="ex-earned" title="Lifetime creator fees: 10% of every trading fee, on the curve and in the pool, paid in USDC">
+            <span className="ex-earned" title="Lifetime creator fees paid by Ascend">
               <span className="ex-earned-label">Creator fees earned</span>
-              {isOurs(t) ? (
-                <span className="ex-earned-value">{earned === null ? "…" : compactUsd(earned * hypeUsd)}</span>
-              ) : (
-                <span className="ex-earned-elsewhere" title="Not launched on Neuriio">N/A</span>
-              )}
+              <EarnedValue earned={earned} />
             </span>
+            {!isOurs(t) && <TokenLinks t={t} />}
           </>
         )}
         <div className="ex-price">
@@ -527,7 +566,7 @@ function TokenDetail({
       <dl className="ex-stats">
         <div><dt>Market cap</dt><dd>{usdOr(price * 1e9)}</dd></div>
         <div><dt>24h volume</dt><dd>{compactUsd(t.volume_usd_24h)}</dd></div>
-        <div><dt>{t.source === "agora" ? "7d volume" : "All-time volume"}</dt><dd>{compactUsd(t.volume_usd)}</dd></div>
+        <div><dt>All-time volume</dt><dd>{compactUsd(t.volume_usd)}</dd></div>
         <div><dt>24h trades</dt><dd>{t.trades_24h.toLocaleString("en-US")}</dd></div>
       </dl>
 
@@ -558,12 +597,12 @@ function TokenDetail({
 export function Change({ t, price }: { t: TokenStat; price?: number }) {
   const c = price != null && t.price_hype_24h_ago > 0 ? (price / t.price_hype_24h_ago - 1) * 100 : change24h(t);
   if (c == null) return <span className="ex-change">—</span>;
-  // big moves read like Agora's: +80.2K% rather than +80225.0%
+  // big moves read short: +80.2K% rather than +80225.0%
   const text = Math.abs(c) >= 1000 ? `${(c / 1000).toFixed(1)}K%` : `${c.toFixed(1)}%`;
   return <span className={`ex-change ${c >= 0 ? "price-up" : "price-down"}`}>{`${c >= 0 ? "+" : ""}${text}`}</span>;
 }
 
-/** Where a token launched, as a small chip (like Agora's): Neuriio with our logo, else its launchpad (Montra, Kleos, ...). */
+/** Where a token launched, as a small chip: Neuriio with our logo, else Ascend's. */
 export function VenueChip({ t }: { t: TokenStat }) {
   if (isOurs(t))
     return (
@@ -572,12 +611,10 @@ export function VenueChip({ t }: { t: TokenStat }) {
         Neuriio
       </span>
     );
-  const venue = t.venue ?? (t.source === "agora" ? "Other" : "Ascend");
-  const logo = VENUE_LOGOS[venue];
   return (
-    <span className="ex-venue" title={`Launched on ${venue}, not on Neuriio`}>
-      {logo && <img src={logo} alt="" />}
-      {venue}
+    <span className="ex-venue" title="Launched on Ascend, not on Neuriio">
+      <img src="/launchpads/ascend.png" alt="" />
+      Ascend
     </span>
   );
 }
@@ -597,4 +634,38 @@ export function ago(iso: string) {
   if (m < 60) return `${m}m ago`;
   const h = Math.round(m / 60);
   return h < 48 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
+}
+
+/** A token launched elsewhere: the X / website / Telegram links its creator set on Ascend (copied by our indexer; https only),
+ *  as small icon links next to Creator fees (user, 2026-11-07). Nothing shows when it has none. */
+function TokenLinks({ t }: { t: TokenStat }) {
+  const [links, setLinks] = useState<Links | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setLinks(null);
+    tokenLinks(t.address).then((x) => alive && setLinks(x), () => {});
+    return () => {
+      alive = false;
+    };
+  }, [t.address]);
+  if (!links || (!links.x && !links.website && !links.telegram)) return null;
+  return (
+    <span className="ex-token-links">
+      {links.x && (
+        <a href={links.x} target="_blank" rel="noopener noreferrer" aria-label="X" title={links.x.replace(/^https:\/\/(www\.)?/, "")}>
+          <img src="/social/x.svg" alt="" className="ex-token-link-x" />
+        </a>
+      )}
+      {links.website && (
+        <a href={links.website} target="_blank" rel="noopener noreferrer" aria-label="Website" title={links.website.replace(/^https:\/\/(www\.)?/, "")}>
+          <Globe size={13} aria-hidden />
+        </a>
+      )}
+      {links.telegram && (
+        <a href={links.telegram} target="_blank" rel="noopener noreferrer" aria-label="Telegram" title={links.telegram.replace(/^https:\/\/(www\.)?/, "")}>
+          <Send size={13} aria-hidden />
+        </a>
+      )}
+    </span>
+  );
 }

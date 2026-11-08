@@ -9,14 +9,24 @@ const stakingAbi = parseAbi(["function stakedOf(address user, address token) vie
 const ZERO = "0x0000000000000000000000000000000000000000";
 const lc = (a) => a.toLowerCase();
 
-/** A wide log query; if the RPC refuses the range or the result size, splits it and carries on. */
-export async function logsAcross(pub, query, from, to) {
+export const MAX_RANGE = 10_000n; // Alchemy's eth_getLogs limit on Elysium (2026-11-08): wider ranges are refused
+
+/** A wide log query, in steps of `maxRange` blocks (one call each); a step the RPC still refuses (too many results) is split. */
+export async function logsAcross(pub, query, from, to, maxRange = MAX_RANGE) {
+  const out = [];
+  for (let a = from; a <= to; a += maxRange) {
+    const b = a + maxRange - 1n < to ? a + maxRange - 1n : to;
+    out.push(...(await logsSplitting(pub, query, a, b)));
+  }
+  return out;
+}
+async function logsSplitting(pub, query, from, to) {
   try {
     return await pub.getLogs({ ...query, fromBlock: from, toBlock: to });
   } catch (e) {
     if (from >= to) throw e;
     const mid = (from + to) / 2n;
-    return [...(await logsAcross(pub, query, from, mid)), ...(await logsAcross(pub, query, mid + 1n, to))];
+    return [...(await logsSplitting(pub, query, from, mid)), ...(await logsSplitting(pub, query, mid + 1n, to))];
   }
 }
 
@@ -78,8 +88,9 @@ export function makeLaunchCheck({ pub, cfg }) {
     const wallets = [...bought.keys()].sort((a, b) => (bought.get(a) > bought.get(b) ? -1 : 1)).slice(0, cfg.maxWallets);
     const kept = new Set(wallets);
 
-    // one query covers every wallet's funding
-    const start = firstBuy > BigInt(cfg.lookbackBlocks) ? firstBuy - BigInt(cfg.lookbackBlocks) : 0n;
+    // one query covers every wallet's funding: from `lookbackBlocks` before the LAUNCH (bundlers fund their wallets just
+    // before it; user 2026-11-08: ~6 hours) up to the first buy
+    const start = launchBlock > BigInt(cfg.lookbackBlocks) ? launchBlock - BigInt(cfg.lookbackBlocks) : 0n;
     const funded = (await logsAcross(pub, { address: cfg.usdc, event: TRANSFER, args: { to: wallets } }, start, firstBuy)).map((l) => ({ from: lc(l.args.from), to: lc(l.args.to) }));
     const noise = new Set(ignored);
     for (const funder of sharedFunders(funded, wallets)) {
@@ -114,10 +125,15 @@ export function makeLaunchCheck({ pub, cfg }) {
     const bought = new Map(base.bought.map(([a, v]) => [a, BigInt(v)]));
     const wallets = [...bought.keys()];
 
-    const moved = wallets.length > 1
-      ? await logsAcross(pub, { address: token, event: TRANSFER, args: { from: wallets, to: wallets } }, BigInt(launchBlock), head)
+    // transfers between those wallets: only the blocks since the last check (saved), so rechecks don't grow with the token's age
+    const from = base.scannedTo != null ? BigInt(base.scannedTo) + 1n : BigInt(launchBlock);
+    const moved = wallets.length > 1 && from <= head
+      ? await logsAcross(pub, { address: token, event: TRANSFER, args: { from: wallets, to: wallets } }, from, head)
       : [];
-    const transfers = moved.map((l) => ({ a: lc(l.args.from), b: lc(l.args.to), reason: "token_transfer", via: l.transactionHash }));
+    const transfers = [
+      ...(base.transfers ?? []),
+      ...moved.map((l) => ({ a: lc(l.args.from), b: lc(l.args.to), reason: "token_transfer", via: l.transactionHash })),
+    ];
 
     const reads = [
       { address: token, abi: erc20Abi, functionName: "totalSupply" },
@@ -129,7 +145,7 @@ export function makeLaunchCheck({ pub, cfg }) {
     const holdings = new Map(wallets.map((w, i) => [w, number(results[1 + i]) + (cfg.staking ? number(results[1 + wallets.length + i]) : 0n)]));
     const supply = number(results[0]);
     const summary = summarize({ bought, creator: me, edges: [...base.edges, ...transfers], holdings, supply, windowSeconds: cfg.windowSeconds });
-    return { token: address, saved: base, summary };
+    return { token: address, saved: { ...base, transfers, scannedTo: head.toString() }, summary };
   }
 
   return { check };

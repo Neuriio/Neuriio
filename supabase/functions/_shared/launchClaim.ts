@@ -15,6 +15,7 @@ export type LaunchClaim = {
 type Answer = {
   conflict: "ticker" | null;
   with?: string;
+  launchpad?: string; // set when the coin it's too close to launched elsewhere and reached the vamp-watch market cap ($75k)
   claim?: number;
   suspects?: { ticker: string; thumb: string; hits: PfpHit[] }[];
 };
@@ -34,7 +35,8 @@ export async function claimLaunch(db: SupabaseClient, c: LaunchClaim): Promise<s
   if (error) throw new Error(`claim_launch: ${error.message}`);
   const answer = data as Answer;
   if (answer.conflict === "ticker") {
-    return `$${c.ticker.toUpperCase()} is too close to $${answer.with}, which launched first. Tickers can't share their first 4 characters`;
+    const where = answer.launchpad ? `already trades on ${answer.launchpad}` : "launched first";
+    return `$${c.ticker.toUpperCase()} is too close to $${answer.with}, which ${where}. Tickers can't share their first 4 characters`;
   }
   const copied = c.pfp && (answer.suspects ?? []).find((s) => confirmsCopy(c.pfp!.thumb, s.thumb, s.hits));
   if (!copied) return null;

@@ -3,7 +3,8 @@
 //
 // env: RPC_URL, CHAIN_ID, SUPABASE_URL, SUPABASE_SERVICE_KEY, REGISTRY (whose tokens), USDC, STAKING (optional: staked tokens count as held),
 //      MULTICALL (default the standard Multicall3), IGNORE (comma-separated addresses that tie nobody together: exchanges, bridges, faucets),
-//      WINDOW_SECONDS (60), EARLY_BLOCKS (1200), LOOKBACK_BLOCKS (5000000: about a week at 0.15 s), MAX_WALLETS (50), HUB_RECIPIENTS (25),
+//      WINDOW_SECONDS (60), EARLY_BLOCKS (1200), LOOKBACK_BLOCKS (100000: funding read from ~6 hours before the launch at mainnet's
+//      0.21 s blocks), MAX_WALLETS (50), HUB_RECIPIENTS (25),
 //      PASS_MS (60000), ONCE=1 (one pass, exit)
 import { createPublicClient, defineChain } from "viem";
 import { makeTransport } from "./src/rpc.mjs";
@@ -36,7 +37,7 @@ const checker = makeLaunchChecker({
     ignored: env("IGNORE", "").split(",").filter(Boolean),
     windowSeconds: Number(env("WINDOW_SECONDS", 60)),
     earlyBlocks: Number(env("EARLY_BLOCKS", 1200)),
-    lookbackBlocks: Number(env("LOOKBACK_BLOCKS", 5_000_000)),
+    lookbackBlocks: Number(env("LOOKBACK_BLOCKS", 100_000)),
     maxWallets: Number(env("MAX_WALLETS", 50)),
     hubRecipients: Number(env("HUB_RECIPIENTS", 25)),
   },

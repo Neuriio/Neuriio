@@ -12,10 +12,6 @@
       "destination": "/api/rpc"
     },
     {
-      "source": "/agora",
-      "destination": "/api/agora"
-    },
-    {
       "source": "/((?!.*\\.).*)",
       "destination": "/index.html"
     }

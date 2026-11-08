@@ -16,3 +16,6 @@ verify_jwt = false # Privy access token, verified inside
 
 [functions.posts]
 verify_jwt = false # Privy access token, verified inside
+
+[functions.record-trade]
+verify_jwt = false # public + idempotent: reads one receipt, keeps only our swaps; rate-limited per IP

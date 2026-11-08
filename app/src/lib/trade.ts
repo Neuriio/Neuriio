@@ -5,6 +5,7 @@
 // One click = one transaction (user, 2026-10-18): the one-time approvals (the token -> Permit2, unlimited; Permit2 -> the
 // router, unlimited for 30 days) are sent silently in the background as soon as the trade box opens (`prepareTrading`). If
 // one is still missing when you click, it goes first, then the trade, with the next nonce.
+import { recordTrade } from "./recordTrade";
 import { encodeAbiParameters, encodePacked, erc20Abi, keccak256, maxUint256, parseAbi, type Address, type EIP1193Provider } from "viem";
 import { confirmed, nonceAfter, walletClientFor } from "./tx";
 import { ASCEND, QUOTE } from "./config";
@@ -108,7 +109,7 @@ const approving = new Map<string, Promise<number | null>>();
 /** Makes sure Ascend's router can take `spent` (USDC or a token) from `account` through Permit2: the token approves Permit2
  *  (unlimited, once), Permit2 allows the router (unlimited, renewed when under a day is left). Sends what's missing.
  *  Resolves to the nonce for the next transaction when it sent one (see nonceAfter), else null. */
-function approveForTrading(provider: EIP1193Provider, account: Address, spent: Address, atLeast: bigint): Promise<number | null> {
+export function approveForTrading(provider: EIP1193Provider, account: Address, spent: Address, atLeast: bigint): Promise<number | null> {
   const key = `${account}:${spent}`.toLowerCase();
   const inFlight = approving.get(key);
   if (inFlight) return inFlight;
@@ -202,6 +203,7 @@ export async function trade(
     try {
       const hash = await wallet.writeContract({ address: ASCEND.universalRouter, abi: routerAbi, functionName: "execute", args: [commands, inputs, deadline], nonce });
       await confirmed(hash);
+      recordTrade(hash); // on every chart and in Positions in about a second
       return hash;
     } catch (e) {
       const m = (e as Error).message;
