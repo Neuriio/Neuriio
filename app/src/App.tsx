@@ -15,6 +15,7 @@ import { SwapCard } from "./components/SwapCard";
 import { DnaStrand } from "./components/DnaStrand";
 import { LandingBg, LandingFrame, LandingHero, Showcase } from "./components/Landing";
 import { useRegisterOnLogin } from "./lib/register";
+import { useAutoReferral } from "./lib/referral";
 import { useNotificationsPoller } from "./lib/ftf";
 import { ArtPage } from "./components/ArtPage";
 import { SafePage } from "./components/SafePage";
@@ -41,6 +42,7 @@ export function App() {
 function Page() {
   const tickers = useTickerLogos();
   useRegisterOnLogin();
+  useAutoReferral(); // a partner's ?ref= link applies its code on login (no Apply step)
   useNotificationsPoller();
   return (
     <div className={PAGE === "/" ? "app app-landing" : `app app-nav${PAGE === "/explore" || PAGE === "/trade" ? " app-explore" : ""}`}>

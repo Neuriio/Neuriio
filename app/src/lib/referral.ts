@@ -100,3 +100,57 @@ export function useReferral(account: string): Referral {
   );
   return { status, apply, verify };
 }
+
+const clearPending = () => {
+  try {
+    localStorage.removeItem(PENDING_KEY);
+  } catch {
+    /* nothing to clear */
+  }
+};
+
+/** A partner's link applies its code on its own (user, 2026-11-09: no Apply step): once the visitor is logged in, if their
+ *  account has no code yet, the link's code is applied. Runs once per login; the saved code is cleared once it's settled
+ *  (applied, the account already had one, or the code was refused), so it never retries forever. Mounted app-wide in App.tsx. */
+export function useAutoReferral() {
+  const { ready, authenticated, getAccessToken } = usePrivy();
+  useEffect(() => {
+    if (!ready || !authenticated) return;
+    const code = pendingCode();
+    if (!code || !isCode(code)) return;
+    let alive = true;
+    const call = async (action: string, body: Record<string, unknown> = {}) => {
+      const token = await getAccessToken();
+      if (!token) throw new Error("not logged in");
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/referral`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...body }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(json.error ?? `Request failed (${res.status})`), { status: res.status });
+      return json as RefStatus;
+    };
+    // a moment after login, so the account's first registration (useRegisterOnLogin) has gone through
+    const run = async (attempt: number): Promise<void> => {
+      if (!alive) return;
+      try {
+        const s = await call("status");
+        if (!s.code) await call("apply", { code });
+        clearPending();
+      } catch (e) {
+        const status = (e as { status?: number }).status ?? 0;
+        const msg = (e as Error).message;
+        // try again: a brand-new account's wallet isn't ready yet (409 "isn't ready"), too many tries (429), session or server hiccups
+        const later = status === 0 || status === 401 || status === 429 || status >= 500 || (status === 409 && /isn't ready/i.test(msg));
+        if (!later) return clearPending(); // settled: unknown/inactive code, or the account already uses another code
+        if (attempt < 4) setTimeout(() => run(attempt + 1), 4_000 * (attempt + 1));
+      }
+    };
+    const t = setTimeout(() => run(0), 2_500);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [ready, authenticated, getAccessToken]);
+}
