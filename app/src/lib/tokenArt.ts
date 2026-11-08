@@ -10,7 +10,7 @@
 import type { Address } from "viem";
 
 export const ASCEND_API = "https://api.ascendlaunch.xyz";
-export const ASCEND_TURNSTILE_SITE_KEY = "0x4AAAAAAAFxMC7ihfVklbm6g"; // Ascend's, for app.neuriio.xyz (rook, 2026-11-08)
+export const ASCEND_TURNSTILE_SITE_KEY = "0x4AAAAAAFxMC7ihfVklbm6g"; // Ascend's, for app.neuriio.xyz (rook, 2026-11-08)
 export const ART_LIMITS = { name: 40, symbol: 10, description: 500, website: 200, imageBytes: 2 * 1024 * 1024 }; // Ascend's
 export const ART_HOST = "app.neuriio.xyz"; // the only place Ascend's Turnstile key works (localhost doesn't)
 

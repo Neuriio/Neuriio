@@ -44,7 +44,7 @@ export async function turnstileToken(siteKey: string, slotId = "turnstile-slot")
       appearance: "interaction-only",
       execution: "execute",
       callback: (token: string) => done(() => resolve(token)),
-      "error-callback": () => done(() => reject(new Error("The security check failed. Reload the page and try again."))),
+      "error-callback": (code: string) => done(() => reject(new Error(`The security check failed (Cloudflare ${code}). Reload the page and try again.`))),
       "timeout-callback": () => done(() => reject(new Error("The security check timed out. Try again."))),
     });
     if (!id) return reject(new Error("The security check didn't start. Reload the page and try again."));
