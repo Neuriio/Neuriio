@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { TokenArtPrompt } from "./TokenArtModal";
 import { formatEther, formatUnits, type Address, type EIP1193Provider } from "viem";
 import { confirmed, elysiumProvider, walletClientFor } from "../lib/tx";
 import { elysiumTestnet } from "../chain";
@@ -710,6 +711,8 @@ function LaunchView({ handle, avatar, address, demo, getAccessToken, getProvider
                   <p className="lp-live-title">{isFtf ? `${ftf.draft?.name ?? "Your FTF"} (${ticker})` : `@${handle}`} is live</p>
                   <p className="lp-live-sub">Your token is trading now.</p>
                   <div className="lp-live-actions">
+                    {/* last step: send their picture, bio and links to Ascend now (user, 2026-11-09) */}
+                    {phase.token && !DEMO && <TokenArtPrompt token={phase.token} />}
                     <a
                       className="lock-login lp-cta"
                       target="_blank"

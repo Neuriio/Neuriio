@@ -5,7 +5,6 @@ import { PointsBox } from "./components/PointsBox";
 import { CardStack } from "./components/CardStack";
 import { TopNav } from "./components/TopNav";
 import { HeaderSearch } from "./components/HeaderSearch";
-import { HypeButton } from "./components/HypeButton";
 import { SiteFooter } from "./components/SiteFooter";
 import { LogoMarquee } from "./components/LogoMarquee";
 import { useTickerLogos } from "./lib/tickers";
@@ -80,9 +79,7 @@ function Page() {
           <DnaStrand side="right" phase={1.3} />
           <main className="stage stage-launch">
             <LaunchCard />
-            <div className="launch-hype">
-              <HypeButton />
-            </div>
+            {/* the testnet funds button (HypeButton) was removed for mainnet (user, 2026-11-09); the component file is kept */}
           </main>
         </>
       ) : PAGE === "/feed" ? (

@@ -7,7 +7,7 @@ import { usePrivy, useWallets, type ConnectedWallet } from "@privy-io/react-auth
 import { ImageUp, X } from "lucide-react";
 import { erc20Abi, type Address } from "viem";
 import { elysiumTestnet } from "../chain";
-import type { TokenStat } from "../lib/explore";
+import { getToken, type TokenStat } from "../lib/explore";
 import { useCreatorProfile } from "./ProfileModal";
 import { pub } from "../lib/launch";
 import { ART_HOST, artFields, currentArt, artMessage, ART_LIMITS, ASCEND_TURNSTILE_SITE_KEY, claimArt, claimMessage, imageProblem, pinArt, sha256Hex } from "../lib/tokenArt";
@@ -23,10 +23,12 @@ const bigX = (url: string | null) => (url ? url.replace(/_(normal|bigger|mini|20
 
 export function TokenArtModal({ t, wallet, onClose }: { t: TokenStat; wallet: ConnectedWallet; onClose: () => void }) {
   const account = wallet.address as Address;
-  const { profile } = useCreatorProfile(t); // their launch profile: the description and links to start from
+  const { profile } = useCreatorProfile(t);
+  const { user } = usePrivy();
+  const xPicture = t.x_pfp_url ?? user?.twitter?.profilePictureUrl ?? null; // a brand-new coin may not have its X card yet // their launch profile: the description and links to start from
   const onHost = location.hostname === ART_HOST;
   const [file, setFile] = useState<{ blob: Blob; name: string } | null>(null);
-  const [preview, setPreview] = useState<string | null>(bigX(t.x_pfp_url));
+  const [preview, setPreview] = useState<string | null>(bigX(xPicture));
   const [description, setDescription] = useState("");
   const [website, setWebsite] = useState("");
   const [twitter, setTwitter] = useState(t.kind === "ftf" ? "" : t.handle);
@@ -64,7 +66,7 @@ export function TokenArtModal({ t, wallet, onClose }: { t: TokenStat; wallet: Co
       setStage({ kind: "busy", label: "Getting the picture…" });
       let image = file;
       if (!image) {
-        const url = bigX(t.x_pfp_url);
+        const url = bigX(xPicture);
         if (!url) throw new Error("Choose a picture first.");
         const res = await fetch(url);
         if (!res.ok) throw new Error("Couldn't load your X picture. Choose one instead.");
@@ -171,7 +173,7 @@ export function TokenArtModal({ t, wallet, onClose }: { t: TokenStat; wallet: Co
 }
 
 /** The coin header's "Token art" button: only its creator sees it, and only until their art is attached on Ascend. */
-export function TokenArtButton({ t }: { t: TokenStat }) {
+export function TokenArtButton({ t, cta = false }: { t: TokenStat; cta?: boolean }) {
   const { authenticated } = usePrivy();
   const { wallets } = useWallets();
   const wallet = authenticated ? wallets.find((w) => w.walletClientType === "privy") : undefined;
@@ -192,10 +194,31 @@ export function TokenArtButton({ t }: { t: TokenStat }) {
   if (!mine || has !== false || !wallet) return null;
   return (
     <>
-      <button className="ex-profile-btn" onClick={() => setOpen(true)}>
-        <ImageUp size={13} aria-hidden /> Token art
-      </button>
+      {cta ? (
+        <button className="lock-login lp-cta" onClick={() => setOpen(true)}>
+          Set token art & profile
+        </button>
+      ) : (
+        <button className="ex-profile-btn" onClick={() => setOpen(true)}>
+          <ImageUp size={13} aria-hidden /> Token art
+        </button>
+      )}
       {open && <TokenArtModal t={t} wallet={wallet} onClose={() => setOpen(false)} />}
     </>
   );
+}
+
+/** The launch screen's last step (user, 2026-11-09): right after "is live", the creator sends their picture, bio and links to
+ *  Ascend without hunting for the button on their coin page. Reads the new coin (from the chain if the indexer hasn't stored it
+ *  yet); shows nothing once their art is set. */
+export function TokenArtPrompt({ token }: { token: string }) {
+  const [t, setT] = useState<TokenStat | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getToken(token).then((x) => alive && setT(x), () => {});
+    return () => {
+      alive = false;
+    };
+  }, [token]);
+  return t ? <TokenArtButton t={t} cta /> : null;
 }

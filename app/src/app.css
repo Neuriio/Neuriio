@@ -1346,8 +1346,10 @@ body {
 }
 .lp-live-actions {
   display: flex;
+  flex-wrap: wrap; /* + "Set token art & profile" (2026-11-09): wraps on phones instead of overflowing */
+  justify-content: center;
   align-items: center;
-  gap: 16px;
+  gap: 12px 16px;
   margin-top: 4px;
 }
 .lp-live-actions .link-btn {
