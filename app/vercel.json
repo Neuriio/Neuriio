@@ -4,6 +4,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/art/:cid",
+      "destination": "/api/art?cid=:cid"
+    },
+    {
       "source": "/rpc/session",
       "destination": "/api/rpc-session"
     },

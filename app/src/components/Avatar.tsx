@@ -5,6 +5,13 @@
 import { useState } from "react";
 import { LANDING, landingTone } from "../lib/explore";
 
+/** IPFS pictures (gateway.pinata.cloud, slow) go through our own CDN-cached /art/<cid> on the live site (api/art.ts). */
+const fastPicture = (url: string) => {
+  if (import.meta.env.DEV) return url; // dev has no /api routes
+  const m = url.match(/^https:\/\/gateway\.pinata\.cloud\/ipfs\/([A-Za-z0-9]+)$/);
+  return m ? `/art/${m[1]}` : url;
+};
+
 export function Avatar({
   handle,
   pfp,
@@ -24,7 +31,7 @@ export function Avatar({
   return (
     <span className={`ex-avatar ${className}`.trim()} style={{ width: size, height: size }}>
       {pfp && !broken ? (
-        <img src={pfp} alt="" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
+        <img src={fastPicture(pfp)} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setBroken(true)} />
       ) : (
         <span>{handle[0]?.toUpperCase()}</span>
       )}
