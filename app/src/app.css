@@ -6060,3 +6060,174 @@ a.site-foot-item:hover {
 .ex-about .ex-token-links {
   margin: 4px 0 2px;
 }
+
+/* Token art window (user, 2026-11-08): the creator's picture, description and links on Ascend */
+.art-modal {
+  max-height: min(640px, 100%);
+}
+.art-note,
+.art-msg {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.art-warn {
+  margin: 0;
+  font-size: 12px;
+  color: #f5c46b;
+}
+.art-pic {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: rgba(10, 6, 18, 0.45);
+  border: 1px dashed rgba(236, 221, 255, 0.22);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.art-pic:hover {
+  border-color: rgba(236, 221, 255, 0.4);
+}
+.art-preview {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.art-preview-empty {
+  background: var(--surface);
+}
+.art-pic-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+.art-pic-text b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.art-pic-text span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+}
+.art-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.art-field > span {
+  display: flex;
+  justify-content: space-between;
+}
+.art-field i {
+  font-style: normal;
+}
+.art-field input,
+.art-field textarea {
+  width: 100%;
+  padding: 9px 10px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text);
+  background: rgba(10, 6, 18, 0.45);
+  border: 1px solid rgba(236, 221, 255, 0.14);
+  border-radius: 5px;
+  resize: vertical;
+}
+.art-field input:focus,
+.art-field textarea:focus {
+  outline: none;
+  border-color: rgba(236, 221, 255, 0.35);
+}
+.art-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 420px) {
+  .art-row {
+    grid-template-columns: 1fr;
+  }
+}
+.art-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.art-done .art-preview {
+  width: 88px;
+  height: 88px;
+}
+.art-done-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.art-done .lock-login {
+  width: 100%;
+}
+/* /art page */
+.art-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 16px;
+}
+.art-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: min(380px, 100%);
+  padding: 28px 22px;
+  text-align: center;
+}
+.art-card .lock-login {
+  width: 100%;
+}
+.art-logo {
+  width: 40px;
+  height: 40px;
+}
+.art-h1 {
+  margin: 0;
+  font-size: 20px;
+}
+.art-coin {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+.art-coin > span {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: var(--muted);
+}
+.art-coin b {
+  font-size: 15px;
+  color: var(--text);
+}
+.art-link {
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}

@@ -5,7 +5,9 @@ import { Paused } from "./Paused";
 // Site-wide pause: every page shows this and the app never loads, so visitors make no RPC, Privy or Supabase calls.
 // Local dev always loads the app. Set to false to bring the app back in production.
 // Except /safe (user, 2026-11-05): the Safe owners' approval page stays reachable on their own devices while the site is closed.
-const SAFE_PAGE = location.pathname.replace(/\/+$/, "") === "/safe";
+// And /art (user, 2026-11-08): creators set their coin's art on Ascend, whose security check only works on app.neuriio.xyz.
+const OPEN_PAGES = ["/safe", "/art"];
+const SAFE_PAGE = OPEN_PAGES.includes(location.pathname.replace(/\/+$/, ""));
 const PAUSED = !import.meta.env.DEV && !SAFE_PAGE;
 
 if (PAUSED) {

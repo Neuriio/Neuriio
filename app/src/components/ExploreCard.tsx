@@ -22,6 +22,7 @@ import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingO
 import { PositionsCard } from "./PositionsCard";
 import { StakeCard } from "./StakeCard";
 import { ProfileBody, ProfileModal, useCreatorProfile } from "./ProfileModal";
+import { TokenArtButton } from "./TokenArtModal";
 import { useIsMobile } from "../lib/media";
 import { Avatar } from "./Avatar";
 import { compactUsd, tinyPrice } from "../lib/format";
@@ -550,6 +551,7 @@ function TokenDetail({
                 <UserRound size={13} aria-hidden /> Profile
               </button>
             )}
+            {isOurs(t) && <TokenArtButton t={t} />}
             <span className="ex-earned" title="Lifetime creator fees paid by Ascend">
               <span className="ex-earned-label">Creator fees earned</span>
               <EarnedValue earned={earned} />

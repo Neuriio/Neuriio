@@ -235,6 +235,13 @@ export async function getToken(addressOrHandle: string, opts: { chainFallback?: 
   return opts.chainFallback === false ? null : tokenFromChain(v, byAddress);
 }
 
+/** The coin a wallet launched on Neuriio (its creator-fee wallet), or null: /art finds the creator's coin from our own data. */
+export async function tokenOfCreatorWallet(wallet: string): Promise<TokenStat | null> {
+  if (!/^0x[0-9a-fA-F]{40}$/.test(wallet)) return null;
+  const rows = await rest<Record<string, unknown>[]>(`token_stats?select=*&creator=eq.${wallet.toLowerCase()}&limit=1`);
+  return rows[0] ? toStat(rows[0]) : null;
+}
+
 async function tokenFromChain(v: string, byAddress: boolean): Promise<TokenStat | null> {
   const address = byAddress
     ? (v as Address)

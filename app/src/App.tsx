@@ -17,6 +17,7 @@ import { DnaStrand } from "./components/DnaStrand";
 import { LandingBg, LandingFrame, LandingHero, Showcase } from "./components/Landing";
 import { useRegisterOnLogin } from "./lib/register";
 import { useNotificationsPoller } from "./lib/ftf";
+import { ArtPage } from "./components/ArtPage";
 import { SafePage } from "./components/SafePage";
 import { TradeMock } from "./components/TradeMock";
 
@@ -24,7 +25,7 @@ import { TradeMock } from "./components/TradeMock";
 // "/" opens the Feed (public launch, user 2026-10-20: no landing page, no passcode); any other unknown path shows Explore.
 // The address bar is set to the page shown. (The landing page's code stays, unused, for a later marketing site.)
 // (/trending was removed 2026-11-05: its Trending list now lives in Explore, so old /trending links land on Explore)
-const ROUTES = ["/showcase", "/safe", "/trade", "/launch", "/feed", "/explore", "/swap"];
+const ROUTES = ["/showcase", "/safe", "/art", "/trade", "/launch", "/feed", "/explore", "/swap"];
 const RAW = location.pathname.replace(/\/+$/, "") || "/";
 const PAGE = RAW === "/" ? "/feed" : ROUTES.includes(RAW) ? RAW : "/explore";
 if (RAW !== PAGE) history.replaceState(null, "", PAGE + location.search + location.hash);
@@ -33,6 +34,8 @@ export function App() {
   // /showcase: the landing's Explore card alone (framed into the landing on phones); no header, no account hooks
   // /safe (unlisted): the Neuriio Safe's approval page for its owners' own wallets (SafePage)
   if (PAGE === "/safe") return <SafePage />;
+  // /art (unlisted): a creator sets their coin's art on Ascend (ArtPage); open while the site is paused
+  if (PAGE === "/art") return <ArtPage />;
   return PAGE === "/showcase" ? <Showcase /> : <Page />;
 }
 
