@@ -46,7 +46,7 @@ for COIN in "$@"; do
   ROW=$(curl -s "$SB/ascend_tokens?address=eq.$(lc $COIN)&select=symbol,pool_id,quote,quote_symbol,quote_decimals" -H "apikey: $SBKEY")
   POOL_ID=$(echo "$ROW" | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r[0]["pool_id"] if r else "")')
   [ -n "$POOL_ID" ] || { echo "   not an Ascend coin in our data: skipped"; continue; }
-  read -r SYMBOL QUOTE QSYM QDEC <<<"$(echo "$ROW" | python3 -c 'import json,sys; r=json.load(sys.stdin)[0]; print(r["symbol"].replace(" ","_"), r["quote"], r["quote_symbol"], r["quote_decimals"])')"
+  read -r SYMBOL QUOTE QSYM QDEC <<<"$(echo "$ROW" | python3 -c 'import json,sys; r=json.load(sys.stdin)[0]; print(r["symbol"].strip().replace(" ","_"), r["quote"], r["quote_symbol"] or {"0xba876237b0f021a6c6d852d6c26e107997cc5e81": "WHYPE", "0xe45a355d9e9cad2ad85f2d03e3ee3102a036acf0": "KNTQ", "0xb47c4c8f73f009cc0c0d3f92b388d13e293f0b65": "USDC"}.get(r["quote"].lower(), "?"), r["quote_decimals"])')"
   if [[ "$(lc $COIN)" < "$(lc $QUOTE)" ]]; then C0=$COIN; C1=$QUOTE; else C0=$QUOTE; C1=$COIN; fi
   POOLKEY="($C0,$C1,8388608,200,$HOOK)"
   ID=$(cast keccak "$(cast abi-encode "f($KEYTYPE)" "$POOLKEY")")

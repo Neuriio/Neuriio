@@ -94,10 +94,17 @@ async function rest<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 // numeric columns arrive as strings or numbers depending on size; normalise to numbers
+const PAIR_SYMBOLS: Record<string, string> = {
+  "0xba876237b0f021a6c6d852d6c26e107997cc5e81": "WHYPE",
+  "0xe45a355d9e9cad2ad85f2d03e3ee3102a036acf0": "KNTQ",
+  "0xb47c4c8f73f009cc0c0d3f92b388d13e293f0b65": "USDC",
+};
 function toStat(r: Record<string, unknown>): TokenStat {
   const out = { ...r } as Record<string, unknown>;
   for (const k of NUMERIC) out[k] = Number(r[k] ?? 0);
   out.kind = r.kind === "ftf" ? "ftf" : "individual";
+  // the indexer sometimes has the pair's address but not its symbol (e.g. a/acc, 2026-11-09): name it from the address
+  if (!r.quote_symbol && typeof r.quote === "string") out.quote_symbol = PAIR_SYMBOLS[r.quote.toLowerCase()] ?? null;
   return out as TokenStat;
 }
 
