@@ -1,7 +1,7 @@
-// The RPC proxy (api/_lib/rpcProxy.ts). Run: node --test app/api/rpcProxy.test.ts  (Node strips the types itself)
+// The RPC proxy (api/_lib/rpcProxy.ts). Run: node --test app/api/_lib/rpcProxy.test.ts  (Node strips the types itself)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkBody, COOKIE, makeRpcHandler, makeSessionCookie, makeSessionHandler, MAX_BATCH, sessionValid, type ProxyEnv } from "./_lib/rpcProxy.ts";
+import { checkBody, COOKIE, makeRpcHandler, makeSessionCookie, makeSessionHandler, MAX_BATCH, sessionValid, type ProxyEnv } from "./rpcProxy.ts";
 
 const env: ProxyEnv = {
   upstream: "https://provider.example/v2/SECRETKEY",
