@@ -5,7 +5,8 @@
 //      MULTICALL (default the standard Multicall3), IGNORE (comma-separated addresses that tie nobody together: exchanges, bridges, faucets),
 //      WINDOW_SECONDS (60), EARLY_BLOCKS (1200), LOOKBACK_BLOCKS (100000: funding read from ~6 hours before the launch at mainnet's
 //      0.21 s blocks), MAX_WALLETS (50), HUB_RECIPIENTS (25),
-//      PASS_MS (60000), ONCE=1 (one pass, exit)
+//      PASS_MS (60000), ONCE=1 (one pass, exit), TOP (15: also check Explore's Verified list, Ascend's top coins by 24h volume;
+//      0 = only our own launches)
 import { createPublicClient, defineChain } from "viem";
 import { makeTransport } from "./src/rpc.mjs";
 import { makeLaunchChecker, supabaseLaunchStore } from "./src/launchcheck/check.mjs";
@@ -30,7 +31,7 @@ const pub = createPublicClient({ chain, transport: makeTransport(RPC_URL, { name
 const checker = makeLaunchChecker({
   pub,
   log,
-  store: supabaseLaunchStore(need("SUPABASE_URL"), need("SUPABASE_SERVICE_KEY"), need("REGISTRY").toLowerCase()),
+  store: supabaseLaunchStore(need("SUPABASE_URL"), need("SUPABASE_SERVICE_KEY"), need("REGISTRY").toLowerCase(), { top: Number(env("TOP", 15)) }),
   cfg: {
     usdc: need("USDC"),
     staking: env("STAKING"),

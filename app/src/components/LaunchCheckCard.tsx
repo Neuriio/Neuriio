@@ -16,7 +16,8 @@ const HEADLINE: Record<LaunchCheck["status"], string> = {
   none: "No early buyers",
 };
 
-/** `elsewhere`: a token launched on another launchpad, which our launch-check service doesn't analyse yet. */
+/** `elsewhere`: a token launched on another launchpad. The service checks those in Explore's Verified top 15 (user, 2026-11-08);
+ *  funding in native HYPE leaves no logs, so on them it can miss more links (the note says so). */
 export function LaunchCheckCard({ address, elsewhere }: { address: string; elsewhere?: boolean }) {
   const [check, setCheck] = useState<LaunchCheck | null | undefined>(undefined);
   useEffect(() => {
@@ -39,7 +40,7 @@ export function LaunchCheckCard({ address, elsewhere }: { address: string; elsew
         <p className="ex-check-note">…</p>
       ) : check === null ? (
         <p className="ex-check-note">
-          {elsewhere ? "Not checked yet for tokens launched on other launchpads." : "Not checked yet. It runs about a minute after the first buy."}
+          {elsewhere ? "Not checked yet. Coins launched elsewhere are checked while they're in the Verified top 15." : "Not checked yet. It runs about a minute after the first buy."}
         </p>
       ) : (
         <>
@@ -89,7 +90,9 @@ export function LaunchCheckCard({ address, elsewhere }: { address: string; elsew
                 ))}
             </ul>
           )}
-          <p className="ex-check-note">Public chain data. Can miss links or flag unrelated wallets.</p>
+          <p className="ex-check-note">
+            Public chain data. Can miss links or flag unrelated wallets.{elsewhere && " Funding sent as native HYPE isn't visible."}
+          </p>
         </>
       )}
     </div>

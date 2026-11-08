@@ -329,6 +329,45 @@ test("chain: a recheck reads only the blocks since the last one, and still catch
   }
 });
 
+test("chain: a coin paired with another token (Ascend's WHYPE / KNTQ coins) reads funding in that token too", async () => {
+  const quote = await deploy(tokenA); // stands in for WHYPE
+  const l = await launch();
+  const f = await person();
+  await send(deployer, quote, tokenA.abi, "mint", [f.account.address, 10n ** 24n]);
+  const [a, b] = [await person(), await person()];
+  await send(f, quote, tokenA.abi, "transfer", [a.account.address, E18]);
+  await send(f, quote, tokenA.abi, "transfer", [b.account.address, E18]);
+  await buy(l, [a]);
+  await buy(l, [b]);
+  const check = (q) => makeLaunchCheck({ pub, cfg: { ...cfg, usdc } }).check({ token: l.token, launchBlock: l.launchBlock, quote: q }, null);
+  assert.equal((await check(undefined)).summary.linked_wallets, 0); // USDC only: the WHYPE funder isn't seen
+  const s = (await check(quote)).summary;
+  assert.equal(s.linked_wallets, 2);
+  assert.ok(s.wallets.every((w) => w.reasons.length > 0));
+});
+
+test("chain: a coin launched elsewhere: the launch transaction's sender is the creator, looked up once and kept", async () => {
+  const creator = await person();
+  const l = await launch();
+  const launchTx = (await send(creator, usdc, tokenA.abi, "transfer", [creator.account.address, 0n])).transactionHash; // the "launch"
+  const [a] = [await person()];
+  await buy(l, [creator]); // the creator's own first buy
+  await buy(l, [a]);
+  const lc = makeLaunchCheck({ pub, cfg: { ...cfg, usdc } });
+  const one = await lc.check({ token: l.token, launchBlock: l.launchBlock, launchTx }, null);
+  assert.equal(one.summary.early_wallets, 1); // only the other buyer is early
+  assert.ok(one.summary.creator_pct > 0); // the creator's buy is shown apart
+  assert.equal(one.saved.creator, at(creator));
+  const real = pub.getTransaction;
+  pub.getTransaction = () => Promise.reject(new Error("looked up again"));
+  try {
+    const two = await lc.check({ token: l.token, launchBlock: l.launchBlock, launchTx }, JSON.parse(JSON.stringify(one.saved)));
+    assert.equal(two.summary.creator_pct, one.summary.creator_pct);
+  } finally {
+    pub.getTransaction = real;
+  }
+});
+
 test("chain: no buyers yet is nothing to show, not an error", async () => {
   assert.equal(await run(await launch()), null);
 });

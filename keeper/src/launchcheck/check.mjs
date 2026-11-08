@@ -49,14 +49,18 @@ export function makeLaunchCheck({ pub, cfg }) {
     return codeCache.get(a);
   };
   const times = new Map();
-  const timeOf = async (blockNumber) => {
-    if (!times.has(blockNumber)) times.set(blockNumber, (await pub.getBlock({ blockNumber })).timestamp);
+  /** A block's time: from the log itself when the RPC includes it (Alchemy does), else one getBlock. */
+  const timeOf = async (blockNumber, log) => {
+    if (!times.has(blockNumber)) {
+      const t = log?.blockTimestamp;
+      times.set(blockNumber, t != null ? BigInt(t) : (await pub.getBlock({ blockNumber })).timestamp);
+    }
     return times.get(blockNumber);
   };
   const inOrder = (logs) => [...logs].sort((a, b) => (a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1));
 
   /** The first time: everyone who got tokens in the window from the first buyer on, and what funded them. */
-  async function first(token, launchBlock, creator, head) {
+  async function first(token, launchBlock, creator, head, funding) {
     // the window opens at the first buy, which might come long after the launch: look further each time, stopping there
     const creatorFirst = [];
     let firstOther = null;
@@ -79,7 +83,7 @@ export function makeLaunchCheck({ pub, cfg }) {
     const inWindow = creatorFirst.filter((r) => r.blockNumber < firstBuy);
     const last = firstBuy + BigInt(cfg.earlyBlocks) < head ? firstBuy + BigInt(cfg.earlyBlocks) : head;
     for (const l of inOrder(await logsAcross(pub, { address: token, event: TRANSFER }, firstBuy, last))) {
-      if ((await timeOf(l.blockNumber)) > closes) break;
+      if ((await timeOf(l.blockNumber, l)) > closes) break;
       const r = await receiptOf(l);
       if (r) inWindow.push(r);
     }
@@ -91,16 +95,20 @@ export function makeLaunchCheck({ pub, cfg }) {
     // one query covers every wallet's funding: from `lookbackBlocks` before the LAUNCH (bundlers fund their wallets just
     // before it; user 2026-11-08: ~6 hours) up to the first buy
     const start = launchBlock > BigInt(cfg.lookbackBlocks) ? launchBlock - BigInt(cfg.lookbackBlocks) : 0n;
-    const funded = (await logsAcross(pub, { address: cfg.usdc, event: TRANSFER, args: { to: wallets } }, start, firstBuy)).map((l) => ({ from: lc(l.args.from), to: lc(l.args.to) }));
+    const funded = (await logsAcross(pub, { address: funding, event: TRANSFER, args: { to: wallets } }, start, firstBuy)).map((l) => ({ from: lc(l.args.from), to: lc(l.args.to) }));
     const noise = new Set(ignored);
+    const candidates = [];
     for (const funder of sharedFunders(funded, wallets)) {
       if (noise.has(funder)) continue;
-      if (!(await isWallet(funder))) {
-        noise.add(funder); // a bridge, router or exchange contract ties nobody together
-        continue;
-      }
-      const paid = await logsAcross(pub, { address: cfg.usdc, event: TRANSFER, args: { from: funder } }, start, firstBuy);
-      if (new Set(paid.map((l) => lc(l.args.to))).size > cfg.hubRecipients) noise.add(funder); // pays everyone: a faucet or an exchange wallet
+      if (await isWallet(funder)) candidates.push(funder);
+      else noise.add(funder); // a bridge, router or exchange contract ties nobody together
+    }
+    if (candidates.length) {
+      // everything those funders paid, in one search for all of them (was one per funder: ~10 calls each over 100k blocks)
+      const paid = await logsAcross(pub, { address: funding, event: TRANSFER, args: { from: candidates } }, start, firstBuy);
+      const payees = new Map(candidates.map((f) => [f, new Set()]));
+      for (const l of paid) payees.get(lc(l.args.from))?.add(lc(l.args.to));
+      for (const [f, to] of payees) if (to.size > cfg.hubRecipients) noise.add(f); // pays everyone: a faucet or an exchange wallet
     }
     const edges = [...sameTxEdges(inWindow.filter((r) => kept.has(r.wallet))), ...fundingEdges(funded, wallets, noise)];
     return { bought: [...bought].filter(([a]) => kept.has(a)).map(([a, v]) => [a, v.toString()]), edges };
@@ -114,13 +122,18 @@ export function makeLaunchCheck({ pub, cfg }) {
     return { wallet: to, value: l.args.value, txHash: l.transactionHash, blockNumber: l.blockNumber };
   }
 
-  /** One token. `saved`: what an earlier check kept, or null. Returns what to save and show, or null with no buyers yet. */
-  async function check({ token, launchBlock, creator }, saved) {
+  /** One token. `saved`: what an earlier check kept, or null. Returns what to save and show, or null with no buyers yet.
+   *  A coin launched elsewhere (Ascend's top 15, user 2026-11-08) comes with its `quote` (what it trades against: funding is
+   *  read in that as well as USDC; native HYPE leaves no logs, so HYPE-paired coins can miss links) and its `launchTx`
+   *  instead of a creator: whoever sent the launch is the creator, looked up once and saved. */
+  async function check({ token, launchBlock, creator, quote, launchTx }, saved) {
     const address = lc(token);
-    const me = creator ? lc(creator) : null;
     const head = await pub.getBlockNumber({ cacheTime: 0 });
     times.clear();
-    const base = saved ?? (await first(token, BigInt(launchBlock), me, head));
+    let me = creator ? lc(creator) : (saved?.creator ?? null);
+    if (!me && !saved && launchTx) me = lc((await pub.getTransaction({ hash: launchTx })).from);
+    const funding = [...new Set([lc(cfg.usdc), ...(quote ? [lc(quote)] : [])])];
+    const base = saved ?? (await first(token, BigInt(launchBlock), me, head, funding));
     if (!base) return null;
     const bought = new Map(base.bought.map(([a, v]) => [a, BigInt(v)]));
     const wallets = [...bought.keys()];
@@ -145,7 +158,7 @@ export function makeLaunchCheck({ pub, cfg }) {
     const holdings = new Map(wallets.map((w, i) => [w, number(results[1 + i]) + (cfg.staking ? number(results[1 + wallets.length + i]) : 0n)]));
     const supply = number(results[0]);
     const summary = summarize({ bought, creator: me, edges: [...base.edges, ...transfers], holdings, supply, windowSeconds: cfg.windowSeconds });
-    return { token: address, saved: { ...base, transfers, scannedTo: head.toString() }, summary };
+    return { token: address, saved: { ...base, transfers, scannedTo: head.toString(), ...(me && !creator ? { creator: me } : {}) }, summary };
   }
 
   return { check };
@@ -156,7 +169,8 @@ export function nextCheckSeconds(ageSeconds) {
   return Math.min(86_400, Math.max(600, Math.floor(ageSeconds / 24)));
 }
 
-/** Goes through the launched tokens that are due. `store`: tokens() -> [{ token, launchBlock, launchedAt, creator }], rows() -> Map, save(row). */
+/** Goes through the launched tokens that are due. `store`: tokens() -> [{ token, launchBlock, launchedAt, creator?, quote?, launchTx? }],
+ *  rows() -> Map, save(row). */
 export function makeLaunchChecker({ pub, cfg, store, log = () => {}, now = () => Date.now() }) {
   const { check } = makeLaunchCheck({ pub, cfg });
   return {
@@ -193,7 +207,7 @@ export function memoryLaunchStore(tokens = []) {
 }
 
 /** Supabase, with the service key. Migration 20261102142511_launch_checks.sql. */
-export function supabaseLaunchStore(url, serviceKey, registry) {
+export function supabaseLaunchStore(url, serviceKey, registry, { top = 0 } = {}) {
   const api = async (path, init = {}) => {
     const res = await fetch(`${url}/rest/v1/${path}`, {
       ...init,
@@ -204,13 +218,22 @@ export function supabaseLaunchStore(url, serviceKey, registry) {
     return text ? JSON.parse(text) : null;
   };
   return {
-    tokens: async () =>
-      (await api(`tokens?registry=ilike.${registry}&launch_block=not.is.null&select=address,launch_block,launched_at,creator`)).map((t) => ({
+    tokens: async () => {
+      const ours = (await api(`tokens?registry=ilike.${registry}&launch_block=not.is.null&select=address,launch_block,launched_at,creator`)).map((t) => ({
         token: t.address,
         launchBlock: t.launch_block,
         launchedAt: t.launched_at,
         creator: t.creator,
-      })),
+      }));
+      if (!top) return ours;
+      // + Explore's Verified list (user, 2026-11-08): Ascend's top `top` coins by 24h volume, the same query as the app's
+      // verifiedTokens(); a coin that leaves the list keeps its last check and isn't rechecked
+      const mine = new Set(ours.map((t) => lc(t.token)));
+      const best = (await api(`ascend_token_stats?select=address&volume_usd_24h=gt.0&order=volume_usd_24h.desc&limit=${top}`)).map((r) => lc(r.address)).filter((a) => !mine.has(a));
+      if (!best.length) return ours;
+      const rows = await api(`ascend_tokens?address=in.(${best.join(",")})&launch_block=not.is.null&select=address,launch_block,launched_at,launch_tx,quote`);
+      return [...ours, ...rows.map((t) => ({ token: t.address, launchBlock: t.launch_block, launchedAt: t.launched_at, launchTx: t.launch_tx, quote: t.quote }))];
+    },
     rows: async () =>
       new Map((await api("launch_checks?select=token,saved,next_check")).map((r) => [r.token, { saved: r.saved, nextCheck: Date.parse(r.next_check) }])),
     save: (row) =>
