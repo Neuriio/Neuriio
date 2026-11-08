@@ -352,7 +352,14 @@ function AboutTab({ t, hypeUsd }: { t: TokenStat; hypeUsd: number }) {
 }
 
 /** Whether a token trades against HYPE (native HYPE or WHYPE). */
-const isHypePair = (t: TokenStat) => ["HYPE", "WHYPE"].includes((t.quote_symbol ?? "").toUpperCase());
+/** A pair shown as a small logo on the coin's picture (bottom-left) instead of a "<X> pair" chip: HYPE (user, 2026-11-07) and
+ *  KNTQ (Kinetiq's logo, user 2026-11-08). */
+const PAIR_BADGES: Record<string, { src: string; name: string; cls?: string }> = {
+  HYPE: { src: "/pairs/hype.svg", name: "HYPE" },
+  WHYPE: { src: "/pairs/hype.svg", name: "HYPE" },
+  KNTQ: { src: "/tokens/kntq.png", name: "KNTQ", cls: " is-kntq" },
+};
+const pairBadge = (t: TokenStat) => PAIR_BADGES[(t.quote_symbol ?? "").toUpperCase()];
 
 type ListMode = "verified" | "neuriio";
 
@@ -526,7 +533,9 @@ function TokenDetail({
         <span className="ex-avatar-wrap">
           <Avatar handle={t.handle} pfp={t.x_pfp_url} size={44} />
           {/* paired with HYPE: Hyperliquid's brand-kit mark on the picture's bottom-left corner (user, 2026-11-07) */}
-          {!isOurs(t) && isHypePair(t) && <img className="ex-pair-badge" src="/pairs/hype.svg" alt="HYPE pair" title="Paired with HYPE" />}
+          {!isOurs(t) && pairBadge(t) && (
+            <img className={`ex-pair-badge${pairBadge(t)!.cls ?? ""}`} src={pairBadge(t)!.src} alt={`${pairBadge(t)!.name} pair`} title={`Paired with ${pairBadge(t)!.name}`} />
+          )}
         </span>
         <div className="ex-head-names">
           <span className="ex-handle">{displayName(t)}</span>
@@ -539,7 +548,7 @@ function TokenDetail({
           {sector && <span className="lp-chip ex-sector-chip">{sector}</span>}
           {isOurs(t) ? (
             <span className={`lp-chip${t.kind === "ftf" ? " ex-ftf-chip" : ""}`}>{t.kind === "ftf" ? "FTF" : cat}</span>
-          ) : isHypePair(t) ? null : ( // HYPE pairs: the mark sits on the picture instead
+          ) : pairBadge(t) ? null : ( // HYPE and KNTQ pairs: their logo sits on the picture instead
             <span className="lp-chip">{t.quote_symbol ?? "USDC"} pair</span>
           )}
         </span>

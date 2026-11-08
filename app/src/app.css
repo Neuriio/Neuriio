@@ -6030,6 +6030,11 @@ a.site-foot-item:hover {
   border: 1.5px solid #120c1d;
   border-radius: 50%;
 }
+.ex-pair-badge.is-kntq {
+  padding: 0; /* Kinetiq's round logo fills the circle; the crop hides its dark square corners */
+  background: #051a1a;
+  object-fit: cover;
+}
 
 /* a token launched elsewhere: its creator's X / website / Telegram as small icon links (user, 2026-11-07) */
 .ex-token-links {
@@ -6230,4 +6235,13 @@ a.site-foot-item:hover {
   border: 0;
   cursor: pointer;
   text-decoration: underline;
+}
+
+/* Top holders (user, 2026-11-08): the Launch check's card, with a rank column */
+.ex-holders li {
+  grid-template-columns: 18px auto minmax(0, 1fr) auto;
+}
+.ex-holder-rank {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }

@@ -16,7 +16,7 @@ import { amount as fmtAmount } from "../lib/format";
 import { QUOTE } from "../lib/config";
 import { GraduatingOverlay, ownGraduations, type GradStage } from "./GraduatingOverlay";
 import { elysiumProvider } from "../lib/tx";
-import { LaunchCheckCard } from "./LaunchCheckCard";
+import { TopHoldersCard } from "./TopHoldersCard"; // replaced LaunchCheckCard here (user, 2026-11-08); that card is kept
 import { poll } from "../lib/poll";
 
 const QUICK_BUY = ["5", "25", "100", "250"]; // USDC, until you set your own (the pencil)
@@ -314,7 +314,7 @@ export function OrderCard({ t, hypeUsd, fixedSide }: { t: TokenStat | null; hype
         {cta}
       </button>
       <p className="ex-order-note">Tokens are memes with no promise of value.</p>
-      <TradeBars address={t.address} nonce={nonce} />
+      <TradeBars address={t.address} nonce={nonce} creator={t.creator} />
       <GraduatingOverlay stage={grad} name={displayName(t)} />
     </div>
   );
@@ -349,7 +349,7 @@ const BAR_DAYS = 7;
 /** Under the order box: this token's daily volume, last 7 days, from the stored 4H candles (refreshes after your own trade and every
  *  minute), then the Launch check. */
 /** `elsewhere`: a coin launched elsewhere on Ascend (its candles come from our indexer like ours; only the launch check differs). */
-function TradeBars({ address, nonce, elsewhere }: { address: string; nonce: number; elsewhere?: boolean }) {
+function TradeBars({ address, nonce, elsewhere, creator }: { address: string; nonce: number; elsewhere?: boolean; creator?: string | null }) {
   const [days, setDays] = useState<{ day: string; vol: number }[] | null>(null);
   useEffect(() => {
     let alive = true;
@@ -372,7 +372,7 @@ function TradeBars({ address, nonce, elsewhere }: { address: string; nonce: numb
   return (
     <div className="ex-bars">
       <BarCard title="Volume" unit="7d" values={days?.map((d) => ({ day: d.day, v: d.vol })) ?? null} />
-      <LaunchCheckCard address={address} elsewhere={elsewhere} />
+      <TopHoldersCard address={address} creator={creator} />
     </div>
   );
 }
@@ -478,7 +478,7 @@ function OutsideToken({ t, fixedSide }: { t: TokenStat; fixedSide?: Side }) {
     return (
       <>
         <NotTradable t={t} />
-        <TradeBars address={t.address} nonce={0} elsewhere />
+        <TradeBars address={t.address} nonce={0} elsewhere creator={t.creator} />
       </>
     );
   return <HypeOrderCard t={t} pool={pool} fixedSide={fixedSide} />;
@@ -642,7 +642,7 @@ function HypeOrderCard({ t, pool, fixedSide }: { t: TokenStat; pool: SwapPool; f
       <button className={`ex-order-cta is-${side}`} disabled={disabled} onClick={loggedIn ? submit : login}>
         {cta}
       </button>
-      <TradeBars address={t.address} nonce={nonce} elsewhere />
+      <TradeBars address={t.address} nonce={nonce} elsewhere creator={t.creator} />
     </div>
   );
 }
