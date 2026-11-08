@@ -8,7 +8,8 @@ import { Paused } from "./Paused";
 // And /art (user, 2026-11-08): creators set their coin's art on Ascend, whose security check only works on app.neuriio.xyz.
 const OPEN_PAGES = ["/safe", "/art"];
 const SAFE_PAGE = OPEN_PAGES.includes(location.pathname.replace(/\/+$/, ""));
-const PAUSED = !import.meta.env.DEV && !SAFE_PAGE;
+// Unpaused 2026-11-08 (user: "remove the pause screen"). Set back to `!import.meta.env.DEV && !SAFE_PAGE` to pause again.
+const PAUSED = false && !import.meta.env.DEV && !SAFE_PAGE;
 
 if (PAUSED) {
   document.body.style.margin = "0";
