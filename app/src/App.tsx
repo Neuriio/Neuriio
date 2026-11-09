@@ -13,6 +13,7 @@ import { ExploreCard } from "./components/ExploreCard";
 import { FeedCard } from "./components/FeedCard";
 import { SwapCard } from "./components/SwapCard";
 import { DnaStrand } from "./components/DnaStrand";
+import { GridTwinkles } from "./components/GridTwinkles";
 import { LandingBg, LandingFrame, LandingHero, Showcase } from "./components/Landing";
 import { useRegisterOnLogin } from "./lib/register";
 import { useAutoReferral } from "./lib/referral";
@@ -75,10 +76,9 @@ function Page() {
           <LandingFrame />
         </main>
       ) : PAGE === "/launch" ? (
-        // launch: one bigger card, no tabs bar
+        // launch: one bigger card, no tabs bar; random grid dots light up behind it (user, 2026-11-08: replaced the dot strands)
         <>
-          <DnaStrand side="left" />
-          <DnaStrand side="right" phase={1.3} />
+          <GridTwinkles />
           <main className="stage stage-launch">
             <LaunchCard />
             {/* the testnet funds button (HypeButton) was removed for mainnet (user, 2026-11-09); the component file is kept */}

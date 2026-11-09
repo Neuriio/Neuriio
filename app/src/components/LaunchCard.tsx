@@ -1,8 +1,8 @@
-// /launch — "Tokenize yourself". First a single Launch button (flickering dot square), then the center card: live token
+// /launch — "Tokenize yourself". First a single Launch button on the dot grid, then the center card: live token
 // preview on the left, short steps on the right (type -> category -> profile -> launch; the button opens on Category). Launch = our backend signs a one-time pass for your X account, then your
 // Neuriio wallet sends Launchpad.launch (with an optional first buy). Your token is always "@handle" / HANDLE.
 // Tokens are memes: the copy says back / support / trade, never invest.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowLeft,
@@ -890,103 +890,17 @@ function InviteMore({ busy, onInvite }: { busy: boolean; onInvite: (handle: stri
 }
 
 /**
- * /launch first screen (user, 2026-10-17): one big Launch button in the middle of the page, inside a small circle of
- * dots, with a band of dots ~3 rows tall running level with the button across the whole page. Every dot sits faintly
- * and slowly flickers on and off at random (in the circle, more often near the button). Launch opens the flow on the
- * Category step (logging in first if needed).
+ * /launch first screen: one big Launch button in the middle of the page, on the page's plain dot grid (its circle and
+ * band of flickering dots were removed, user 2026-11-08; the grid's own dots light up instead, GridTwinkles). Launch
+ * opens the flow on the Category step (logging in first if needed).
  */
 function LaunchGo({ busy, closed, onLaunch }: { busy: boolean; closed: boolean; onLaunch: () => void }) {
   // closed: our launcher isn't on mainnet yet (deployments/elysium-mainnet.json "launcher" is null), so nothing can launch
   return (
     <div className="launch-go">
-      <FlickerDots shape="band" />
-      <FlickerDots shape="circle" />
       <button className={`launch-go-btn${closed ? " is-closed" : ""}`} onClick={onLaunch} disabled={busy || closed}>
         {closed ? "Launches open soon" : "Launch"}
       </button>
     </div>
   );
-}
-
-const DOT_SPACING = 15; // px between neighboring dots
-const GOLDEN = Math.PI * (3 - Math.sqrt(5)); // sunflower spiral: dots fill the circle evenly, in no grid or rows
-const BAND_ROWS = 3;
-
-type Dot = { x: number; y: number; edge: number; start: number; life: number; cyan: boolean };
-
-/** Faint dots that each slowly glow up and fade, then wait before the next time. "circle": a filled circle round the
- *  button (waits get longer toward the rim, so most flicker is near the button). "band": BAND_ROWS rows across the
- *  page, level with the button, skipping the circle's middle (the circle canvas is its height). */
-function FlickerDots({ shape }: { shape: "circle" | "band" }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const reduce = useReducedMotion();
-  useEffect(() => {
-    const canvas = ref.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-    let w = 0;
-    let h = 0;
-    let raf = 0;
-    let dots: Dot[] = [];
-    const next = (d: Dot, now: number, first = false) => {
-      d.life = 2600 + Math.random() * 3400;
-      d.start = now + (first ? -Math.random() * 9000 : 600 + Math.random() * (2000 + d.edge * d.edge * 9000));
-      d.cyan = Math.random() < 0.3;
-    };
-    const dot = (x: number, y: number, edge: number): Dot => ({ x, y, edge, start: 0, life: 0, cyan: false });
-    const layout = () => {
-      const dpr = window.devicePixelRatio || 1;
-      w = canvas.clientWidth;
-      h = canvas.clientHeight;
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      if (shape === "circle") {
-        const R = w / 2 - 4;
-        const n = Math.floor((Math.PI * R * R) / (DOT_SPACING * DOT_SPACING));
-        dots = Array.from({ length: n }, (_, i) => {
-          const r = R * Math.sqrt((i + 0.5) / n);
-          return dot(w / 2 + Math.cos(i * GOLDEN) * r, h / 2 + Math.sin(i * GOLDEN) * r, r / R);
-        });
-      } else {
-        // the circle (same width as this canvas's height) covers the middle; the band runs out from its rim
-        const hole = h / 2 + 2;
-        dots = [];
-        for (let row = 0; row < BAND_ROWS; row++)
-          for (let x = DOT_SPACING / 2 + (row % 2) * (DOT_SPACING / 2); x < w; x += DOT_SPACING) {
-            if (Math.abs(x - w / 2) < hole) continue;
-            const jitter = () => (Math.random() - 0.5) * 4; // a touch loose, so it doesn't read as a ruled grid
-            dots.push(dot(x + jitter(), h / 2 + (row - (BAND_ROWS - 1) / 2) * DOT_SPACING + jitter(), 0.4 + Math.random() * 0.6));
-          }
-      }
-      const now = performance.now();
-      for (const d of dots) next(d, now, true);
-    };
-    const draw = (now: number) => {
-      ctx.clearRect(0, 0, w, h);
-      for (const d of dots) {
-        if (now - d.start > d.life) next(d, now);
-        const t = (now - d.start) / d.life;
-        const glow = reduce || t < 0 ? 0 : Math.sin(Math.PI * t) ** 2;
-        const color = glow > 0 && d.cyan ? "216, 255, 254" : "236, 221, 255";
-        ctx.fillStyle = `rgba(${color}, ${0.13 + glow * 0.8})`;
-        ctx.beginPath();
-        ctx.arc(d.x, d.y, 1.2 + glow * 0.6, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      if (!reduce) raf = requestAnimationFrame(draw);
-    };
-    layout();
-    draw(performance.now());
-    const ro = new ResizeObserver(() => {
-      layout();
-      if (reduce) draw(performance.now());
-    });
-    ro.observe(canvas);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-    };
-  }, [reduce, shape]);
-  return <canvas ref={ref} className={`launch-go-dots is-${shape}`} aria-hidden />;
 }

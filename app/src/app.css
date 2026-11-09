@@ -1387,6 +1387,15 @@ body {
   position: fixed;
   height: 100vh;
 }
+/* launch page: random grid dots lighting up (GridTwinkles), over the page's dot grid, behind everything */
+.grid-twinkles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
 /* hidden once the visible half would run into the card */
 @media (max-width: 1260px) {
   .dna-strand:not(.dna-phone) {
@@ -4461,8 +4470,8 @@ a.ex-row {
   }
 }
 
-/* ---- /launch first screen: one big Launch button (no glow) in a small circle of slowly flickering dots, with a band
-   of them ~3 dots tall across the whole page, level with the button (user, 2026-10-17) ----
+/* ---- /launch first screen: one big Launch button (no glow) on the page's dot grid (the circle and band of
+   flickering dots around it were removed, user 2026-11-08) ----
    Nothing else on the page until it's pressed (no dot strands, no testnet HYPE button). */
 .launch-go {
   position: relative;
@@ -4471,21 +4480,6 @@ a.ex-row {
   width: min(380px, 80vw);
   aspect-ratio: 1;
   margin: 0 auto;
-}
-.launch-go-dots {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-/* the band: the window's full width (the page hides what spills past the stage), the circle's height, centered */
-.launch-go-dots.is-band {
-  inset: auto;
-  top: 0;
-  left: 50%;
-  width: 100vw;
-  transform: translateX(-50%);
 }
 .launch-go-btn {
   position: relative;
