@@ -28,7 +28,9 @@ import { TradeMock } from "./components/TradeMock";
 // (/trending was removed 2026-11-05: its Trending list now lives in Explore, so old /trending links land on Explore)
 const ROUTES = ["/showcase", "/safe", "/art", "/trade", "/launch", "/feed", "/explore", "/swap"];
 const RAW = location.pathname.replace(/\/+$/, "") || "/";
-const PAGE = RAW === "/" ? "/feed" : ROUTES.includes(RAW) ? RAW : "/explore";
+// a partner's ?ref= link opens Explore wherever it points (user, 2026-11-09: app.neuriio.xyz/?ref=SCENES landed on Home)
+const REF_LINK = RAW === "/" && new URLSearchParams(location.search).has("ref");
+const PAGE = REF_LINK ? "/explore" : RAW === "/" ? "/feed" : ROUTES.includes(RAW) ? RAW : "/explore";
 if (RAW !== PAGE) history.replaceState(null, "", PAGE + location.search + location.hash);
 
 export function App() {
