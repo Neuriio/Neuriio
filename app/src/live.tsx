@@ -4,7 +4,7 @@ import { PrivyProvider } from "@privy-io/react-auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
 import { App } from "./App";
-import { elysiumTestnet } from "./chain";
+import { elysiumTestnet, hyperEvm } from "./chain";
 import { wagmiConfig } from "./lib/wagmi";
 import { RPC_VIA_PROXY } from "./lib/config";
 import { renewSession } from "./lib/rpcSession";
@@ -34,7 +34,7 @@ createRoot(document.getElementById("root")!).render(
         },
         embeddedWallets: { ethereum: { createOnLogin: "all-users" }, showWalletUIs: false },
         defaultChain: elysiumTestnet,
-        supportedChains: [elysiumTestnet],
+        supportedChains: [elysiumTestnet, hyperEvm], // HyperEVM: the Swap page's bridge (2026-11-09); Elysium stays the default
       }}
     >
       <WagmiProvider config={wagmiConfig}>

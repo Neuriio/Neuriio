@@ -11,7 +11,7 @@ import { useTickerLogos } from "./lib/tickers";
 import { LaunchCard } from "./components/LaunchCard";
 import { ExploreCard } from "./components/ExploreCard";
 import { FeedCard } from "./components/FeedCard";
-import { SwapCard } from "./components/SwapCard";
+import { SwapPage } from "./components/SwapPage";
 import { DnaStrand } from "./components/DnaStrand";
 import { GridTwinkles } from "./components/GridTwinkles";
 import { LandingBg, LandingFrame, LandingHero, Showcase } from "./components/Landing";
@@ -104,7 +104,7 @@ function Page() {
           <DnaStrand side="left" fixed />
           <DnaStrand side="right" phase={1.3} fixed />
           <main className="stage stage-swap">
-            <SwapCard />
+            <SwapPage />
           </main>
         </>
       ) : (
