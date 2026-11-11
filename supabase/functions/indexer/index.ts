@@ -575,11 +575,21 @@ async function indexAscendChunk(world: AscendAllWorld, from: bigint, to: bigint,
 
 /** Art for a few coins each run: new ones first, then ones still without an image (Ascend publishes after the launch). */
 async function fetchAscendArt() {
+  // The coins people see first: the top 50 by 24h volume still without art (unchecked, or last checked over 15 minutes ago)
+  // go ahead of the rest. Without this, a backfill's hundreds of new coins kept the top 15's art waiting (2026-11-11).
+  const recheck = new Date(Date.now() - 15 * 60_000).toISOString();
+  const { data: top } = await db.from("ascend_token_stats").select("address").gt("volume_usd_24h", 0)
+    .order("volume_usd_24h", { ascending: false }).limit(50);
+  const { data: topDue } = top?.length
+    ? await db.from("ascend_tokens").select("address").in("address", top.map((t: { address: string }) => t.address))
+      .is("image_cid", null).or(`metadata_checked_at.is.null,metadata_checked_at.lt.${recheck}`)
+    : { data: [] };
   const { data: due } = await db.from("ascend_tokens").select("address")
-    .or(`metadata_checked_at.is.null,and(image_cid.is.null,metadata_checked_at.lt.${new Date(Date.now() - 15 * 60_000).toISOString()}),metadata_checked_at.lt.${new Date(Date.now() - 24 * 3600_000).toISOString()}`)
+    .or(`metadata_checked_at.is.null,and(image_cid.is.null,metadata_checked_at.lt.${recheck}),metadata_checked_at.lt.${new Date(Date.now() - 24 * 3600_000).toISOString()}`)
     .order("metadata_checked_at", { ascending: true, nullsFirst: true }).limit(METADATA_PER_RUN);
+  const queue = [...new Set([...(topDue ?? []), ...(due ?? [])].map((t: { address: string }) => t.address))].slice(0, METADATA_PER_RUN);
   let art = 0;
-  for (const { address } of due ?? []) {
+  for (const address of queue) {
     const res = await fetch(`https://api.ascendlaunch.xyz/v1/tokens/${address}/metadata`, { signal: AbortSignal.timeout(5_000) }).catch(() => null);
     if (res?.status === 429) break; // back off until the next run
     const body = res?.ok ? await res.json().catch(() => null) : null;

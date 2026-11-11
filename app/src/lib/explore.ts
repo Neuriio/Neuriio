@@ -120,6 +120,35 @@ export const handleOf = (handle: string) => `@${handle.toLowerCase()}`;
 export const displayName = (t: TokenStat) =>
   !isOurs(t) ? t.token_name || tickerOf(t.symbol) : t.kind === "ftf" ? t.name ?? tickerOf(t.symbol) : handleOf(t.handle);
 
+// ---- First-load snapshot (user, 2026-11-11) ----
+// /api/explore (app/api/explore.ts) is Explore's first screen in one CDN-cached response, and index.html preloads it while the
+// app downloads. The FIRST verifiedTokens(), indexedHead() and 30m candles() for the top coin take their answer from it
+// (when it's under a minute old); every later call, and every poll, asks Supabase live as before.
+type Snapshot = {
+  at: number;
+  top: Record<string, unknown>[];
+  ours: Record<string, unknown>[];
+  head: { value: string; updated_at: string } | null;
+  chart: { address: string; interval: number; bars: number; rows: Record<string, unknown>[] } | null;
+};
+const SNAPSHOT_MAX_AGE = 60_000;
+let snapshotP: Promise<Snapshot | null> | null = null;
+const used = { verified: false, head: false, chart: false };
+function snapshot(): Promise<Snapshot | null> {
+  if (DEMO || import.meta.env.DEV) return Promise.resolve(null); // dev has no /api/explore: live reads, as before
+  snapshotP ??= fetch("/api/explore")
+    .then((r) => (r.ok ? (r.json() as Promise<Snapshot>) : null))
+    .then((s) => (s && Array.isArray(s.top) && Date.now() - s.at < SNAPSHOT_MAX_AGE ? s : null))
+    .catch(() => null);
+  return snapshotP;
+}
+/** The snapshot's part for `key`, once (null after its first use, when stale, or when it failed). */
+async function fromSnapshot<K extends keyof typeof used>(key: K): Promise<Snapshot | null> {
+  if (used[key]) return null;
+  used[key] = true;
+  return snapshot();
+}
+
 /** Top `limit` tokens by a ranking (default: 24h volume), live order. */
 export async function topTokens(by: Ranking = "volume_usd_24h", limit = 25): Promise<TokenStat[]> {
   if (DEMO) return [...demoTokens()].sort((a, b) => rankValue(b, by) - rankValue(a, by)).slice(0, limit);
@@ -165,6 +194,11 @@ let verifiedCache: { at: number; p: Promise<TokenStat[]> } | null = null;
 export function verifiedTokens(limit = 15): Promise<TokenStat[]> {
   if (verifiedCache && Date.now() - verifiedCache.at < 20_000) return verifiedCache.p;
   const p = (async () => {
+    const snap = limit === 15 ? await fromSnapshot("verified") : null;
+    if (snap) {
+      const byAddress = new Map(snap.ours.map((r) => [String(r.address).toLowerCase(), toStat(r)]));
+      return snap.top.map(toStat).map((r) => byAddress.get(r.address) ?? r);
+    }
     const rows = await trendingTokens(limit);
     if (!rows.length) return rows;
     const ours = await rest<Record<string, unknown>[]>(`token_stats?select=*&address=in.(${rows.map((r) => r.address).join(",")})`).catch(() => []);
@@ -178,6 +212,8 @@ export function verifiedTokens(limit = 15): Promise<TokenStat[]> {
 
 /** The latest Elysium block our indexer has read (it runs every minute), and when: the site footer's block number. */
 export async function indexedHead(): Promise<{ block: number; at: number } | null> {
+  const snap = await fromSnapshot("head");
+  if (snap?.head) return { block: Number(snap.head.value), at: Date.parse(snap.head.updated_at) };
   const rows = await rest<{ value: string; updated_at: string }[]>("app_config?select=value,updated_at&key=eq.elysium_head").catch(() => []);
   return rows[0] ? { block: Number(rows[0].value), at: Date.parse(rows[0].updated_at) } : null;
 }
@@ -338,7 +374,12 @@ export type IntervalSeconds = (typeof INTERVALS)[number]["s"];
 /** The last `limit` candles (HYPE per token) up to now, no gaps: quiet buckets are flat at the last close. */
 export async function candles(address: string, interval: IntervalSeconds = 900, limit = 300): Promise<Candle[]> {
   if (DEMO) return demoCandles(address, interval, limit);
-  const rows = await rest<Record<string, unknown>[]>("rpc/token_chart", {
+  // the first chart drawn is usually the top coin's 30m chart: the snapshot has it (any other chart is read live)
+  const snap = used.chart ? null : await snapshot();
+  const c = snap?.chart;
+  const hit = c && c.address === address.toLowerCase() && c.interval === interval && c.bars === limit;
+  if (hit) used.chart = true;
+  const rows = hit ? c.rows : await rest<Record<string, unknown>[]>("rpc/token_chart", {
     method: "POST",
     body: JSON.stringify({ p_token: address.toLowerCase(), p_interval: interval, p_limit: limit }),
   });
