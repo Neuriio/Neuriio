@@ -6,19 +6,23 @@
 //   to any address on Elysium, the Feed's send window), balances on Elysium by token, the referral code (ReferralBox),
 //   private key export (Privy's own secure modal) and log out. HyperCore balances and the creator fees box were removed
 //   (user, 2026-11-03).
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Bell, Check, Copy } from "lucide-react";
 import { useNotifications } from "../lib/ftf";
 import { NotificationsModal } from "./NotificationsModal";
 import { SendModal } from "./SendModal";
-import { useExportWallet, usePrivy, useWallets } from "@privy-io/react-auth";
-import type { Address } from "viem";
+import { useExportWallet, usePrivy, useWallets, type ConnectedWallet } from "@privy-io/react-auth";
+import { formatUnits, type Address } from "viem";
 import { useBalances } from "../lib/useBalances";
 import type { Balances, VenueBalance } from "../lib/balances";
 import { profileOf, type Profile } from "../lib/profile";
 import { amount, shortAddress, usd } from "../lib/format";
 import { Morph } from "./Morph";
 import { DemoReferral, LiveReferral } from "./ReferralBox";
+import { claimCreatorFees, creatorClaim, type CreatorClaim } from "../lib/fees";
+import { friendlyStakeError } from "../lib/stake";
+import { elysiumProvider } from "../lib/tx";
+import { poll } from "../lib/poll";
 
 // Dev-only preview of the logged-in panel with sample data: localhost:5173/?demo
 const DEMO = import.meta.env.DEV && new URLSearchParams(location.search).has("demo");
@@ -41,6 +45,7 @@ function AccountMorph() {
       me={profileOf(user)}
       address={wallet?.address}
       balances={balances}
+      creator={wallet ? <LiveCreatorClaim wallet={wallet} /> : undefined}
       referral={wallet ? <LiveReferral account={wallet.address} /> : undefined}
       onExport={wallet ? () => exportWallet({ address: wallet.address }) : undefined}
       onLogout={logout}
@@ -52,6 +57,8 @@ type MorphViewProps = {
   me: Profile;
   address?: string;
   balances: Balances | null;
+  /** creator fees waiting in Ascend's escrow + Claim (only for an account that launched a token) */
+  creator?: ReactNode;
   referral?: ReactNode;
   onExport?: () => void;
   onLogout: () => void;
@@ -61,7 +68,7 @@ type MorphViewProps = {
   onLogin?: () => void;
 };
 
-function MorphView({ me, address, balances, referral, onExport, onLogout, locked = false, loginReady = true, onLogin }: MorphViewProps) {
+function MorphView({ me, address, balances, creator, referral, onExport, onLogout, locked = false, loginReady = true, onLogin }: MorphViewProps) {
   const { items } = useNotifications();
   const count = locked ? 0 : items.length;
   const [bellOpen, setBellOpen] = useState(false);
@@ -131,6 +138,7 @@ function MorphView({ me, address, balances, referral, onExport, onLogout, locked
         <p className="empty">Creating your wallet…</p>
       )}
       <Venue name="Elysium" v={balances?.elysium} />
+      {!locked && creator}
       {!locked && referral}
       {!locked && <NotificationsModal open={bellOpen} onClose={() => setBellOpen(false)} />}
       {!locked && <SendModal target={sendOpen ? "address" : null} onClose={() => setSendOpen(false)} />}
@@ -187,6 +195,69 @@ function DepositAddress({ address, onSend }: { address: string; onSend?: () => v
   );
 }
 
+type ClaimStatus = { kind: "idle" } | { kind: "busy" } | { kind: "done"; text: string } | { kind: "error"; text: string };
+
+/** The logged-in creator's fees waiting in their token's Ascend escrow, read from the chain every minute (and right after any
+ *  of their own transactions). Nothing shows for an account that hasn't launched. */
+function LiveCreatorClaim({ wallet }: { wallet: ConnectedWallet }) {
+  const account = wallet.address as Address;
+  const [claim, setClaim] = useState<CreatorClaim | null>(null);
+  const [status, setStatus] = useState<ClaimStatus>({ kind: "idle" });
+  useEffect(() => {
+    let alive = true;
+    const load = () => creatorClaim(account).then((c) => alive && setClaim(c), () => {});
+    const stop = poll(load, 60_000, { onChain: true });
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [account]);
+  if (!claim) return null;
+  const onClaim = async () => {
+    const amountText = usdcText(claim.claimable);
+    setStatus({ kind: "busy" });
+    try {
+      await claimCreatorFees(await elysiumProvider(wallet), account, claim.escrow);
+      setStatus({ kind: "done", text: `Claimed ${amountText} USDC to your Neuriio wallet` });
+      setClaim({ ...claim, claimable: 0n });
+    } catch (e) {
+      setStatus({ kind: "error", text: friendlyStakeError((e as Error).message) });
+    }
+  };
+  return <CreatorClaimBox claim={claim} status={status} onClaim={onClaim} />;
+}
+
+const usdcText = (units: bigint) =>
+  Number(formatUnits(units, 6)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function CreatorClaimBox({ claim, status, onClaim }: { claim: CreatorClaim; status: ClaimStatus; onClaim: () => void }) {
+  const busy = status.kind === "busy";
+  const ready = Number(formatUnits(claim.claimable, 6));
+  const held = Number(formatUnits(claim.held, 6));
+  const by = claim.deadline ? new Date(claim.deadline * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : null;
+  return (
+    <section className="venue venue-box fees-box">
+      <header>
+        <span>Creator fees</span>
+        <span>{usd(ready)}</span>
+      </header>
+      <div className="fees-row">
+        <span className="fees-amount">
+          {usdcText(claim.claimable)} <span className="fees-unit">USDC to claim</span>
+        </span>
+        <button className="fees-claim" disabled={busy || claim.claimable === 0n} onClick={onClaim}>
+          {busy ? "Claiming…" : "Claim"}
+        </button>
+      </div>
+      <p className={`fees-note${status.kind === "error" ? " fees-note-error" : ""}`}>
+        {status.kind === "done" || status.kind === "error"
+          ? status.text
+          : `Your share of your token's trading fees, paid in USDC.${held > 0.005 ? ` ${usd(held)} more is held by Ascend until your token reaches a $40k market cap${by ? ` (by ${by})` : ""}.` : ""}`}
+      </p>
+    </section>
+  );
+}
+
 function Venue({ name, v }: { name: string; v?: VenueBalance }) {
   return (
     <section className="venue venue-box">
@@ -229,6 +300,13 @@ const DEMO_PROPS: MorphViewProps = {
       ],
     },
   },
+  creator: (
+    <CreatorClaimBox
+      claim={{ token: "0x00fa352e4a320370c5e761b380f6d6e4ceb091eb", escrow: "0x895a72a1dccf1621982e28a7655a9cc63131a7e8", claimable: 41_545_813n, held: 103_864_536n, deadline: 1795318858 }}
+      status={{ kind: "idle" }}
+      onClaim={() => alert("demo: sends the claim from the Neuriio wallet")}
+    />
+  ),
   referral: <DemoReferral />,
   onExport: () => alert("demo: Privy export modal opens here"),
   onLogout: () => alert("demo: logs out"),

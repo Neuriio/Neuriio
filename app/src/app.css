@@ -3459,6 +3459,9 @@ a.ex-row {
   font-size: 10px;
   color: var(--muted);
 }
+.fees-note-error {
+  color: #ff8a8a; /* same as the other error lines: --red is too dark for small text */
+}
 
 /* chart header: lifetime creator fees next to the Profile button */
 .ex-earned {

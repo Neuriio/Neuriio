@@ -112,7 +112,11 @@ const NEURIIO_SWAPS = (Deno.env.get("NEURIIO_SWAPS") ?? "0x630B8f610abEAe77FD39f
 const APP_REGISTRY = (Deno.env.get("APP_REGISTRY") ?? WORLDS.find((w) => w.kind !== "ascend_all")?.registry ?? "0x0000000000000000000000000000000000000000").toLowerCase();
 const registryAbi = parseAbi(["function launchpadsLength() view returns (uint256)", "function launchpads(uint256) view returns (address)"]);
 const HL_INFO = env("HL_TESTNET") === "true" ? "https://api.hyperliquid-testnet.xyz/info" : "https://api.hyperliquid.xyz/info";
-const MAX_BLOCKS = 50_000n; // per run
+// blocks per getLogs, minus one (`to = from + MAX_BLOCKS`, both ends included): Alchemy refuses ranges over 10,000 blocks.
+// It was 50,000: once a DB outage (2026-11-08 22:21) left a gap over 10,000 blocks, every run failed and the world froze.
+const MAX_BLOCKS = 9_999n;
+const OURS_EVERY_MS = 5 * 60_000;
+const OURS_RUN_MS = 20_000; // our launcher's world catches up chunk after chunk for this long, then stops until the next run
 const chain = createPublicClient({ transport: http(env("RPC_URL")) });
 const db = createClient(env("SUPABASE_URL"), env("NEURIIO_DB_KEY"), { auth: { persistSession: false } });
 /** The chain head, remembered: the run ends by publishing the latest one (app_config.elysium_head: the site footer's block). */
@@ -124,7 +128,13 @@ async function headNow() {
 }
 
 const hlInfo = async (body: unknown) => {
-  const res = await fetch(HL_INFO, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  // 5 s at most: with no timeout a stalled Hyperliquid (429s, 2026-11-11) ate the Ascend world's whole 30 s and it indexed nothing
+  const res = await fetch(HL_INFO, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(5_000),
+  });
   if (!res.ok) throw new Error(`Hyperliquid ${res.status}`);
   return res.json();
 };
@@ -288,13 +298,33 @@ async function indexElysium(world: World, hypeUsd: number | null) {
 /** The Ascend world: our launcher's launches, then the swaps in their Ascend pools (ids filtered on the event's indexed topic,
  *  in chunks, so we never read the rest of Ascend's market). */
 async function indexAscend(world: AscendWorld) {
+  // caught up: every 5 minutes (user, 2026-11-11: RPC cost; every minute was ~11M Alchemy CU a month). Trades made on Neuriio
+  // arrive at once via record-trade; a new launch can take up to 5 minutes to show in Explore (the "is live" screen reads the chain).
+  const registry = world.registry.toLowerCase();
+  const last = await getState(`elysium:registry:${registry}`);
+  const lastAt = Number((await getState(`elysium:registry:${registry}:at`)) ?? 0);
+  if (last && (await headNow()) - BigInt(last) < ALL_CAUGHT_UP && Date.now() - lastAt < OURS_EVERY_MS) {
+    return { registry, skipped: "ran in the last 5 minutes" };
+  }
+  await setState(`elysium:registry:${registry}:at`, String(Date.now()));
+  const started = Date.now();
+  const steps = [];
+  for (;;) {
+    const r = await indexAscendStep(world);
+    steps.push(r);
+    if (r.to >= r.head || Date.now() - started > OURS_RUN_MS) return { ...r, from: steps[0].from, steps: steps.length };
+  }
+}
+
+/** One range of at most MAX_BLOCKS + 1 blocks from the saved place (saved again at the end). */
+async function indexAscendStep(world: AscendWorld) {
   const registry = world.registry.toLowerCase();
   const q: Quote = { address: world.quote, decimals: world.decimals, usd: 1 };
   const key = `elysium:registry:${registry}`;
   const last = await getState(key);
   const from = last ? BigInt(last) + 1n : world.fromBlock;
   const head = await headNow();
-  if (from > head) return { registry, from: Number(from), to: Number(head), events: 0 };
+  if (from > head) return { registry, from: Number(from), to: Number(head), head: Number(head), events: 0 };
   const to = head - from > MAX_BLOCKS ? from + MAX_BLOCKS : head;
 
   const launchLogs = await chain.getLogs({ address: world.registry, events: launcherEvents, fromBlock: from, toBlock: to });
@@ -363,7 +393,7 @@ async function indexAscend(world: AscendWorld) {
   const rows = withBidFills(swapRows, fills as any, tokenOfPool, q, txFrom, ts as any);
   await insertTrades(rows, "tx_hash,log_index");
   await setState(key, to.toString());
-  return { registry, from: Number(from), to: Number(to), launched: launched.length, trades: rows.length };
+  return { registry, from: Number(from), to: Number(to), head: Number(head), launched: launched.length, trades: rows.length };
 }
 
 const erc20Views = parseAbi([
@@ -380,6 +410,10 @@ const LOOKUPS_AT_ONCE = 6; // each trade's trader is its transaction's sender: o
 const METADATA_PER_RUN = 25;
 const ALL_EVERY_MS = 5 * 60_000;
 const ALL_CAUGHT_UP = 3_000n; // blocks (~10 minutes): behind more than this, every run keeps catching up
+const ALL_MIN_STEP = 50n; // smallest chunk when responses are too big
+/** The provider (or viem) refused a response for its size or its number of results: a smaller block range will do. */
+const tooBig = (e: unknown) =>
+  /size limit|response size|too large|more than \d+ results|query returned more than/i.test(String((e as Error)?.message ?? e));
 
 /** Runs `f` over `items`, at most `n` at a time, so a busy stretch never fires thousands of requests at the provider at once. */
 async function eachLimit<T>(items: T[], n: number, f: (item: T) => Promise<void>) {
@@ -393,7 +427,6 @@ const quoteInfo = new Map<string, { symbol: string | null; decimals: number }>()
 /** Every Ascend coin: launches, then the swaps and bid fills in all their pools (read whole, then kept to Ascend pools), in USD. */
 async function indexAscendAll(world: AscendAllWorld, hypeUsdNow: number | null) {
   const key = "elysium:ascend_all";
-  const started = Date.now();
   const last = await getState(key);
   const first = last ? BigInt(last) + 1n : world.fromBlock;
   const head = await headNow();
@@ -413,14 +446,28 @@ async function indexAscendAll(world: AscendAllWorld, hypeUsdNow: number | null) 
     return sym === "WHYPE" && hypeUsdNow ? hypeUsdNow : pairUsd(t.quote_symbol, meta, mids);
   };
 
-  let from = first, launched = 0, trades = 0;
-  while (from <= head && Date.now() - started < ALL_RUN_MS) {
-    const to = from + ALL_LOG_STEP - 1n < head ? from + ALL_LOG_STEP - 1n : head;
-    const r = await indexAscendChunk(world, from, to, usdOf);
+  // A very busy stretch can make one event's logs over the 10 MB response limit (2026-11-09 17:40, Kinetiq's launch day: 2,000
+  // blocks of PoolManager swaps froze the world for 33 hours). Then the chunk is halved and tried again (chunks are idempotent:
+  // upserts that skip duplicates), and grows back after each success.
+  let from = first, launched = 0, trades = 0, step = ALL_LOG_STEP;
+  const loopStart = Date.now(); // the 30 s budget counts from here, not from before the price fetches above
+  while (from <= head && Date.now() - loopStart < ALL_RUN_MS) {
+    const to = from + step - 1n < head ? from + step - 1n : head;
+    let r;
+    try {
+      r = await indexAscendChunk(world, from, to, usdOf);
+    } catch (e) {
+      if (step > ALL_MIN_STEP && tooBig(e)) {
+        step /= 2n;
+        continue;
+      }
+      throw e;
+    }
     launched += r.launched;
     trades += r.trades;
     await setState(key, to.toString());
     from = to + 1n;
+    if (step < ALL_LOG_STEP) step *= 2n;
   }
   const art = await fetchAscendArt();
   return { world: "ascend_all", from: Number(first), to: Number(from - 1n), head: Number(head), launched, trades, art };
@@ -472,11 +519,19 @@ async function indexAscendChunk(world: AscendAllWorld, from: bigint, to: bigint,
   const tokenOfPool = new Map(known.map((t) => [t.pool_id, t.address]));
   const inPools = <L extends { args: Record<string, unknown> }>(logs: L[], field: string) =>
     logs.filter((l) => poolInfo.has(String(l.args[field]).toLowerCase()));
-  const [swaps, hooks, fills] = await Promise.all([
-    chain.getLogs({ address: world.poolManager, event: poolManagerSwap, fromBlock: from, toBlock: to }).then((l) => inPools(l, "id")),
+  // The hook's own events first: every swap in an Ascend pool also emits the hook's HookSwap (checked 2026-11-11: 21 PoolManager
+  // swaps in Ascend pools = 21 HookSwaps, same 14 pools), so they name the pools that traded. Then the PoolManager's Swap only
+  // for those pools (indexed id topic, 50 at a time): reading it whole meant decoding every swap on Elysium, and one non-Ascend
+  // pool (0xbc0e43c8…) does ~117 swaps a block (58k logs / 56 MB per 500 blocks), which ran the function out of CPU time.
+  const [hooks, fills] = await Promise.all([
     chain.getLogs({ address: world.hook, event: hookSwap, fromBlock: from, toBlock: to }).then((l) => inPools(l, "poolId")),
     chain.getLogs({ address: world.hook, event: bidFilled, fromBlock: from, toBlock: to }).then((l) => inPools(l, "poolId")),
   ]);
+  const traded = [...new Set(hooks.map((l) => String(l.args.poolId).toLowerCase()))] as `0x${string}`[];
+  const swaps = [];
+  for (let i = 0; i < traded.length; i += 50) {
+    swaps.push(...await chain.getLogs({ address: world.poolManager, event: poolManagerSwap, args: { id: traded.slice(i, i + 50) }, fromBlock: from, toBlock: to }));
+  }
   await stamp([...swaps, ...fills]);
   // the trader (each transaction's sender) costs one lookup per trade, most of this world's RPC bill (user, 2026-11-05: keep it
   // ~10-15M Alchemy compute units a month), so only our own launches get it; others' trades are stored with trader ""
@@ -525,7 +580,7 @@ async function fetchAscendArt() {
     .order("metadata_checked_at", { ascending: true, nullsFirst: true }).limit(METADATA_PER_RUN);
   let art = 0;
   for (const { address } of due ?? []) {
-    const res = await fetch(`https://api.ascendlaunch.xyz/v1/tokens/${address}/metadata`).catch(() => null);
+    const res = await fetch(`https://api.ascendlaunch.xyz/v1/tokens/${address}/metadata`, { signal: AbortSignal.timeout(5_000) }).catch(() => null);
     if (res?.status === 429) break; // back off until the next run
     const body = res?.ok ? await res.json().catch(() => null) : null;
     const update = { ...(body ? metadataColumns(body) : {}), metadata_checked_at: new Date().toISOString() };
