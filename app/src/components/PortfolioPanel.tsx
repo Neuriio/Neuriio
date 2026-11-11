@@ -82,7 +82,7 @@ export function PortfolioPanel() {
   );
 }
 
-function WalletChip({ address, connector }: { address: string; connector: Connector }) {
+export function WalletChip({ address, connector }: { address: string; connector: Connector }) {
   const { mutate: disconnect } = useDisconnect();
   const logo = walletLogo(connector);
   return (
@@ -248,7 +248,7 @@ function TokenTiles({ tokens }: { tokens: Portfolio["elysium"] | null }) {
 
 // ------------------------------------------------------------------ adding a wallet
 
-function AddWalletModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function AddWalletModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const connectors = useConnectors();
   const connections = useConnections();
   const { mutate: connect, isPending, variables, error, reset } = useConnect();

@@ -3,12 +3,14 @@
 // part of the fee is fixed. Sends from the Neuriio wallet; arrives at the same address unless "Send to" names another.
 import { useEffect, useMemo, useState } from "react";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { ArrowDownUp } from "lucide-react";
+import { ArrowDownUp, Plus } from "lucide-react";
+import { useConnections } from "wagmi";
 import { formatEther, isAddress, parseEther, type Address } from "viem";
 import { pub } from "../lib/launch";
 import { amount as fmtAmount } from "../lib/format";
 import { bridgeQuote, bridgeSend, ELYSIUM_ID, HYPEREVM_ID, hyperPub, type BridgeQuote } from "../lib/relay";
 import { friendlyTradeError } from "../lib/trade";
+import { AddWalletModal, WalletChip } from "./PortfolioPanel";
 
 const NAME: Record<number, string> = { [ELYSIUM_ID]: "Elysium", [HYPEREVM_ID]: "HyperEVM" };
 const GAS_RESERVE = parseEther("0.002"); // left on the sending chain for gas
@@ -121,7 +123,7 @@ export function BridgeCard() {
     <section className="panel sw-card">
       <header className="sw-head">
         <span className="sw-title">Bridge</span>
-        <span className="sw-net">HYPE</span>
+        <BridgeWallet neuriio={me} />
       </header>
 
       <div className="sw-box">
@@ -198,5 +200,27 @@ export function BridgeCard() {
         Powered by <img src="/brand/relay-white.svg" alt="Relay" />
       </a>
     </section>
+  );
+}
+
+/** Top right of the card (user, 2026-11-11): Home's "Add wallet" (the same picker), or the wallet added, removable. Adding one only
+ *  shares its address (lib/wagmi.ts); the bridge itself still sends from the Neuriio wallet. */
+function BridgeWallet({ neuriio }: { neuriio: Address | undefined }) {
+  const connections = useConnections();
+  const [adding, setAdding] = useState(false);
+  const added = connections.flatMap((c) =>
+    c.accounts.filter((a) => a.toLowerCase() !== neuriio?.toLowerCase()).map((address) => ({ address, connector: c.connector })),
+  )[0];
+  return (
+    <>
+      {added ? (
+        <WalletChip address={added.address} connector={added.connector} />
+      ) : (
+        <button className="pf-add" onClick={() => setAdding(true)}>
+          <Plus size={12} /> Add wallet
+        </button>
+      )}
+      <AddWalletModal open={adding} onClose={() => setAdding(false)} />
+    </>
   );
 }
