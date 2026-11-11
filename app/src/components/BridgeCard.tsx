@@ -1,16 +1,18 @@
 // /swap, Bridge mode (user, 2026-11-09): HYPE between Elysium and HyperEVM in seconds through Relay (lib/relay.ts), in the swap
 // card's own look. Elysium -> HyperEVM skips the canonical ~5.5-day withdrawal for Relay's fee; small amounts cost more because
-// part of the fee is fixed. Sends from the Neuriio wallet; arrives at the same address unless "Send to" names another.
+// part of the fee is fixed. Sends from the wallet in the header chip (an added wallet, or the Neuriio wallet: lib/tradeWallet.ts);
+// arrives at the same address unless "Send to" names another.
 import { useEffect, useMemo, useState } from "react";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
-import { ArrowDownUp, Plus } from "lucide-react";
-import { useConnections } from "wagmi";
+import { usePrivy } from "@privy-io/react-auth";
+import { ArrowDownUp } from "lucide-react";
 import { formatEther, isAddress, parseEther, type Address } from "viem";
 import { pub } from "../lib/launch";
 import { amount as fmtAmount } from "../lib/format";
 import { bridgeQuote, bridgeSend, ELYSIUM_ID, HYPEREVM_ID, hyperPub, type BridgeQuote } from "../lib/relay";
 import { friendlyTradeError } from "../lib/trade";
-import { AddWalletModal, WalletChip } from "./PortfolioPanel";
+import { useTradeWallet } from "../lib/tradeWallet";
+import { AddWalletModal } from "./PortfolioPanel";
+import { TradeWalletChip } from "./TradeWalletChip";
 
 const NAME: Record<number, string> = { [ELYSIUM_ID]: "Elysium", [HYPEREVM_ID]: "HyperEVM" };
 const GAS_RESERVE = parseEther("0.002"); // left on the sending chain for gas
@@ -33,10 +35,11 @@ function useHypeBalance(wallet: Address | undefined, chainId: number, nonce: num
 }
 
 export function BridgeCard() {
-  const { ready, authenticated, login } = usePrivy();
-  const { wallets } = useWallets();
-  const privy = authenticated ? wallets.find((w) => w.walletClientType === "privy") : undefined;
-  const me = privy?.address as Address | undefined;
+  // no login needed (user, 2026-11-11): an added wallet bridges too; the Neuriio wallet when logged in
+  const { ready } = usePrivy();
+  const { list, active, choose: chooseWallet } = useTradeWallet();
+  const me = active?.address;
+  const [adding, setAdding] = useState(false);
 
   const [from, setFrom] = useState<number>(ELYSIUM_ID);
   const to = from === ELYSIUM_ID ? HYPEREVM_ID : ELYSIUM_ID;
@@ -89,10 +92,10 @@ export function BridgeCard() {
   const useMax = () => fromBal !== null && edit(formatEther(fromBal > GAS_RESERVE ? fromBal - GAS_RESERVE : 0n));
 
   async function submit() {
-    if (!privy || !q) return;
+    if (!active || !q) return;
     setStatus({ kind: "busy", label: "Sending…" });
     try {
-      await bridgeSend(privy, q, (label) => setStatus({ kind: "busy", label }));
+      await bridgeSend(active, q, (label) => setStatus({ kind: "busy", label }));
       setStatus({ kind: "done", text: `Bridged. ${fmtAmount(q.amountOut)} HYPE arrived on ${NAME[to]}.` });
       setAmountIn("");
       setNonce((n) => n + 1);
@@ -105,8 +108,8 @@ export function BridgeCard() {
   const tooMuch = fromBal !== null && wei + GAS_RESERVE > fromBal;
   const button = !ready
     ? { label: "Loading…", disabled: true, onClick: undefined }
-    : !authenticated
-      ? { label: "Log in to bridge", disabled: false, onClick: login }
+    : !active
+      ? { label: "Connect a wallet", disabled: false, onClick: () => setAdding(true) }
       : status.kind === "busy"
         ? { label: status.label, disabled: true, onClick: undefined }
         : wei === 0n
@@ -123,8 +126,9 @@ export function BridgeCard() {
     <section className="panel sw-card">
       <header className="sw-head">
         <span className="sw-title">Bridge</span>
-        <BridgeWallet neuriio={me} />
+        <TradeWalletChip list={list} active={active} onChoose={chooseWallet} />
       </header>
+      <AddWalletModal open={adding} onClose={() => setAdding(false)} />
 
       <div className="sw-box">
         <div className="sw-box-top">
@@ -171,7 +175,7 @@ export function BridgeCard() {
 
       <label className="br-to">
         <span>Send to</span>
-        <input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={me ? "Your Neuriio wallet (same address)" : "0x… (optional)"} spellCheck={false} />
+        <input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={active ? `Same address (${active.kind === "neuriio" ? "your Neuriio wallet" : active.name})` : "0x… (optional)"} spellCheck={false} />
       </label>
 
       {q && (
@@ -203,24 +207,3 @@ export function BridgeCard() {
   );
 }
 
-/** Top right of the card (user, 2026-11-11): Home's "Add wallet" (the same picker), or the wallet added, removable. Adding one only
- *  shares its address (lib/wagmi.ts); the bridge itself still sends from the Neuriio wallet. */
-function BridgeWallet({ neuriio }: { neuriio: Address | undefined }) {
-  const connections = useConnections();
-  const [adding, setAdding] = useState(false);
-  const added = connections.flatMap((c) =>
-    c.accounts.filter((a) => a.toLowerCase() !== neuriio?.toLowerCase()).map((address) => ({ address, connector: c.connector })),
-  )[0];
-  return (
-    <>
-      {added ? (
-        <WalletChip address={added.address} connector={added.connector} />
-      ) : (
-        <button className="pf-add" onClick={() => setAdding(true)}>
-          <Plus size={12} /> Add wallet
-        </button>
-      )}
-      <AddWalletModal open={adding} onClose={() => setAdding(false)} />
-    </>
-  );
-}

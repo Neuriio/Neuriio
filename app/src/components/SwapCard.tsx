@@ -5,7 +5,7 @@
 // The pools are thin, so the card shows the price impact and warns past 5%.
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { usePrivy } from "@privy-io/react-auth";
 import { ArrowDownUp, ChevronDown, Search, X } from "lucide-react";
 import { erc20Abi, formatUnits, parseEther, parseUnits, type Address } from "viem";
 import { Avatar } from "./Avatar";
@@ -14,7 +14,10 @@ import { pub } from "../lib/launch";
 import { amount as fmtAmount } from "../lib/format";
 import { quoteSwap, sendSwap, SWAP_SLIPPAGE_BPS, swapMinOut, swapRoute } from "../lib/swap";
 import { friendlyTradeError } from "../lib/trade";
-import { elysiumProvider } from "../lib/tx";
+import { ELYSIUM_ID } from "../lib/relay";
+import { useTradeWallet } from "../lib/tradeWallet";
+import { AddWalletModal } from "./PortfolioPanel";
+import { TradeWalletChip } from "./TradeWalletChip";
 
 type SwapToken = { address: Address | "native"; symbol: string; name: string; decimals: number; pfp: string | null };
 
@@ -48,10 +51,11 @@ function useBalance(wallet: Address | undefined, token: SwapToken, nonce: number
 }
 
 export function SwapCard() {
-  const { ready, authenticated, login } = usePrivy();
-  const { wallets } = useWallets();
-  const privy = authenticated ? wallets.find((w) => w.walletClientType === "privy") : undefined;
-  const wallet = privy?.address as Address | undefined;
+  // no login needed (user, 2026-11-11): an added wallet (Rabby, MetaMask...) trades too; the Neuriio wallet when logged in
+  const { ready } = usePrivy();
+  const { list, active, choose: chooseWallet } = useTradeWallet();
+  const wallet = active?.address;
+  const [adding, setAdding] = useState(false);
 
   const [pay, setPay] = useState<SwapToken>(USDC);
   const [receive, setReceive] = useState<SwapToken>(HYPE);
@@ -118,10 +122,10 @@ export function SwapCard() {
   };
 
   async function submit() {
-    if (!privy || !wallet || !hops || !q) return;
+    if (!active || !wallet || !hops || !q) return;
     setStatus({ kind: "busy" });
     try {
-      await sendSwap(await elysiumProvider(privy), wallet, hops, amount, swapMinOut(q.out));
+      await sendSwap(await active.provider(ELYSIUM_ID), wallet, hops, amount, swapMinOut(q.out));
       setStatus({ kind: "done", text: `Swapped ${fmtUnits(amount, pay.decimals)} ${pay.symbol} for ${fmtUnits(q.out, receive.decimals)} ${receive.symbol}` });
       setAmountIn("");
       setNonce((n) => n + 1);
@@ -134,8 +138,8 @@ export function SwapCard() {
   const noGas = gas !== null && gas === 0n;
   const button = !ready
     ? { label: "Loading…", disabled: true, onClick: undefined }
-    : !authenticated
-      ? { label: "Log in to swap", disabled: false, onClick: login }
+    : !active
+      ? { label: "Connect a wallet", disabled: false, onClick: () => setAdding(true) }
       : status.kind === "busy"
         ? { label: "Swapping…", disabled: true, onClick: undefined }
         : !hops
@@ -155,8 +159,9 @@ export function SwapCard() {
     <section className="panel sw-card">
       <header className="sw-head">
         <span className="sw-title">Swap</span>
-        <span className="sw-net">Elysium</span>
+        <TradeWalletChip list={list} active={active} onChoose={chooseWallet} />
       </header>
+      <AddWalletModal open={adding} onClose={() => setAdding(false)} />
 
       <div className="sw-box">
         <div className="sw-box-top">

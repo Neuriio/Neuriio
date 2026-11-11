@@ -6326,3 +6326,35 @@ a.site-foot-item:hover {
 .br-powered:hover img {
   opacity: 1;
 }
+
+/* Swap / Bridge header: the wallet the card trades from (TradeWalletChip; user, 2026-11-11) */
+.tw {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.tw-chip {
+  min-width: 0;
+}
+.tw-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  white-space: nowrap;
+  background: none;
+  border: 0;
+}
+.tw-switch:not(:disabled) {
+  cursor: pointer;
+}
+.tw-switch:not(:disabled):hover {
+  color: #fff;
+}
+.tw-swap-icon {
+  color: var(--muted);
+}

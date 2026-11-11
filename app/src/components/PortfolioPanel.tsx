@@ -1,5 +1,6 @@
 // The Feed's portfolio (user, 2026-11-02): the balance across your wallets, then your tokens on Elysium as tiles, plus adding a wallet.
-// Adding one only shares its address (lib/wagmi.ts): keys stay in the wallet, and nothing here asks it to sign or send (only the referral Verify in Account asks for a free signature).
+// Adding one shares its address (lib/wagmi.ts): keys stay in the wallet. Nothing on this panel asks it to sign; Swap and Bridge can
+// trade from it (lib/tradeWallet.ts), each transaction approved in the wallet.
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePrivy, useWallets } from "@privy-io/react-auth";
@@ -297,7 +298,7 @@ export function AddWalletModal({ open, onClose }: { open: boolean; onClose: () =
           })}
         </ul>
         {error && <p className="lp-warn">{rejected ? "Connection cancelled." : "Couldn't connect that wallet. Open it and try again."}</p>}
-        <p className="pf-safe">Adding a wallet only shares its address so we can show its balance. Your keys stay in your wallet, and we'll never ask you to sign anything here.</p>
+        <p className="pf-safe">Adding a wallet shares its address so we can show its balance, and lets you swap and bridge from it. Your keys stay in your wallet, and every transaction is shown and approved in your wallet first.</p>
       </div>
     </div>,
     document.body,

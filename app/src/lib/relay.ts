@@ -1,7 +1,6 @@
 // The Swap page's Bridge (user, 2026-11-09): HYPE between Elysium and HyperEVM through Relay (relay.link). Relay fronts the HYPE on
 // the other chain in seconds for a fee, so leaving Elysium skips the canonical ~5.5-day withdrawal. We ask Relay for a quote,
 // the Neuriio (Privy) wallet sends the transaction(s) Relay returns, then we follow Relay's status until it has paid out.
-import type { ConnectedWallet } from "@privy-io/react-auth";
 import { createPublicClient, http, type Address, type EIP1193Provider, type Hash } from "viem";
 import { elysiumTestnet, hyperEvm } from "../chain";
 import { pub } from "./launch";
@@ -58,16 +57,20 @@ export async function bridgeQuote(a: { user: Address; recipient: Address; from: 
 
 /** Sends the quote's transaction(s) from the Neuriio wallet (switching chains as needed), then waits for Relay to pay out.
  *  `onStatus` gets short progress lines. Resolves to Relay's request id once it reports success; throws on failure. */
-export async function bridgeSend(wallet: ConnectedWallet, quote: BridgeQuote, onStatus: (s: string) => void): Promise<string> {
-  const account = wallet.address as Address;
+/** Sends Relay's steps from `wallet` (the Neuriio wallet or an added one: lib/tradeWallet.ts), switching it to each step's chain. */
+export async function bridgeSend(
+  wallet: { address: Address; provider: (chainId: number) => Promise<EIP1193Provider> },
+  quote: BridgeQuote,
+  onStatus: (s: string) => void,
+): Promise<string> {
+  const account = wallet.address;
   let requestId: string | null = null;
   for (const step of quote.steps) {
     requestId = step.requestId ?? requestId;
     if (step.kind !== "transaction") throw new Error(`Relay asked for a "${step.kind}" step we don't handle`);
     for (const item of step.items ?? []) {
       const tx = item.data;
-      await wallet.switchChain(tx.chainId);
-      const provider = (await wallet.getEthereumProvider()) as EIP1193Provider;
+      const provider = await wallet.provider(tx.chainId);
       const chain = tx.chainId === HYPEREVM_ID ? hyperEvm : elysiumTestnet;
       onStatus("Sending…");
       const hash: Hash = await walletClientFor(provider, account).sendTransaction({
